@@ -45,47 +45,6 @@ def log_item_changes(doc, method):
     if doc.flags.in_insert:
         return
 
-
-    item_class_code = doc.get("custom_item_class_code")
-    item_code = doc.get("item_code")
-    item_name = doc.get("item_name")
-    product_type = doc.get("custom_product_type")
-    origin_place = doc.get("custom_origin_place_code")
-    packaging_unit = doc.get("custom_packaging_unit_code")
-    qty_unit = doc.get("custom_units_of_measure")
-    vat_category = doc.get("custom_vat")
-    ipl_category = doc.get("custom_ipl_category_code")
-    tl_category = doc.get("custom_tl_category_code")
-    excise_tax_category = doc.get("custom_excise_tax_category_code")
-    use_yn = doc.get("custom_used__unused") 
-    user = doc.get("owner") or "ADMIN"
-
-    zra_client = ZRAClient() 
-
-    try:
-        response = zra_client.update_item(
-            item_class_code=item_class_code, 
-            item_code=item_code,
-            item_name=item_name,
-            product_type=product_type,
-            origin_place=origin_place,
-            packaging_unit=packaging_unit,
-            qty_unit=qty_unit,
-            vat_category=vat_category,
-            ipl_category=ipl_category,
-            tl_category=tl_category,
-            excise_tax_category=excise_tax_category,
-            use_yn=use_yn,
-            user=user
-        )
-        print("ZRA Response:", response)
-    except Exception as e:
-        frappe.log_error(f"Error updating item {item_code} in ZRA: {e}", "ZRA Item Update Failed")
-        frappe.throw(f"Failed to update item in ZRA: {e}")
-
-
-
-	
 @frappe.whitelist()
 def test_item_logging():
     item = frappe.get_doc("Item", "ITEM-001")

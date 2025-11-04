@@ -294,24 +294,122 @@ def delete_item_by_code_api():
 
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
 def update_item_api():
+    import json
     item_code = frappe.local.request.args.get("item_code")
     if not item_code:
-        return send_response(status="fail", message="item_code is required", status_code=400, http_status=400)
+        return send_response(
+            status="fail",
+            message="item_code is required",
+            status_code=400,
+            http_status=400
+        )
 
     try:
         item = frappe.get_doc("Item", {"item_code": item_code})
     except frappe.DoesNotExistError:
-        return send_response(status="fail", message=f"Item '{item_code}' does not exist", status_code=404, http_status=404)
+        return send_response(
+            status="fail",
+            message=f"Item '{item_code}' does not exist",
+            status_code=404,
+            http_status=404
+        )
 
-    for field in ["item_name", "item_group", "stock_uom", "standard_rate", "custom_itemclscd", "custom_itemtycd"]:
-        value = frappe.form_dict.get(field)
-        if value:
-            setattr(item, field, value)
+
+    try:
+        payload = frappe.local.request.get_data(as_text=True)
+        data = json.loads(payload) if payload else {}
+    except Exception:
+        return send_response(
+            status="fail",
+            message="Invalid JSON payload",
+            status_code=400,
+            http_status=400
+        )
+
+    allowed_fields = [
+        "item_name",
+        "custom_itemtycd",
+        "custom_vattycd",
+        "custom_isrcaplcbyn",
+        "custom_svcchargeyn"
+    ]
+
+    updated_fields = {}
+    for field in allowed_fields:
+        if field in data:
+            setattr(item, field, data[field])
+            updated_fields[field] = data[field]
+
+    if not updated_fields:
+        return send_response(
+            status="fail",
+            message="No valid fields provided for update",
+            status_code=400,
+            http_status=400
+        )
 
     try:
         item.save(ignore_permissions=True)
         frappe.db.commit()
-        return send_response(status="success", message=f"Item '{item_code}' updated", data={"item_code": item_code}, status_code=200, http_status=200)
     except Exception as e:
-        frappe.log_error(str(e), "Update Item API Error")
-        return send_response(status="fail", message="Failed to update item", data={"error": str(e)}, status_code=500, http_status=500)
+        frappe.log_error(str(e), "ERPNext Update Item Error")
+        return send_response(
+            status="fail",
+            message="Failed to update item in ERPNext",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+    try:
+        PAYLOAD = {
+            "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
+            "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
+            "itemCd": item.item_code,
+            "itemClsCd": item.custom_itemclscd,
+            "itemTyCd": item.custom_itemtycd,
+            "itemNm": item.item_name,
+            "orgnNatCd": item.custom_orgnnatcd,
+            "pkgUnitCd": item.custom_pkgunitcd,
+            "qtyUnitCd": item.stock_uom,
+            "dftPrc": item.standard_rate or 0,
+            "vatCatCd": item.custom_vattycd or "A",
+            "svcChargeYn": item.custom_svcchargeyn,
+            "sftyQty": 0,
+            "isrcAplcbYn": item.custom_isrcaplcbyn,
+            "useYn": "Y",
+            "regrNm": frappe.session.user,
+            "regrId": frappe.session.user,
+            "modrNm": frappe.session.user,
+            "modrId": frappe.session.user
+        }
+
+        print(json.dumps(PAYLOAD, indent=4))
+
+    
+        result =ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
+        data = result.json()
+        print(data)
+        if data.get("resultCd") != "000":
+            return send_response(
+                status="error",
+                message=data.get("resultMsg", "Item Update Sync Failed"),
+                status_code=400,
+                http_status=400
+            )
+
+        return send_response(
+            status="success",
+            message=f"Item '{item_code}' updated successfully",
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(str(e), "ZRA Update Error")
+        return send_response(
+            status="fail",
+            message="Failed to update item in ZRA",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )

@@ -41,54 +41,6 @@ from erpnext.stock.doctype.item_default.item_default import ItemDefault
 from erpnext.stock.utils import get_valuation_method
 
 
-import requests
-from urllib.parse import urljoin
-
-BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0/"
-
-import sqlite3
-#db_name='/home/tim/projects/izyane/frappe-bench/hints.db'
-import sqlite3
-
-
-
-
-class ZARItemClient:
-    def __init__(self, tpin, country_code, bhf_id="000"):
-        self.endpoint = "items/saveItem"
-        self.url = urljoin(BASE_URL, self.endpoint)
-        self.headers = {"Content-Type": "application/json"}
-        self.tpin = tpin
-        self.bhf_id = bhf_id
-        self.country_code = country_code  
-
-    def generate_item_code(self, product_type, packaging_unit, quantity_unit, last_number):
-        next_number = last_number + 1
-        formatted_number = f"{next_number:07d}" 
-        return f"{self.country_code}{product_type}{packaging_unit}{quantity_unit}{formatted_number}"
-
-    def save_item(self, payload):
-        if not self.tpin:
-            raise ValueError("TPIN is required.")
-        try:
-            response = requests.post(self.url, headers=self.headers, json=payload)
-            print("Status Code:", response.status_code)
-            print("Response:", response.text)
-
-            if response.status_code != 200:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
-
-            data = response.json()
-            if data.get("resultCd") != "000":
-                raise Exception(f"API Error: {data.get('resultMsg')}")
-            return data
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API request failed: {e}")
-
-
-
-
-
 class DuplicateReorderRows(frappe.ValidationError):
 	pass
 
@@ -225,9 +177,6 @@ class Item(Document):
 		self.item_code = strip(self.item_code)
 		self.name = self.item_code
 
-	def generate_item_code(self, country_code, product_type, packaging_unit, quantity_unit, counter):
-		suffix = str(counter).zfill(7) 
-		return f"{country_code.upper()}{product_type}{packaging_unit.upper()}{quantity_unit.upper()}{suffix}"
 
 		     
 	def after_insert(self):
