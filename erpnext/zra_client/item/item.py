@@ -3,6 +3,7 @@ from erpnext.zra_client.main import ZRAClient
 from frappe import _
 import random
 import frappe
+import json
 
 ZRA_CLIENT_INSTANCE = ZRAClient()
 
@@ -386,16 +387,16 @@ def update_item_api():
         print(json.dumps(PAYLOAD, indent=4))
 
     
-        result =ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
-        data = result.json()
-        print(data)
-        if data.get("resultCd") != "000":
-            return send_response(
-                status="error",
-                message=data.get("resultMsg", "Item Update Sync Failed"),
-                status_code=400,
-                http_status=400
-            )
+        # result =ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
+        # data = result.json()
+        # print(data)
+        # if data.get("resultCd") != "000":
+        #     return send_response(
+        #         status="error",
+        #         message=data.get("resultMsg", "Item Update Sync Failed"),
+        #         status_code=400,
+        #         http_status=400
+        #     )
 
         return send_response(
             status="success",
@@ -412,4 +413,187 @@ def update_item_api():
             data={"error": str(e)},
             status_code=500,
             http_status=500
+        )
+
+@frappe.whitelist(allow_guest=False)
+def get_all_item_groups_api():
+    try:
+        item_groups = frappe.get_all(
+            "Item Group",
+            fields=["name", "item_group_name"],
+            order_by="item_group_name asc"
+        )
+
+        return send_response(
+            status="success",
+            message=f"{len(item_groups)} item groups fetched successfully",
+            data=item_groups,
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get All Item Groups API Error")
+        return send_response(
+            status="fail",
+            message="Failed to fetch item groups",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+@frappe.whitelist(allow_guest=False)
+def create_item_group_api():
+    item_group_name = (frappe.form_dict.get("item_group_name") or "").strip()
+    parent_item_group = (frappe.form_dict.get("parent_item_group") or "All Item Groups").strip()
+    is_group = frappe.form_dict.get("is_group")
+
+    if not item_group_name:
+        return send_response(
+            status="fail",
+            message="item_group_name is required",
+            status_code=400,
+            http_status=400
+        )
+    if isinstance(is_group, str):
+        is_group = is_group.lower() in ["true", "1", "yes"]
+
+    if frappe.db.exists("Item Group", {"item_group_name": item_group_name}):
+        return send_response(
+            status="fail",
+            message=f"Item Group '{item_group_name}' already exists",
+            status_code=409,
+            http_status=409
+        )
+
+    try:
+        item_group = frappe.get_doc({
+            "doctype": "Item Group",
+            "item_group_name": item_group_name,
+            "parent_item_group": "All Item Groups",
+            "is_group": is_group or 0
+        })
+        item_group.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Item Group '{item_group_name}' created successfully",
+            data={
+                "name": item_group.name,
+                "item_group_name": item_group.item_group_name,
+                "parent_item_group": item_group.parent_item_group
+            },
+            status_code=201,
+            http_status=201
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Create Item Group API Error")
+        return send_response(
+            status="fail",
+            message="Failed to create item group",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False)
+def update_item_group_api():
+    current_group_name = (frappe.form_dict.get("current_group_name") or "").strip()
+    new_group_name = (frappe.form_dict.get("new_group_name") or "").strip()
+
+    if not current_group_name:
+        return send_response(
+            status="fail",
+            message="Current Item Group Name is required.",
+            status_code=400,
+            http_status=400
+        )
+
+    if not new_group_name:
+        return send_response(
+            status="fail",
+            message="New Group Name is required.",
+            status_code=400,
+            http_status=400
+        )
+
+    try:
+        # Check if Item Group exists
+        if not frappe.db.exists("Item Group", current_group_name):
+            return send_response(
+                status="fail",
+                message=f"Item Group '{current_group_name}' does not exist.",
+                status_code=404,
+                http_status=404
+            )
+
+        frappe.rename_doc(
+            doctype="Item Group",
+            old=current_group_name,
+            new=new_group_name,
+            merge=False
+        )
+
+        item_group = frappe.get_doc("Item Group", new_group_name)
+
+        data = item_group.as_dict()
+        data.pop("_server_messages", None)  
+
+        return send_response(
+            status="success",
+            message=f"Item Group renamed to '{new_group_name}' successfully.",
+            status_code=200,
+        )
+
+    except Exception as e:
+        return send_response(
+            status="error",
+            message=f"Failed to update Item Group: {str(e)}",
+            status_code=500
+        )
+
+
+
+@frappe.whitelist(allow_guest=False)
+def delete_item_group():
+    item_group_name = (frappe.form_dict.get("item_group_name") or "").strip()
+
+    if not item_group_name:
+        send_response(
+            status=400,
+            message="Item Group Name Not Found.",
+            status_code=400,
+            http_status=400
+        )
+        return
+    try:
+        if not frappe.db.exists("Item Group", item_group_name):
+            return send_response(
+                status="fail",
+                message=f"Item Group '{item_group_name}' does not exist.",
+                status_code=404,
+                http_status=404
+            )
+        frappe.delete_doc("Item Group", item_group_name, force=True)
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Item Group '{item_group_name}' deleted successfully.",
+            status_code=200
+        )
+    except frappe.LinkExistsError:
+        return send_response(
+            status="fail",
+            message=f"Cannot delete Item Group '{item_group_name}' because it is linked to other documents.",
+            status_code=409
+        )
+    except Exception as e:
+        return send_response(
+            status="error",
+            message=f"Failed to delete Item Group: {str(e)}",
+            status_code=500
         )

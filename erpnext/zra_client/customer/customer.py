@@ -1,9 +1,91 @@
 from erpnext.zra_client.generic_api import send_response
 from erpnext.zra_client.main import ZRAClient
-import frappe
 from frappe import _
+import frappe
+import re
 
 ZRA_CLIENT_INSTANCE = ZRAClient()
+
+def validate_address(address, address_type):
+    for field_name, value in address.items():
+        if not value:
+            send_response(
+                status="fail",
+                message=f"{address_type} {field_name} is required.",
+                status_code=400,
+                http_status=400
+            )
+            return False  
+    return True
+
+def validate_phone(phone):
+    if not phone:
+        send_response(
+            status="fail",
+            message="Phone number is required.",
+            status_code=400,
+            http_status=400
+        )
+        return False
+
+
+    normalized_phone = phone
+    existing_customer = frappe.db.exists("Customer", {"mobile_no": normalized_phone})
+    if existing_customer:
+        send_response(
+            status="fail",
+            message=f"Phone number already exists: {normalized_phone}",
+            status_code=409,
+            http_status=409
+        )
+        return False
+
+    return True
+
+
+def validate_email(email_id):
+    if not email_id:
+        send_response(
+            status="fail",
+            message="Email is required.",
+            status_code=400,
+            http_status=400
+        )
+        return False
+
+    pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+
+    if not re.fullmatch(pattern, email_id):
+        send_response(
+            status="fail",
+            message=f"Invalid email_id format: {email_id}. Expected format like user@example.com",
+            status_code=400,
+            http_status=400
+        )
+        return False
+
+    if frappe.db.exists("Customer", {"email_id": email_id}):
+        send_response(
+            status="fail",
+            message=f"Email already exists: {email_id}",
+            status_code=409,
+            http_status=409
+        )
+        return False
+
+    return True
+
+
+def validate_account(customerAccountNo):
+    if frappe.db.exists("Customer", {"custom_customer_customerAccountNo_no": customerAccountNo}):
+        send_response(
+            status="fail",
+            message=f"customerAccountNo number already exists: {customerAccountNo}",
+            status_code=409,
+            http_status=409
+        )
+        return False
+    return True
 
 def validate_customer_type(customer_type):
     valid_types = ["Individual", "Company", "Partnership"]
@@ -32,27 +114,71 @@ def validate_currency(currency):
 
 
 def generate_customer_id():
-    base_id = f"CUST" 
-    customer_id = base_id
-    count = 1
+    print("Fetching existing customer IDs from the database...")
+    last_ids = frappe.db.sql("""
+        SELECT custom_id FROM `tabCustomer`
+        WHERE custom_id LIKE 'CUST-%'
+    """, as_dict=True)
+    
+    print(f"Found {len(last_ids)} existing customer IDs.")
 
-    while frappe.db.exists("Customer", {"custom_customer_account_no": customer_id}):
-        count += 1
-        customer_id = f"{base_id}-{count}" 
-    return customer_id
+    max_num = 0
+    for row in last_ids:
+        print(f"Processing row: {row}")
+        try:
+            num = int(row["custom_id"].split("-")[-1])
+            print(f"Extracted numeric part: {num}")
+            if num > max_num:
+                print(f"Updating max_num: {max_num} -> {num}")
+                max_num = num
+        except (ValueError, IndexError) as e:
+            print(f"Skipping row due to error: {e}")
+            continue  
+
+    new_id = f"CUST-{max_num + 1}"
+    print(f"Generated new customer ID: {new_id}")
+    return new_id
+
+
+
 
 
 @frappe.whitelist(allow_guest=False)
 def create_customer_api():
     tpin = (frappe.form_dict.get("custom_customer_tpin") or "")
     customer_name = (frappe.form_dict.get("customer_name") or "").strip()
-    email_id = (frappe.form_dict.get("email_id") or "").strip()
+    email_id = (frappe.form_dict.get("customer_email") or "").strip()
     mobile_no = (frappe.form_dict.get("mobile_no") or "")
     customerType = (frappe.form_dict.get("customer_type") or "").strip()
     customerEmail = (frappe.form_dict.get("customer_email") or "").strip()
     customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
     customerAccountNo = (frappe.form_dict.get("customer_account_no") or "")
     customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance") or "").strip()
+    customerTermsAndCondtions = (frappe.form_dict.get("customer_terms"))
+
+    billingAddress = {
+    "Line1": (frappe.form_dict.get("customer_billing_address_line1") or "").strip(),
+    "Line2": (frappe.form_dict.get("customer_billing_address_line2") or "").strip(),
+    "PostalCode": (frappe.form_dict.get("customer_billing_postal_code") or "").strip(),
+    "City": (frappe.form_dict.get("customer_billing_city") or "").strip(),
+    "Country": (frappe.form_dict.get("customer_billing_country") or "").strip(),
+    "State": (frappe.form_dict.get("customer_billing_state") or "").strip(),
+    "County": (frappe.form_dict.get("customer_billing_country") or "").strip()
+    }
+
+    shippingAddress = {
+        "Line1": (frappe.form_dict.get("customer_shipping_address_line1") or "").strip(),
+        "Line2": (frappe.form_dict.get("customer_shipping_address_line2") or "").strip(),
+        "PostalCode": (frappe.form_dict.get("customer_shipping_postal_code") or "").strip(),
+        "City": (frappe.form_dict.get("customer_shipping_city") or "").strip(),
+        "Country": (frappe.form_dict.get("customer_shipping_country") or "").strip(),
+        "State": (frappe.form_dict.get("customer_shipping_state") or "").strip()
+    }
+
+    if not validate_address(billingAddress, "Billing Address"):
+        return
+    if not validate_address(shippingAddress, "Shipping Address"):
+        return
 
 
     if not customerCurrency:
@@ -83,7 +209,10 @@ def create_customer_api():
     if existing_customer:
         send_response(status="fail", message=f"A customer with TPIN {tpin} already exists.", status_code=400, http_status=400)
         return
-
+    id = generate_customer_id()
+    if not (validate_phone(mobile_no) and validate_email(email_id) and validate_account(customerAccountNo)):
+        return 
+    
     try:
         payload = {
             "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
@@ -96,22 +225,22 @@ def create_customer_api():
             "regrId": frappe.session.user,
         }
 
-        result = ZRA_CLIENT_INSTANCE.create_customer(payload)
-        data = result.json()  # Assuming result is a Response object
+        # result = ZRA_CLIENT_INSTANCE.create_customer(payload)
+        # data = result.json()  
 
-        if data.get("resultCd") != "000":
-            send_response(
-                status="fail",
-                message=data.get("resultMsg", "Customer Sync Failed"),
-                status_code=400,
-                data=None,
-                http_status=400
-            )
-            return
+        # if data.get("resultCd") != "000":
+        #     send_response(
+        #         status="fail",
+        #         message=data.get("resultMsg", "Customer Sync Failed"),
+        #         status_code=400,
+        #         data=None,
+        #         http_status=400
+        #     )
+        #     return
 
         customer = frappe.get_doc({
             "doctype": "Customer",
-            "custom_customer_id": generate_customer_id(),
+            "custom_id": id,
             "customer_name": customer_name,
             "tax_id": tpin,
             "mobile_no": mobile_no,
@@ -119,7 +248,21 @@ def create_customer_api():
             "email_id": customerEmail or email_id, 
             "default_currency": customerCurrency,
             "custom_account_number": customerAccountNo,
-            "custom_onboard_balance": customerOnboardingBalance
+            "custom_onboard_balance": customerOnboardingBalance,
+            "custom_billing_adress_line_1": billingAddress["Line1"],
+            "custom_billing_adress_line_2": billingAddress["Line2"],
+            "custom_billing_adress_posta_code": billingAddress["PostalCode"],
+            "custom_billing_adress_city": billingAddress["City"],
+            "custom_billing_adress_country": billingAddress["Country"],
+            "custom_billing_adress_state": billingAddress["State"],
+            "custom_billing_adress_county": billingAddress.get("County", ""),
+            "custom_shipping_address_line_1_": shippingAddress["Line1"],
+            "custom_shipping_address_line_2": shippingAddress["Line2"],
+            "custom_shipping_address_posta_code_": shippingAddress["PostalCode"],
+            "custom_shipping_address_city": shippingAddress["City"],
+            "custom_shipping_address_state": shippingAddress["State"],
+            "custom_shipping_address_country": shippingAddress["Country"],
+            "custom_tc": customerTermsAndCondtions
         })
 
         customer.insert()
@@ -149,42 +292,131 @@ def get_all_customers_api():
     try:
         customers = frappe.get_all(
             "Customer",
-            fields=["custom_customer_id", "name", "customer_name", "customer_type", "tax_id", "mobile_no", "email_id", "default_currency", "custom_account_number", "custom_onboard_balance"],
+            fields=[
+                "custom_id", "name", "customer_name", "customer_type",
+                "tax_id", "mobile_no", "email_id", "default_currency",
+                "custom_account_number", "custom_onboard_balance",
+                "custom_billing_adress_line_1",
+                "custom_billing_adress_line_2",
+                "custom_billing_adress_posta_code",
+                "custom_billing_adress_city",
+                "custom_billing_adress_country",
+                "custom_billing_adress_state",
+                "custom_billing_adress_county",
+                "custom_shipping_address_line_1_",
+                "custom_shipping_address_line_2",
+                "custom_shipping_address_posta_code_",
+                "custom_shipping_address_city",
+                "custom_shipping_address_state",
+                "custom_shipping_address_country"
+            ],
             order_by="customer_name asc"
         )
+
         if not customers:
             send_response(status="success", message="No customers found.", status_code=200, data=[], http_status=200)
             return
 
         for cust in customers:
             cust["custom_customer_tpin"] = cust.pop("tax_id")
+            
+            cust["billing"] = {
+                "line1": cust.pop("custom_billing_adress_line_1"),
+                "line2": cust.pop("custom_billing_adress_line_2"),
+                "postal_code": cust.pop("custom_billing_adress_posta_code"),
+                "city": cust.pop("custom_billing_adress_city"),
+                "country": cust.pop("custom_billing_adress_country"),
+                "state": cust.pop("custom_billing_adress_state"),
+                "county": cust.pop("custom_billing_adress_county"),
+            }
 
-        send_response(status="success", message="Customers retrieved successfully", status_code=200, data=customers, http_status=200)
+
+            cust["shipping"] = {
+                "line1": cust.pop("custom_shipping_address_line_1_"),
+                "line2": cust.pop("custom_shipping_address_line_2"),
+                "postal_code": cust.pop("custom_shipping_address_posta_code_"),
+                "city": cust.pop("custom_shipping_address_city"),
+                "state": cust.pop("custom_shipping_address_state"),
+                "country": cust.pop("custom_shipping_address_country"),
+            }
+
+        send_response(
+            status="success",
+            message="Customers retrieved successfully",
+            status_code=200,
+            data=customers,
+            http_status=200
+        )
         return
 
     except Exception as e:
-        send_response(status="error", message=f"Failed to retrieve customers: {str(e)}", status_code=500, data=None, http_status=500)
+        send_response(
+            status="error",
+            message=f"Failed to retrieve customers: {str(e)}",
+            status_code=500,
+            data=None,
+            http_status=500
+        )
         return
 
 
 @frappe.whitelist(allow_guest=False)
-def get_customer_by_tpin(tpin):
+def get_customer_by_id(custom_id):
     try:
-        customer = frappe.get_doc("Customer", {"tax_id": tpin})
+        customer = frappe.get_doc("Customer", {"custom_id": custom_id})
+        def safe_attr(obj, attr):
+            return getattr(obj, attr, None)
         data = {
-            "name": customer.name,
-            "tpin": customer.tax_id,
-            "customer_name": customer.customer_name,
-            "mobile_no": customer.mobile_no
+            "custom_customer_tpin": safe_attr(customer, "tax_id"),
+            "name": safe_attr(customer, "name"),
+            "customer_name": safe_attr(customer, "customer_name"),
+            "customer_type": safe_attr(customer, "customer_type"),
+            "mobile_no": safe_attr(customer, "mobile_no"),
+            "email_id": safe_attr(customer, "email_id"),
+            "default_currency": safe_attr(customer, "default_currency"),
+            "custom_account_number": safe_attr(customer, "custom_account_number"),
+            "custom_onboard_balance": safe_attr(customer, "custom_onboard_balance"),
+            "billing": {
+                "line1": safe_attr(customer, "custom_billing_address_line_1"),
+                "line2": safe_attr(customer, "custom_billing_address_line_2"),
+                "postal_code": safe_attr(customer, "custom_billing_address_postal_code"),
+                "city": safe_attr(customer, "custom_billing_address_city"),
+                "state": safe_attr(customer, "custom_billing_address_state"),
+                "country": safe_attr(customer, "custom_billing_address_country"),
+                "county": safe_attr(customer, "custom_billing_address_county"),
+            },
+            "shipping": {
+                "line1": safe_attr(customer, "custom_shipping_address_line_1"),
+                "line2": safe_attr(customer, "custom_shipping_address_line_2"),
+                "postal_code": safe_attr(customer, "custom_shipping_address_postal_code"),
+                "city": safe_attr(customer, "custom_shipping_address_city"),
+                "state": safe_attr(customer, "custom_shipping_address_state"),
+                "country": safe_attr(customer, "custom_shipping_address_country"),
+            }
         }
-
-        send_response(status="success", message="Customer retrieved successfully", status_code=200, data=data ,http_status=200)
+        send_response(
+            status="success",
+            message="Customer retrieved successfully",
+            status_code=200,
+            data=data,
+            http_status=200
+        )
 
     except frappe.DoesNotExistError:
-        send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
+        send_response(
+            status="fail",
+            message=f"Customer with ID {custom_id} not found",
+            status_code=404,
+            http_status=404
+        )
     except Exception as e:
-        send_response(status="error", message=f"Failed to retrieve customers: {str(e)}", status_code=500, data=None, http_status=500)
-        return
+        send_response(
+            status="error",
+            message=f"Failed to retrieve customer: {str(e)}",
+            status_code=500,
+            data=None,
+            http_status=500
+        )
 
 
 @frappe.whitelist(allow_guest=False)
