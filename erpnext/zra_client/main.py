@@ -11,7 +11,7 @@ import json
 
 
 
-ZRA_LOCAL_BASE_URL = "http://41.60.191.7:4000/sandboxvsdc1.0.8.0/"
+ZRA_LOCAL_BASE_URL = "http://127.0.0.1:8080/sandboxvsdc1.0.8.0/"
 ZRA_GET_PRINCIPAL = "/trnsSales/selectPrincipals"
 ZRA_CREATE_ITEM = "/items/saveItem"
 ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
