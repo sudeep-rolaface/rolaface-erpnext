@@ -153,7 +153,13 @@ def create_customer_api():
     customerEmail = (frappe.form_dict.get("customer_email") or "").strip()
     customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
     customerAccountNo = (frappe.form_dict.get("customer_account_no") or "")
-    customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance") or "").strip()
+    customer_onboarding_balance = frappe.form_dict.get("customer_onboarding_balance") or "0"
+
+    try:
+        customer_onboarding_balance = float(customer_onboarding_balance)
+    except ValueError:
+        customer_onboarding_balance = 0.0  
+
     customerTermsAndCondtions = (frappe.form_dict.get("customer_terms"))
 
     billingAddress = {
@@ -174,6 +180,9 @@ def create_customer_api():
         "Country": (frappe.form_dict.get("customer_shipping_country") or "").strip(),
         "State": (frappe.form_dict.get("customer_shipping_state") or "").strip()
     }
+
+    contactPerson = (frappe.form_dict.get("customer_contact_person") or "").strip()
+    displayName = (frappe.form_dict.get("customer_display_name") or "").strip()
 
     if not validate_address(billingAddress, "Billing Address"):
         return
@@ -248,7 +257,7 @@ def create_customer_api():
             "email_id": customerEmail or email_id, 
             "default_currency": customerCurrency,
             "custom_account_number": customerAccountNo,
-            "custom_onboard_balance": customerOnboardingBalance,
+            "custom_onboard_balance": customer_onboarding_balance,
             "custom_billing_adress_line_1": billingAddress["Line1"],
             "custom_billing_adress_line_2": billingAddress["Line2"],
             "custom_billing_adress_posta_code": billingAddress["PostalCode"],
@@ -262,7 +271,9 @@ def create_customer_api():
             "custom_shipping_address_city": shippingAddress["City"],
             "custom_shipping_address_state": shippingAddress["State"],
             "custom_shipping_address_country": shippingAddress["Country"],
-            "custom_tc": customerTermsAndCondtions
+            "custom_tc": customerTermsAndCondtions,
+            "custom_contact_person":contactPerson,
+            "custom_display_name":displayName
         })
 
         customer.insert()
@@ -303,7 +314,9 @@ def get_all_customers_api():
                 "custom_shipping_address_posta_code_",
                 "custom_shipping_address_city",
                 "custom_shipping_address_state",
-                "custom_shipping_address_country"
+                "custom_shipping_address_country",
+                "custom_contact_person",
+                "custom_display_name",
             ],
             order_by="customer_name asc"
         )
@@ -317,27 +330,8 @@ def get_all_customers_api():
             cust["customer_onboarding_balance"] = cust.pop("custom_onboard_balance")
             cust["customer_account_no"] = cust.pop("custom_account_number")
             cust["customer_currency"] = cust.pop("default_currency")
+            cust["customer_email"] = cust.pop("email_id")
 
-            
-            cust["billing"] = {
-                "line1": cust.pop("custom_billing_adress_line_1"),
-                "line2": cust.pop("custom_billing_adress_line_2"),
-                "postal_code": cust.pop("custom_billing_adress_posta_code"),
-                "city": cust.pop("custom_billing_adress_city"),
-                "country": cust.pop("custom_billing_adress_country"),
-                "state": cust.pop("custom_billing_adress_state"),
-                "county": cust.pop("custom_billing_adress_county"),
-            }
-
-
-            cust["shipping"] = {
-                "line1": cust.pop("custom_shipping_address_line_1_"),
-                "line2": cust.pop("custom_shipping_address_line_2"),
-                "postal_code": cust.pop("custom_shipping_address_posta_code_"),
-                "city": cust.pop("custom_shipping_address_city"),
-                "state": cust.pop("custom_shipping_address_state"),
-                "country": cust.pop("custom_shipping_address_country"),
-            }
 
         send_response(
             status="success",
@@ -364,36 +358,34 @@ def get_customer_by_id(custom_id):
     try:
         customer = frappe.get_doc("Customer", {"custom_id": custom_id})
         def safe_attr(obj, attr):
-            return getattr(obj, attr, None)
+            return getattr(obj, attr, "") or "" 
         data = {
             "custom_customer_tpin": safe_attr(customer, "tax_id"),
             "name": safe_attr(customer, "name"),
             "customer_name": safe_attr(customer, "customer_name"),
             "customer_type": safe_attr(customer, "customer_type"),
             "mobile_no": safe_attr(customer, "mobile_no"),
-            "email_id": safe_attr(customer, "email_id"),
+            "customer_email": safe_attr(customer, "email_id"),
+            "custom_contact_person": safe_attr(customer, "custom_contact_person"),
+            "custom_display_name": safe_attr(customer, "custom_display_name"),
             "customer_currency": safe_attr(customer, "default_currency"),
             "customer_account_no": safe_attr(customer, "custom_account_number"),
             "customer_onboarding_balance": safe_attr(customer, "custom_onboard_balance"),
-            "billing": {
-                "line1": safe_attr(customer, "custom_billing_address_line_1"),
-                "line2": safe_attr(customer, "custom_billing_address_line_2"),
-                "postal_code": safe_attr(customer, "custom_billing_address_postal_code"),
-                "city": safe_attr(customer, "custom_billing_address_city"),
-                "state": safe_attr(customer, "custom_billing_address_state"),
-                "country": safe_attr(customer, "custom_billing_address_country"),
-                "county": safe_attr(customer, "custom_billing_address_county"),
-            },
-            "shipping": {
-                "line1": safe_attr(customer, "custom_shipping_address_line_1"),
-                "line2": safe_attr(customer, "custom_shipping_address_line_2"),
-                "postal_code": safe_attr(customer, "custom_shipping_address_postal_code"),
-                "city": safe_attr(customer, "custom_shipping_address_city"),
-                "state": safe_attr(customer, "custom_shipping_address_state"),
-                "country": safe_attr(customer, "custom_shipping_address_country"),
-            }
+            "custom_billing_address_line_1": safe_attr(customer, "custom_billing_adress_line_1"),
+            "custom_billing_address_line_2": safe_attr(customer, "custom_billing_adress_line_2"),
+            "custom_billing_address_postal_code": safe_attr(customer, "custom_billing_adress_posta_code"),
+            "custom_billing_address_city": safe_attr(customer, "custom_billing_adress_city"),
+            "custom_billing_address_state": safe_attr(customer, "custom_billing_adress_state"),
+            "custom_billing_address_country": safe_attr(customer, "custom_billing_adress_country"),
+            "custom_shipping_address_line_1": safe_attr(customer, "custom_shipping_address_line_1_"),
+            "custom_shipping_address_line_2": safe_attr(customer, "custom_shipping_address_line_2"),
+            "custom_shipping_address_postal_code": safe_attr(customer, "custom_shipping_address_posta_code_"),
+            "custom_shipping_address_city": safe_attr(customer, "custom_shipping_address_city"),
+            "custom_shipping_address_state": safe_attr(customer, "custom_shipping_address_state"),
+            "custom_shipping_address_country": safe_attr(customer, "custom_shipping_address_country"),
         }
-        send_response(
+
+        return send_response(
             status="success",
             message="Customer retrieved successfully",
             status_code=200,
@@ -402,14 +394,14 @@ def get_customer_by_id(custom_id):
         )
 
     except frappe.DoesNotExistError:
-        send_response(
+        return send_response(
             status="fail",
             message=f"Customer with ID {custom_id} not found",
             status_code=404,
             http_status=404
         )
     except Exception as e:
-        send_response(
+        return send_response(
             status="error",
             message=f"Failed to retrieve customer: {str(e)}",
             status_code=500,
@@ -436,8 +428,10 @@ def update_customer_by_id():
     customerType = (frappe.form_dict.get("customer_type") or "").strip()
     customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
     customerAccountNo = (frappe.form_dict.get("customer_account_no") or "").strip()
-    customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance") or "").strip()
+    customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance"))
     customerTermsAndCondtions = (frappe.form_dict.get("customer_terms") or "").strip()
+    customerContactPerson = (frappe.form_dict.get("customer_contact_person") or "").strip()
+    customerDisplayName = (frappe.form_dict.get("customer_display_name") or "").strip()
 
     billingAddress = {
         "Line1": (frappe.form_dict.get("customer_billing_address_line1") or "").strip(),
@@ -487,7 +481,10 @@ def update_customer_by_id():
             "custom_shipping_address_city": shippingAddress["City"],
             "custom_shipping_address_state": shippingAddress["State"],
             "custom_shipping_address_country": shippingAddress["Country"],
-            "custom_tc": customerTermsAndCondtions
+            "custom_tc": customerTermsAndCondtions,
+            "custom_contact_person": customerContactPerson,
+            "custom_display_name": customerDisplayName,
+
         }
 
         for key, value in field_mapping.items():
@@ -527,18 +524,25 @@ def update_customer_by_id():
 
 
 @frappe.whitelist(allow_guest=False)
-def delete_customer_by_tpin(tpin):
-    if not tpin:
-        send_response(status="fail", message="Customer tpin is required", status_code=400, http_status=400)
+def delete_customer_by_id():
+    id = (frappe.form_dict.get("id") or "").strip()
+    if not id:
+        send_response(status="fail", message="Customer id is required", status_code=400, http_status=400)
+        return
     try:
-        customer = frappe.get_doc("Customer", {"tax_id": tpin})
-        customer.delete()
-        frappe.db.commit()
-
-        send_response(status="success", message="Customer with TPIN deleted successfully", status_code=204,http_status=204)
+        customer = frappe.get_doc("Customer", {"custom_id": id})
+        if customer:
+            customer.delete()
+            frappe.db.commit()
+            send_response(status="success", message="Customer with TPIN deleted successfully", status_code=204,http_status=204) 
+            return
+        else:
+            send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
+            return
 
     except frappe.DoesNotExistError:
         send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
+        return
     except Exception as e:
         send_response(status="error", message=f"Failed to retrieve customers: {str(e)}", status_code=500, data=None, http_status=500)
         return

@@ -1,116 +1,196 @@
 from erpnext.zra_client.generic_api import send_response
-from erpnext.zra_client.main import ZRAClient
-from frappe import _
-import random
+from frappe.utils.data import flt
 import frappe
-import json
 
 
+def validate_item_and_warehouse(item_code, warehouse):
+    """Validate that Item and Warehouse exist"""
+    if not frappe.db.exists("Item", item_code):
+        return send_response(
+            status="fail",
+            message=f"Item '{item_code}' does not exist",
+            status_code=404,
+            http_status=404
+        )
+    if not frappe.db.exists("Warehouse", warehouse):
+        return send_response(
+            status="fail",
+            message=f"Warehouse '{warehouse}' does not exist",
+            status_code=404,
+            http_status=404
+        )
+    return None
 
 
 @frappe.whitelist(allow_guest=False)
-def create_item_stock_api(item_code=None, warehouse=None, qty=0):
-    if not item_code or not warehouse:
-        return send_response(
-            status="fail",
-            message="Item code and warehouse are required",
-            status_code=400,
-            http_status=400
-        )
+def create_item_stock_api():
     try:
-        stock = frappe.get_doc({
-            "doctype": "Stock",
+        data = frappe.form_dict
+        item_code = data.get("item_code")
+        warehouse = data.get("warehouse")
+        qty = data.get("qty")
+        price = data.get("price")
+
+        if isinstance(item_code, list):
+            item_code = item_code[0]
+        if isinstance(warehouse, list):
+            warehouse = warehouse[0]
+
+        qty = float(qty[0]) if isinstance(qty, list) else float(qty or 0)
+        price = float(price[0]) if isinstance(price, list) else float(price or 0)
+
+        if not item_code or not warehouse:
+            return send_response("fail", "Item Code and Warehouse are required", 400, 400)
+
+        stock_entry = frappe.get_doc({
+            "doctype": "Stock Entry",
+            "stock_entry_type": "Material Receipt",
+            "items": [{
+                "item_code": item_code,
+                "t_warehouse": warehouse,
+                "qty": qty,
+                "basic_rate": price
+            }]
+        })
+        stock_entry.insert()
+        stock_entry.submit()
+
+        stock_data = {
+            "name": stock_entry.name,
             "item_code": item_code,
             "warehouse": warehouse,
-            "qty": qty
-        })
-        stock.insert()
-        frappe.db.commit()
-        return send_response(
-            status="success",
-            message="Stock created",
-            data=stock.as_dict(),
-            status_code=201,
-            http_status=201
-        )
+            "qty": qty,
+            "price": price
+        }
+
+        return send_response("success", "Stock created successfully", 201, 201)
+
+    except frappe.PermissionError:
+        return send_response("fail", "Permission denied", 403, 403)
     except Exception as e:
-        return send_response(
-            status="error",
-            message=f"Failed to create stock: {str(e)}",
-            status_code=500,
-            http_status=500
-        )
+        return send_response("error", f"Failed to create stock: {str(e)}", 500, 500)
+
 
 @frappe.whitelist(allow_guest=False)
-def get_all_item_stocks():
+def get_all_stocks():
     try:
-        stocks = frappe.get_all("Stock", fields=["name", "item_code", "warehouse", "qty"])
+        stock_entries = frappe.get_all(
+            "Stock Entry",
+            fields=["name", "stock_entry_type", "posting_date"],
+            order_by="creation desc",
+            limit_page_length=100
+        )
+
+        all_data = []
+
+        for se in stock_entries:
+            name = se.name[0] if isinstance(se.name, list) else se.name
+            se_doc = frappe.get_doc("Stock Entry", name)
+            if se_doc.items:
+                item = se_doc.items[0]
+                all_data.append({
+                    "name": se_doc.name,
+                    "item_code": item.item_code,
+                    "warehouse": item.t_warehouse,
+                    "qty": item.qty,
+                    "price": item.basic_rate,
+                    "posting_date": se_doc.posting_date
+                })
+
         return send_response(
             status="success",
-            message="Stocks retrieved",
-            data=stocks,
+            message="Stock retrieved",
+            data=all_data,
             status_code=200,
             http_status=200
         )
+
+    except frappe.PermissionError:
+        return send_response("fail", "Permission denied", [], 403, 403)
     except Exception as e:
-        return send_response(
-            status="error",
-            message=f"Failed to retrieve stocks: {str(e)}",
-            status_code=500,
-            http_status=500
-        )
+        frappe.log_error(f"get_all_stocks() error: {str(e)}", "Stock API Error")
+        return send_response("error", f"Failed to retrieve stocks: {str(e)}", [], 500, 500)
+
+
 
 @frappe.whitelist(allow_guest=False)
-def update_item_stock_api(stock_name=None, qty=None):
-    if not stock_name or qty is None:
-        return send_response(
-            status="fail",
-            message="Stock name and qty are required",
-            status_code=400,
-            http_status=400
-        )
+def get_stock_by_id(bin_id=None):
+    if not bin_id:
+        return send_response("fail", "Bin ID is required", 400, 400)
+
     try:
-        stock = frappe.get_doc("Stock", stock_name)
-        stock.qty = qty
-        stock.save()
-        frappe.db.commit()
-        return send_response(
-            status="success",
-            message="Stock updated",
-            data=stock.as_dict(),
-            status_code=200,
-            http_status=200
-        )
+        bin_doc = frappe.get_doc("Bin", bin_id)
+        price = frappe.db.sql("""
+            SELECT IFNULL(SUM(sle.valuation_rate * sle.actual_qty)/NULLIF(SUM(sle.actual_qty),0),0)
+            FROM `tabStock Ledger Entry` sle
+            WHERE sle.item_code=%s AND sle.warehouse=%s
+        """, (bin_doc.item_code, bin_doc.warehouse))
+        price = price[0][0] if price else 0.0
+
+        data = {
+            "name": bin_doc.name,
+            "item_code": bin_doc.item_code,
+            "warehouse": bin_doc.warehouse,
+            "actual_qty": bin_doc.actual_qty,
+            "reserved_qty": bin_doc.reserved_qty,
+            "ordered_qty": bin_doc.ordered_qty,
+            "price": flt(price)
+        }
+        return send_response("success", "Stock retrieved", data=data, status_code=200, http_status=200)
+
+    except frappe.DoesNotExistError:
+        return send_response("fail", f"Bin '{bin_id}' does not exist", 404, 404)
     except Exception as e:
-        return send_response(
-            status="error",
-            message=f"Failed to update stock: {str(e)}",
-            status_code=500,
-            http_status=500
-        )
+        return send_response("error", f"Failed to retrieve stock: {str(e)}", 500, 500)
+
 
 @frappe.whitelist(allow_guest=False)
-def delete_item_stock_api(stock_name=None):
-    if not stock_name:
-        return send_response(
-            status="fail",
-            message="Stock name is required",
-            status_code=400,
-            http_status=400
-        )
+def delete_stock_entry(stock_entry_id=None):
+    if not stock_entry_id:
+        return send_response("fail", "Stock Entry ID is required", 400, 400)
+
     try:
-        frappe.delete_doc("Stock", stock_name)
+        se_doc = frappe.get_doc("Stock Entry", stock_entry_id)
+        se_doc.cancel()
+        se_doc.delete()
         frappe.db.commit()
-        return send_response(
-            status="success",
-            message="Stock deleted",
-            status_code=200,
-            http_status=200
-        )
+        return send_response("success", f"Stock Entry '{stock_entry_id}' deleted", 200, 200)
+
+    except frappe.DoesNotExistError:
+        return send_response("fail", f"Stock Entry '{stock_entry_id}' does not exist", 404, 404)
+    except frappe.PermissionError:
+        return send_response("fail", "Permission denied", 403, 403)
+    except frappe.LinkExistsError as e:
+        return send_response("fail", f"Cannot delete: {str(e)}", 400, 400)
     except Exception as e:
-        return send_response(
-            status="error",
-            message=f"Failed to delete stock: {str(e)}",
-            status_code=500,
-            http_status=500
-        )
+        msg = str(e)
+        if "is linked with" in msg:
+            return send_response("fail", "Cannot delete this Stock Entry because it is linked to GL Entries or other records.", 409, 409)
+        return send_response("error", f"Failed to delete stock entry: {msg}", 500, 500)
+
+
+@frappe.whitelist(allow_guest=False)
+def get_stock_by_name(bin_name=None):
+    if not bin_name:
+        return send_response("fail", "Bin name is required", 400, 400)
+
+    try:
+        bin_doc = frappe.get_doc("Bin", bin_name)
+        data = {
+            "name": bin_doc.name,
+            "item_code": bin_doc.item_code,
+            "warehouse": bin_doc.warehouse,
+            "actual_qty": flt(bin_doc.actual_qty),
+            "reserved_qty": flt(bin_doc.reserved_qty),
+            "ordered_qty": flt(bin_doc.ordered_qty),
+            "valuation_rate": flt(bin_doc.valuation_rate)
+        }
+        return send_response("success", "Stock retrieved successfully", data=data, status_code=200, http_status=200)
+
+    except frappe.DoesNotExistError:
+        return send_response("fail", f"Bin '{bin_name}' does not exist", 404, 404)
+    except frappe.PermissionError:
+        return send_response("fail", "Permission denied", 403, 403)
+    except Exception as e:
+        return send_response("error", f"Failed to retrieve stock: {str(e)}", 500, 500)
+

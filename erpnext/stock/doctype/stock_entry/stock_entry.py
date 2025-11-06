@@ -250,9 +250,9 @@ class StockEntry(StockController):
 			self.reset_default_field_value("to_warehouse", "items", "t_warehouse")
 
 	def on_submit(self):
-		stock_data = self.as_dict()
-		stock_client = Stock()
-		stock_client.create_stock(stock_data)
+		# stock_data = self.as_dict()
+		# stock_client = Stock()
+		# stock_client.create_stock(stock_data)
 		
 		self.validate_closed_subcontracting_order()
 		self.make_bundle_using_old_serial_batch_fields()
