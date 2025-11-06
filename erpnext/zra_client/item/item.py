@@ -90,7 +90,7 @@ def create_item_api():
             "pkgUnitCd": custom_pkgunitcd,
             "qtyUnitCd": qtyUnitCd,
             "dftPrc": standard_rate,
-            "vatCatCd": "A",
+            "vatCatCd": vatCatCd,
             "svcChargeYn": custom_svcchargeyn,
             "sftyQty": 0,
             "isrcAplcbYn": custom_isrcaplcbyn,
@@ -134,7 +134,6 @@ def create_item_api():
         return send_response(
             status="success",
             message=f"Item '{item_name}' created successfully",
-            data={"item_name": item.item_name, "item_code": item.item_code},
             status_code=201,
             http_status=201
         )
@@ -295,7 +294,7 @@ def delete_item_by_code_api():
 
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
 def update_item_api():
-    import json
+
     item_code = frappe.local.request.args.get("item_code")
     if not item_code:
         return send_response(
@@ -315,7 +314,6 @@ def update_item_api():
             http_status=404
         )
 
-
     try:
         payload = frappe.local.request.get_data(as_text=True)
         data = json.loads(payload) if payload else {}
@@ -327,40 +325,43 @@ def update_item_api():
             http_status=400
         )
 
+    updated_fields = {}
     allowed_fields = [
         "item_name",
-        "custom_itemtycd",
-        "custom_vattycd",
-        "custom_isrcaplcbyn",
-        "custom_svcchargeyn"
+        "item_group",
+        "vatCatCd",
+        "isrcAplcbYn",
+        "svcChargeYn",
+        "itemClassCd",
+        "price"
     ]
 
-    updated_fields = {}
     for field in allowed_fields:
         if field in data:
             setattr(item, field, data[field])
             updated_fields[field] = data[field]
+            print(f"{field} = {data[field]}")
 
     if not updated_fields:
         return send_response(
             status="fail",
-            message="No valid fields provided for update",
+            message="No valid fields provided for update. Allowed fields are: "
+                    "item_name, item_group, vatCatCd, isrcAplcbYn, svcChargeYn, itemClassCd, price",
             status_code=400,
             http_status=400
         )
 
-    try:
-        item.save(ignore_permissions=True)
-        frappe.db.commit()
-    except Exception as e:
-        frappe.log_error(str(e), "ERPNext Update Item Error")
-        return send_response(
-            status="fail",
-            message="Failed to update item in ERPNext",
-            data={"error": str(e)},
-            status_code=500,
-            http_status=500
-        )
+    if "vatCatCd" in updated_fields:
+        item.custom_vattycd = updated_fields["vatCatCd"]
+    if "isrcAplcbYn" in updated_fields:
+        item.custom_isrcaplcbyn = updated_fields["isrcAplcbYn"]
+    if "svcChargeYn" in updated_fields:
+        item.custom_svcchargeyn = updated_fields["svcChargeYn"]
+    if "itemClassCd" in updated_fields:
+        item.custom_itemclscd = updated_fields["itemClassCd"]
+    if "price" in updated_fields:
+        item.standard_rate = updated_fields["price"]
+
     try:
         PAYLOAD = {
             "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
@@ -372,11 +373,11 @@ def update_item_api():
             "orgnNatCd": item.custom_orgnnatcd,
             "pkgUnitCd": item.custom_pkgunitcd,
             "qtyUnitCd": item.stock_uom,
-            "dftPrc": item.standard_rate or 0,
+            "dftPrc": float(item.standard_rate or 0),
             "vatCatCd": item.custom_vattycd or "A",
-            "svcChargeYn": item.custom_svcchargeyn,
+            "svcChargeYn": item.custom_svcchargeyn or "N",
             "sftyQty": 0,
-            "isrcAplcbYn": item.custom_isrcaplcbyn,
+            "isrcAplcbYn": item.custom_isrcaplcbyn or "N",
             "useYn": "Y",
             "regrNm": frappe.session.user,
             "regrId": frappe.session.user,
@@ -386,17 +387,20 @@ def update_item_api():
 
         print(json.dumps(PAYLOAD, indent=4))
 
-    
-        # result =ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
-        # data = result.json()
-        # print(data)
-        # if data.get("resultCd") != "000":
-        #     return send_response(
-        #         status="error",
-        #         message=data.get("resultMsg", "Item Update Sync Failed"),
-        #         status_code=400,
-        #         http_status=400
-        #     )
+        result = ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
+        data = result.json()
+        print(data)
+
+        if data.get("resultCd") != "000":
+            return send_response(
+                status="error",
+                message=data.get("resultMsg", "Item Update Sync Failed"),
+                status_code=400,
+                http_status=400
+            )
+
+        item.save(ignore_permissions=True)
+        frappe.db.commit()
 
         return send_response(
             status="success",
@@ -406,14 +410,15 @@ def update_item_api():
         )
 
     except Exception as e:
-        frappe.log_error(str(e), "ZRA Update Error")
+        frappe.log_error(str(e), "ERPNext Update Item Error")
         return send_response(
             status="fail",
-            message="Failed to update item in ZRA",
+            message="Failed to update item in ERPNext",
             data={"error": str(e)},
             status_code=500,
             http_status=500
         )
+
 
 @frappe.whitelist(allow_guest=False)
 def get_all_item_groups_api():

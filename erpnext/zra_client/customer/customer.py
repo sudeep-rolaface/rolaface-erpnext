@@ -225,18 +225,18 @@ def create_customer_api():
             "regrId": frappe.session.user,
         }
 
-        # result = ZRA_CLIENT_INSTANCE.create_customer(payload)
-        # data = result.json()  
+        result = ZRA_CLIENT_INSTANCE.create_customer(payload)
+        data = result.json()  
 
-        # if data.get("resultCd") != "000":
-        #     send_response(
-        #         status="fail",
-        #         message=data.get("resultMsg", "Customer Sync Failed"),
-        #         status_code=400,
-        #         data=None,
-        #         http_status=400
-        #     )
-        #     return
+        if data.get("resultCd") != "000":
+            send_response(
+                status="fail",
+                message=data.get("resultMsg", "Customer Sync Failed"),
+                status_code=400,
+                data=None,
+                http_status=400
+            )
+            return
 
         customer = frappe.get_doc({
             "doctype": "Customer",
@@ -272,11 +272,6 @@ def create_customer_api():
             status="success",
             message="Customer created successfully.",
             status_code=201,
-            data={
-                "name": customer.name,
-                "customer_name": customer.customer_name,
-                "mobile_no": customer.mobile_no
-            },
             http_status=200
         )
         return
@@ -319,6 +314,10 @@ def get_all_customers_api():
 
         for cust in customers:
             cust["custom_customer_tpin"] = cust.pop("tax_id")
+            cust["customer_onboarding_balance"] = cust.pop("custom_onboard_balance")
+            cust["customer_account_no"] = cust.pop("custom_account_number")
+            cust["customer_currency"] = cust.pop("default_currency")
+
             
             cust["billing"] = {
                 "line1": cust.pop("custom_billing_adress_line_1"),
@@ -373,9 +372,9 @@ def get_customer_by_id(custom_id):
             "customer_type": safe_attr(customer, "customer_type"),
             "mobile_no": safe_attr(customer, "mobile_no"),
             "email_id": safe_attr(customer, "email_id"),
-            "default_currency": safe_attr(customer, "default_currency"),
-            "custom_account_number": safe_attr(customer, "custom_account_number"),
-            "custom_onboard_balance": safe_attr(customer, "custom_onboard_balance"),
+            "customer_currency": safe_attr(customer, "default_currency"),
+            "customer_account_no": safe_attr(customer, "custom_account_number"),
+            "customer_onboarding_balance": safe_attr(customer, "custom_onboard_balance"),
             "billing": {
                 "line1": safe_attr(customer, "custom_billing_address_line_1"),
                 "line2": safe_attr(customer, "custom_billing_address_line_2"),
@@ -420,33 +419,101 @@ def get_customer_by_id(custom_id):
 
 
 @frappe.whitelist(allow_guest=False)
-def update_customer_by_tpin(**kwargs):
-    ALLOWED_FIELDS = ["customer_name", "customer_group", "mobile_no"]
-
-    tpin = kwargs.get("customer_tpin")
-    if not tpin:
-        send_response(status="fail", message="Customer tpin is required (customer_tpin)", status_code=400, http_status=400)
+def update_customer_by_id():
+    custom_id = (frappe.form_dict.get("id") or "").strip()
+    if not custom_id:
+        send_response(
+            status="fail",
+            message="Customer id is required (id)",
+            status_code=400,
+            http_status=400
+        )
         return
-    try:
-        customer = frappe.get_doc("Customer", {"tax_id": tpin})
 
+    customer_name = (frappe.form_dict.get("customer_name") or "").strip()
+    email_id = (frappe.form_dict.get("customer_email") or "").strip()
+    mobile_no = (frappe.form_dict.get("mobile_no") or "").strip()
+    customerType = (frappe.form_dict.get("customer_type") or "").strip()
+    customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
+    customerAccountNo = (frappe.form_dict.get("customer_account_no") or "").strip()
+    customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance") or "").strip()
+    customerTermsAndCondtions = (frappe.form_dict.get("customer_terms") or "").strip()
+
+    billingAddress = {
+        "Line1": (frappe.form_dict.get("customer_billing_address_line1") or "").strip(),
+        "Line2": (frappe.form_dict.get("customer_billing_address_line2") or "").strip(),
+        "PostalCode": (frappe.form_dict.get("customer_billing_postal_code") or "").strip(),
+        "City": (frappe.form_dict.get("customer_billing_city") or "").strip(),
+        "Country": (frappe.form_dict.get("customer_billing_country") or "").strip(),
+        "State": (frappe.form_dict.get("customer_billing_state") or "").strip(),
+        "County": (frappe.form_dict.get("customer_billing_county") or "").strip()
+    }
+
+
+    shippingAddress = {
+        "Line1": (frappe.form_dict.get("customer_shipping_address_line1") or "").strip(),
+        "Line2": (frappe.form_dict.get("customer_shipping_address_line2") or "").strip(),
+        "PostalCode": (frappe.form_dict.get("customer_shipping_postal_code") or "").strip(),
+        "City": (frappe.form_dict.get("customer_shipping_city") or "").strip(),
+        "Country": (frappe.form_dict.get("customer_shipping_country") or "").strip(),
+        "State": (frappe.form_dict.get("customer_shipping_state") or "").strip()
+    }
+
+    try:
+        customer = frappe.get_doc("Customer", {"custom_id": custom_id})
         if not customer:
             send_response(status="fail", message="Customer not found", status_code=400, http_status=400)
             return
 
         updated_fields = {}
-        for key, value in kwargs.items():
-            if key in ALLOWED_FIELDS:
+        field_mapping = {
+            "customer_name": customer_name,
+            "mobile_no": mobile_no,
+            "email_id": email_id,
+            "customer_type": customerType,
+            "default_currency": customerCurrency,
+            "custom_account_number": customerAccountNo,
+            "custom_onboard_balance": customerOnboardingBalance,
+            "custom_billing_adress_line_1": billingAddress["Line1"],
+            "custom_billing_adress_line_2": billingAddress["Line2"],
+            "custom_billing_adress_posta_code": billingAddress["PostalCode"],
+            "custom_billing_adress_city": billingAddress["City"],
+            "custom_billing_adress_country": billingAddress["Country"],
+            "custom_billing_adress_state": billingAddress["State"],
+            "custom_billing_adress_county": billingAddress["County"],
+            "custom_shipping_address_line_1_": shippingAddress["Line1"],
+            "custom_shipping_address_line_2_": shippingAddress["Line2"],
+            "custom_shipping_address_posta_code_": shippingAddress["PostalCode"],
+            "custom_shipping_address_city": shippingAddress["City"],
+            "custom_shipping_address_state": shippingAddress["State"],
+            "custom_shipping_address_country": shippingAddress["Country"],
+            "custom_tc": customerTermsAndCondtions
+        }
+
+        for key, value in field_mapping.items():
+            if value: 
                 setattr(customer, key, value)
                 updated_fields[key] = value
 
         if not updated_fields:
-            send_response(status="fail", message="The only required updated fields are mobile number (mobile_no) and  customer name (customer_name)")
+            send_response(
+                status="fail",
+                message="No valid fields provided to update.",
+                status_code=400,
+                http_status=400
+            )
+            return
 
         customer.save()
         frappe.db.commit()
 
-        send_response(status="success", message="Customer updated successfully", status_code=204, http_status=204)
+        send_response(
+            status="success",
+            message="Customer updated successfully",
+            status_code=200,
+            http_status=200
+        )
+
     except frappe.DoesNotExistError:
         send_response(status="fail", message="Customer not found", status_code=400, http_status=400)
 
