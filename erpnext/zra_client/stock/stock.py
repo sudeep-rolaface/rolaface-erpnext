@@ -7,6 +7,45 @@ import frappe
 
 ZRA_CLIENT = ZRAClient()
 
+def get_item_details(item_code):
+    if not item_code:
+        return send_response(
+            status="fail",
+            message="Item code is required.",
+            status_code=400,
+            http_status=400
+        )
+    
+    try:
+        item = frappe.get_doc("Item", item_code)
+    except frappe.DoesNotExistError:
+        return send_response(
+            status="fail",
+            message="Item not found",
+            status_code=404,
+            http_status=404
+        )
+    except Exception as e:
+        return send_response(
+            status="fail",
+            message=f"Cannot proceed: {str(e)}",
+            status_code=400,
+            http_status=400
+        )
+    
+    itemName = item.item_name
+    itemClassCd = getattr(item, "custom_itemclscd", None)
+    itemPackingUnitCd = getattr(item, "custom_pkgunitcd", None)
+    itemUnitCd = getattr(item, "stock_uom", None)
+
+    return {
+        "itemName": itemName,
+        "itemClassCd": itemClassCd,
+        "itemPackingUnitCd": itemPackingUnitCd,
+        "itemUnitCd": itemUnitCd
+    }
+
+
 def validate_item_and_warehouse(item_code, warehouse):
     """Validate that Item and Warehouse exist"""
     if not frappe.db.exists("Item", item_code):
@@ -29,31 +68,82 @@ def validate_item_and_warehouse(item_code, warehouse):
 @frappe.whitelist(allow_guest=False)
 def create_item_stock_api():
     try:
-        data = frappe.form_dict
-        item_code = data.get("item_code")
+        data = json.loads(frappe.request.data)
         warehouse = data.get("warehouse")
-        qty = data.get("qty")
-        price = data.get("price")
+        items_data = data.get("items", [])
 
-        if isinstance(item_code, list):
-            item_code = item_code[0]
-        if isinstance(warehouse, list):
-            warehouse = warehouse[0]
+        if not warehouse:
+            return send_response("fail", "Warehouse is required", 400, 400)
 
-        qty = float(qty[0]) if isinstance(qty, list) else float(qty or 0)
-        price = float(price[0]) if isinstance(price, list) else float(price or 0)
+        if not frappe.db.exists("Warehouse", warehouse):
+            return send_response("fail", f"Warehouse '{warehouse}' does not exist", 404, 404)
 
-        if not item_code or not warehouse:
-            return send_response("fail", "Item Code and Warehouse are required", 400, 400)
+        if not items_data:
+            return send_response("fail", "No items provided", 400, 400)
 
         today = datetime.today().strftime('%Y%m%d')
 
+        itemList = []
+        totTaxblAmt = totTaxAmt = totAmt = 0
+        stock_items = []
 
-        itemUnitPrice = price
-        vatAmount = price * 0.16
-        taxblAmt = itemUnitPrice - vatAmount
-        totTaxblAmt = taxblAmt
-        totTaxAmt = vatAmount
+        # --- Loop through items ---
+        for i, item in enumerate(items_data):
+            item_code = item.get("item_code")
+            qty = flt(item.get("qty", 0))
+            price = flt(item.get("price", 0))
+
+            if not item_code or qty <= 0 or price <= 0:
+                return send_response("fail", f"Invalid data for item {i+1}", 400, 400)
+
+            # Get item details
+            item_details = get_item_details(item_code)
+            if not item_details:
+                return send_response(
+                    status="fail",
+                    message=f"Item '{item_code}' does not exist",
+                    status_code=404,
+                    http_status=404
+                )
+
+            # VAT calculations
+            splyAmt = round(price * qty, 4)
+            taxblAmt = round(splyAmt / 1.16, 4)
+            vatAmount = round(splyAmt - taxblAmt, 4)
+            totItemAmt = round(splyAmt, 4)
+
+            totTaxblAmt += taxblAmt
+            totTaxAmt += vatAmount
+            totAmt += totItemAmt
+
+            # ZRA Payload item
+            itemList.append({
+                "itemSeq": i + 1,
+                "itemCd": item_code,
+                "itemClsCd": item_details.get("itemClassCd"),
+                "itemNm": item_details.get("itemName"),
+                "pkgUnitCd": item_details.get("itemPackingUnitCd"),
+                "qtyUnitCd": item_details.get("itemUnitCd"),
+                "qty": qty,
+                "pkg": 1,
+                "totDcAmt": 0,
+                "prc": price,
+                "splyAmt": splyAmt,
+                "taxblAmt": taxblAmt,
+                "vatCatCd": "A",
+                "taxAmt": vatAmount,
+                "totAmt": totItemAmt
+            })
+
+            stock_items.append({
+                "item_code": item_code,
+                "t_warehouse": warehouse,
+                "qty": qty,
+                "basic_rate": price,
+                "custom_taxable_amount": taxblAmt,
+                "custom_tax_amount": vatAmount,
+                "custom_total_amount": totItemAmt
+            })
 
         PAYLOAD = {
             "tpin": ZRA_CLIENT.get_tpin(),
@@ -63,118 +153,122 @@ def create_item_stock_api():
             "regTyCd": "M",
             "sarTyCd": "04",
             "ocrnDt": today,
-            "totItemCnt": 1,
-            "totTaxblAmt": totTaxblAmt,
-            "totTaxAmt": totTaxAmt,
-            "totAmt": price,
-            "regrId": "Admin",
-            "regrNm": "Admin",
-            "modrNm": "Admin",
-            "modrId": "Admin",
-            "itemList": [
-                {
-                "itemSeq": 1,
-                "itemCd": "20044",
-                "itemClsCd": "50102517",
-                "itemNm": "Soupu dedede",
-                "pkgUnitCd": "BA",
-                "qtyUnitCd": "BE",
-                "qty": 1,
-                "pkg": 1,
-                "totDcAmt": 0,
-                "prc": itemUnitPrice,
-                "splyAmt": price,
-                "taxblAmt": taxblAmt,
-                "vatCatCd": "A",
-                "taxAmt": vatAmount,
-                "totAmt": itemUnitPrice
-                }
-            ]
-            }
-        
-        print(json.dumps(PAYLOAD, indent=4))
-        result = ZRA_CLIENT.create_item_stock_zra_client(PAYLOAD)
-        data = result.json()
-        print(data)
+            "totItemCnt": len(itemList),
+            "totTaxblAmt": round(totTaxblAmt, 4),
+            "totTaxAmt": round(totTaxAmt, 4),
+            "totAmt": round(totAmt, 4),
+            "regrId": frappe.session.user,
+            "regrNm": frappe.session.user,
+            "modrNm": frappe.session.user,
+            "modrId": frappe.session.user,
+            "itemList": itemList
+        }
 
-        if data.get("resultCd") != "000":
-            send_response(
+        print(json.dumps(PAYLOAD, indent=4))
+
+
+        result = ZRA_CLIENT.create_item_stock_zra_client(PAYLOAD)
+        data_result = result.json()
+        print(data_result)
+
+        if data_result.get("resultCd") != "000":
+            return send_response(
                 status="fail",
-                message=data.get("resultMsg", "Customer Sync Failed"),
+                message=data_result.get("resultMsg", "Customer Sync Failed"),
                 status_code=400,
                 data=None,
                 http_status=400
             )
-            return
 
         stock_entry = frappe.get_doc({
             "doctype": "Stock Entry",
             "stock_entry_type": "Material Receipt",
-            "items": [{
-                "item_code": item_code,
-                "t_warehouse": warehouse,
-                "qty": qty,
-                "basic_rate": price
-            }]
+            "custom_original_sar_no": data_result.get("orgSarNo", 0),
+            "custom_registration_type_code": PAYLOAD.get("regTyCd"),
+            "custom_sar_type_code": PAYLOAD.get("sarTyCd"),
+            "custom_total_taxable_amount": round(totTaxblAmt, 4),
+            "items": stock_items
         })
-        stock_entry.insert()
-        stock_entry.submit()
 
-        stock_data = {
-            "name": stock_entry.name,
-            "item_code": item_code,
-            "warehouse": warehouse,
-            "qty": qty,
-            "price": price
-        }
+        stock_entry.insert(ignore_permissions=True)
+        stock_entry.submit()
 
         return send_response("success", "Stock created successfully", 201, 201)
 
     except frappe.PermissionError:
         return send_response("fail", "Permission denied", 403, 403)
+
     except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Create Item Stock API Error")
         return send_response("error", f"Failed to create stock: {str(e)}", 500, 500)
 
 
+
 @frappe.whitelist(allow_guest=False)
-def get_all_stocks():
+def get_all_stock_entries():
     try:
+        stock_entries_list = []
         stock_entries = frappe.get_all(
             "Stock Entry",
-            fields=["name", "stock_entry_type", "posting_date"],
-            order_by="creation desc",
-            limit_page_length=100
+            fields=[
+                "name",
+                "posting_date",
+                "custom_original_sar_no",
+                "custom_registration_type_code",
+                "custom_sar_type_code",
+                "custom_total_taxable_amount",
+            ],
+            order_by="creation desc"
         )
 
-        all_data = []
+        for entry in stock_entries:
+            items = frappe.get_all(
+                "Stock Entry Detail",
+                filters={"parent": entry["name"]},
+                fields=[
+                    "item_code",
+                    "qty",
+                    "basic_rate",
+                    "custom_taxable_amount",
+                    "custom_tax_amount",
+                    "custom_total_amount"
+                ]
+            )
 
-        for se in stock_entries:
-            name = se.name[0] if isinstance(se.name, list) else se.name
-            se_doc = frappe.get_doc("Stock Entry", name)
-            if se_doc.items:
-                item = se_doc.items[0]
-                all_data.append({
-                    "name": se_doc.name,
-                    "item_code": item.item_code,
-                    "warehouse": item.t_warehouse,
-                    "qty": item.qty,
-                    "price": item.basic_rate,
-                    "posting_date": se_doc.posting_date
-                })
+            warehouse = frappe.get_value(
+                "Stock Entry Detail",
+                {"parent": entry["name"]},
+                "t_warehouse"
+            )
+
+            stock_entries_list.append({
+                "name": entry["name"],
+                "posting_date": entry["posting_date"],
+                "custom_original_sar_no": entry["custom_original_sar_no"],
+                "custom_registration_type_code": entry["custom_registration_type_code"],
+                "custom_sar_type_code": entry["custom_sar_type_code"],
+                "custom_total_taxable_amount": entry["custom_total_taxable_amount"],
+                "warehouse": warehouse,
+                "items": items
+            })
 
         return send_response(
             status="success",
-            message="Stock retrieved",
-            data=all_data,
+            message="",
+            data=stock_entries_list,
             status_code=200,
             http_status=200
         )
 
-    except frappe.PermissionError:
-        return send_response("fail", "Permission denied", [], 403, 403)
     except Exception as e:
-        frappe.log_error(f"get_all_stocks() error: {str(e)}", "Stock API Error")
-        return send_response("error", f"Failed to retrieve stocks: {str(e)}", [], 500, 500)
+        frappe.log_error(frappe.get_traceback(), "Get Stock Entries Error")
+        return send_response(
+            "error",
+            f"Failed to fetch stock entries: {str(e)}",
+            500,
+            500
+        )
+
 
 
 
@@ -216,46 +310,43 @@ def delete_stock_entry(stock_entry_id=None):
 
     try:
         se_doc = frappe.get_doc("Stock Entry", stock_entry_id)
-        se_doc.cancel()
+
+        if se_doc.docstatus == 1:  
+            se_doc.cancel()
         se_doc.delete()
         frappe.db.commit()
-        return send_response("success", f"Stock Entry '{stock_entry_id}' deleted", 200, 200)
+
+        return send_response(
+            "success",
+            f"Stock Entry '{stock_entry_id}' deleted successfully",
+            200,
+            200
+        )
 
     except frappe.DoesNotExistError:
-        return send_response("fail", f"Stock Entry '{stock_entry_id}' does not exist", 404, 404)
+        return send_response(
+            "fail",
+            f"Stock Entry '{stock_entry_id}' does not exist",
+            404,
+            404
+        )
+
     except frappe.PermissionError:
         return send_response("fail", "Permission denied", 403, 403)
+
     except frappe.LinkExistsError as e:
-        return send_response("fail", f"Cannot delete: {str(e)}", 400, 400)
+        return send_response(
+            "fail",
+            "Cannot delete this Stock Entry because it is linked to other records (GL Entry, Accounting, etc.)",
+            400,
+            400
+        )
+
     except Exception as e:
-        msg = str(e)
-        if "is linked with" in msg:
-            return send_response("fail", "Cannot delete this Stock Entry because it is linked to GL Entries or other records.", 409, 409)
-        return send_response("error", f"Failed to delete stock entry: {msg}", 500, 500)
-
-
-@frappe.whitelist(allow_guest=False)
-def get_stock_by_name(bin_name=None):
-    if not bin_name:
-        return send_response("fail", "Bin name is required", 400, 400)
-
-    try:
-        bin_doc = frappe.get_doc("Bin", bin_name)
-        data = {
-            "name": bin_doc.name,
-            "item_code": bin_doc.item_code,
-            "warehouse": bin_doc.warehouse,
-            "actual_qty": flt(bin_doc.actual_qty),
-            "reserved_qty": flt(bin_doc.reserved_qty),
-            "ordered_qty": flt(bin_doc.ordered_qty),
-            "valuation_rate": flt(bin_doc.valuation_rate)
-        }
-        return send_response("success", "Stock retrieved successfully", data=data, status_code=200, http_status=200)
-
-    except frappe.DoesNotExistError:
-        return send_response("fail", f"Bin '{bin_name}' does not exist", 404, 404)
-    except frappe.PermissionError:
-        return send_response("fail", "Permission denied", 403, 403)
-    except Exception as e:
-        return send_response("error", f"Failed to retrieve stock: {str(e)}", 500, 500)
-
+        frappe.log_error(frappe.get_traceback(), "Delete Stock Entry Error")
+        return send_response(
+            "error",
+            f"Failed to delete Stock Entry: {str(e)}",
+            500,
+            500
+        )
