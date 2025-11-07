@@ -1,0 +1,1 @@
+BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0/"
