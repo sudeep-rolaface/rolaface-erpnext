@@ -77,6 +77,11 @@ class ZRAClient:
 
     def get_site_url(self):
         return self.site_url
+
+    def create_item_stock_zra_client(self, payload):
+        response = requests.post(url=self.save_stock_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response
     
     def create_item_zra_client(self, payload):    
         response = requests.post(url=self.create_item_url, json=payload, timeout=300)

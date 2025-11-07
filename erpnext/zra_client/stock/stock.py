@@ -1,7 +1,11 @@
+import json
+from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.generic_api import send_response
 from frappe.utils.data import flt
+from datetime import datetime
 import frappe
 
+ZRA_CLIENT = ZRAClient()
 
 def validate_item_and_warehouse(item_code, warehouse):
     """Validate that Item and Warehouse exist"""
@@ -41,6 +45,67 @@ def create_item_stock_api():
 
         if not item_code or not warehouse:
             return send_response("fail", "Item Code and Warehouse are required", 400, 400)
+
+        today = datetime.today().strftime('%Y%m%d')
+
+
+        itemUnitPrice = price
+        vatAmount = price * 0.16
+        taxblAmt = itemUnitPrice - vatAmount
+        totTaxblAmt = taxblAmt
+        totTaxAmt = vatAmount
+
+        PAYLOAD = {
+            "tpin": ZRA_CLIENT.get_tpin(),
+            "bhfId": ZRA_CLIENT.get_branch_code(),
+            "sarNo": 1,
+            "orgSarNo": 0,
+            "regTyCd": "M",
+            "sarTyCd": "04",
+            "ocrnDt": today,
+            "totItemCnt": 1,
+            "totTaxblAmt": totTaxblAmt,
+            "totTaxAmt": totTaxAmt,
+            "totAmt": price,
+            "regrId": "Admin",
+            "regrNm": "Admin",
+            "modrNm": "Admin",
+            "modrId": "Admin",
+            "itemList": [
+                {
+                "itemSeq": 1,
+                "itemCd": "20044",
+                "itemClsCd": "50102517",
+                "itemNm": "Soupu dedede",
+                "pkgUnitCd": "BA",
+                "qtyUnitCd": "BE",
+                "qty": 1,
+                "pkg": 1,
+                "totDcAmt": 0,
+                "prc": itemUnitPrice,
+                "splyAmt": price,
+                "taxblAmt": taxblAmt,
+                "vatCatCd": "A",
+                "taxAmt": vatAmount,
+                "totAmt": itemUnitPrice
+                }
+            ]
+            }
+        
+        print(json.dumps(PAYLOAD, indent=4))
+        result = ZRA_CLIENT.create_item_stock_zra_client(PAYLOAD)
+        data = result.json()
+        print(data)
+
+        if data.get("resultCd") != "000":
+            send_response(
+                status="fail",
+                message=data.get("resultMsg", "Customer Sync Failed"),
+                status_code=400,
+                data=None,
+                http_status=400
+            )
+            return
 
         stock_entry = frappe.get_doc({
             "doctype": "Stock Entry",

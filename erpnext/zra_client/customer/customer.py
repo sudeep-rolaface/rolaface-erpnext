@@ -163,8 +163,8 @@ def create_customer_api():
     customerTermsAndCondtions = (frappe.form_dict.get("customer_terms"))
 
     billingAddress = {
-    "Line1": (frappe.form_dict.get("customer_billing_address_line1") or "").strip(),
-    "Line2": (frappe.form_dict.get("customer_billing_address_line2") or "").strip(),
+    "Line1": (frappe.form_dict.get("customer_billing_address_line_1") or "").strip(),
+    "Line2": (frappe.form_dict.get("customer_billing_address_line_2") or "").strip(),
     "PostalCode": (frappe.form_dict.get("customer_billing_postal_code") or "").strip(),
     "City": (frappe.form_dict.get("customer_billing_city") or "").strip(),
     "Country": (frappe.form_dict.get("customer_billing_country") or "").strip(),
@@ -173,8 +173,8 @@ def create_customer_api():
     }
 
     shippingAddress = {
-        "Line1": (frappe.form_dict.get("customer_shipping_address_line1") or "").strip(),
-        "Line2": (frappe.form_dict.get("customer_shipping_address_line2") or "").strip(),
+        "Line1": (frappe.form_dict.get("customer_shipping_address_line_1") or "").strip(),
+        "Line2": (frappe.form_dict.get("customer_shipping_address_line_2") or "").strip(),
         "PostalCode": (frappe.form_dict.get("customer_shipping_postal_code") or "").strip(),
         "City": (frappe.form_dict.get("customer_shipping_city") or "").strip(),
         "Country": (frappe.form_dict.get("customer_shipping_country") or "").strip(),
@@ -328,6 +328,8 @@ def get_all_customers_api():
         for cust in customers:
             cust["custom_customer_tpin"] = cust.pop("tax_id")
             cust["customer_onboarding_balance"] = cust.pop("custom_onboard_balance")
+            cust["custom_shipping_address_line_1"] = cust.pop("custom_shipping_address_line_1_")
+            cust["custom_shipping_address_posta_code"] = cust.pop("custom_shipping_address_posta_code_")
             cust["customer_account_no"] = cust.pop("custom_account_number")
             cust["customer_currency"] = cust.pop("default_currency")
             cust["customer_email"] = cust.pop("email_id")
