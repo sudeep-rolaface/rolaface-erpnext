@@ -1,3 +1,4 @@
+import json
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.generic_api import send_response
 from frappe import _
@@ -88,10 +89,31 @@ def get_item_details(item_code):
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
-    customer_id = (frappe.form_dict.get("customer_id") or "").strip()
-    item_code = (frappe.form_dict.get("item_code") or "").strip()
-    qty = frappe.form_dict.get("qty") or 1
-    rate = frappe.form_dict.get("rate") or 0
+    customer_id = frappe.form_dict.get("customer_id")
+    sale_name = "SINV-00099",
+    exportDestCountry = frappe.form_dict.get("export_destination_country")
+    lpoNumber = frappe.form_dict.get("lpo_number")
+    isLpoSale = frappe.form_dict.get("is_lpo_transactions")
+    isExport = frappe.form_dict.get("is_export")
+    isRvatSale = frappe.form_dict.get("is_rvat_agent")
+    principalId = frappe.form_dict.get("principal_id")
+    currencyCd = frappe.form_dict.get("currency_code")
+    exchangeRate = frappe.form_dict.get("exchangeRt")
+    createBy = frappe.form_dict.get("created_by")
+
+
+
+    try:
+        payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
+    except Exception as e:
+        return send_response(
+            status="fail",
+            message=f"Invalid JSON payload: {str(e)}",
+            status_code=400
+        )
+
+    customer_id = payload.get("customer_id")
+    items = payload.get("items", [])
 
     if not customer_id:
         return send_response(
@@ -100,84 +122,98 @@ def create_sales_invoice():
             status_code=400
         )
 
-    if not item_code:
-        send_response(
+    if not items or not isinstance(items, list):
+        return send_response(
             status="fail",
-            message="Item Code is required",
-            status_code=400
+            message="Items must be a non-empty list",
+            status_code=400,
+            http_status=400
         )
 
-        return
     customer_data = get_customer_details(customer_id)
     if not customer_data or customer_data.get("status") == "fail":
         return customer_data
 
-    
-    item_details = get_item_details(item_code)
-    if not item_details:
-        return send_response(
-            status="fail",
-            message=f"Item '{item_code}' does not exist",
-            status_code=404,
-            http_status=404
-        )
+    invoice_items = []
+    sale_payload_items = []
+
+    for item in items:
+        item_code = item.get("item_code")
+        qty = item.get("qty", 1)
+        rate = item.get("rate", 0)
+        vatCd = item.get("vatCd")
+
+        if not item_code:
+            return send_response(
+                status="fail",
+                message="Item code is required for each item",
+                status_code=400
+            )
+
+        item_details = get_item_details(item_code)
+        if not item_details:
+            return send_response(
+                status="fail",
+                message=f"Item '{item_code}' does not exist",
+                status_code=404
+            )
+
+        try:
+            qty = float(qty)
+            rate = float(rate)
+        except ValueError:
+            return send_response(
+                status="fail",
+                message="Quantity and Rate must be numeric",
+                status_code=400
+            )
+
+        invoice_items.append({
+            "item_code": item_code,
+            "item_name": item_details.get("itemName"),
+            "qty": qty,
+            "rate": rate
+        })
 
 
-    try:
-        qty = float(qty)
-        rate = float(rate)
-    except ValueError:
-        return send_response(
-            status="fail",
-            message="Quantity and Rate must be numeric",
-            status_code=400
-        )
-    
-    FIRST_PAYLOAD = {
-        "sale_name": "SINV-00045",
-        "customer_name": "Absa Bank",
-        "customer_tpin": "2206741731",
-        "export_destination_country": " ",
-        "lpo_number": "LPO-98765",
-        "is_lpo_transactions": "true",
-        "is_export": "true",
-        "is_rvat_agent": "false",
-        "principal_id": "PRINC-001",
-        "currency_code": "USD",
-        "exchangeRt": 19.5,
-        "is_stock_updated": "true",
-        "created_by": "john.doe@example.com",
-        "items": [
-            {
-            "itemCode": "ZM2BOXU61613",
-            "itemName": "Cake",
-            "qty": 2,
-            "itemClassCode": "CLASS-A",
-            "product_type": "Finished Goods",
-            "packageUnitCode": "BOX",
-            "price": 200,
-            "VatCd": "B",
-            "unitOfMeasure": "PCS",
-            "IplCd": "",
-            "TlCd": "",
-            "ExciseCd": "",
-            },
-        ]
-        }
+        sale_payload_items.append({
+            "itemCode": item_code,
+            "itemName": item_details.get("itemName"),
+            "qty": qty,
+            "itemClassCode": item_details.get("itemClassCd"),
+            "product_type": item.get("product_type", "Finished Goods"),
+            "packageUnitCode": item_details.get("itemPackingUnitCd"),
+            "price": rate,
+            "VatCd": item.get("VatCd", "B"),
+            "unitOfMeasure": item_details.get("itemUnitCd"),
+            "IplCd": item.get("IplCd", ""),
+            "TlCd": item.get("TlCd", ""),
+            "ExciseCd": item.get("ExciseCd", "")
+        })
 
-    NORMAL_SALE_INSTANCE.send_sale_data(FIRST_PAYLOAD)
+    sale_payload = {
+        "sale_name": payload.get("sale_name", "SINV-00001"),
+        "customer_name": customer_data.get("customer_name"),
+        "customer_tpin": customer_data.get("custom_customer_tpin"),
+        "export_destination_country": exportDestCountry,
+        "lpo_number": lpoNumber,
+        "is_lpo_transactions": 1,
+        "is_export": 1,
+        "is_rvat_agent": 1,
+        "principal_id": principalId,
+        "currency_code": 3,
+        "exchangeRt": 3,
+        "is_stock_updated": 1,
+        "created_by": createBy,
+        "items": sale_payload_items
+    }
+
+    NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
     try:
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
             "customer": customer_data.get("name"),
-            "items": [
-                {
-                    "item_code": item_code,
-                    "item_name": item_details.get("itemName"),
-                    "qty": qty,
-                    "rate": rate
-                }
-            ]
+            "items": invoice_items
         })
         doc.insert(ignore_permissions=True)
         doc.submit()
@@ -187,7 +223,6 @@ def create_sales_invoice():
             message="Sales Invoice created successfully",
             status_code=200
         )
-
     except frappe.DuplicateEntryError as de:
         frappe.db.rollback()
         return send_response(
@@ -210,6 +245,7 @@ def create_sales_invoice():
             message=f"Unexpected Error: {str(e)}",
             status_code=500
         )
+
 
 
 
