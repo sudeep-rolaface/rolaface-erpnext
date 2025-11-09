@@ -50,6 +50,7 @@ class NormaSale(ZRAClient):
         tl_cat = item.get("TlCd")
         excise_cat = item.get("ExciseCd")
 
+
         print(f"\n[CALCULATE TAX] {item['itemNm']} (qty={qty}, price={price_tax_inclusive}, "
               f"vatCatCd={vat_cat}, iplCatCd={ipl_cat}, tlCatCd={tl_cat}, exciseTxCatCd={excise_cat})")
 
@@ -248,7 +249,7 @@ class NormaSale(ZRAClient):
         principal_id = sell_data.get("custom_principal_id")
         currency = sell_data.get("currency_code")
         exchangeRt = sell_data.get("exchangeRt")
-        is_stock_updated = sell_data.get("update_stock")
+        is_stock_updated = 1
         created_by = sell_data.get("modified_by")
 
         if export_destination_country == "ASCENSION ISLAND":
@@ -286,10 +287,11 @@ class NormaSale(ZRAClient):
                 "IplCd": getIplCd,
                 "TlCd": getTlCd,
                 "ExciseCd": getExciseCd,
-                "VatCd": "A",
+                "VatCd": getVatCd,
                 "itemNm": itemName,
                 "prc": 5000,
-                "qty": float(qty),
+                "qty": qty
+                
             })
 
             print(items)
@@ -310,10 +312,7 @@ class NormaSale(ZRAClient):
         print("\n[START] Sending sale data...")
         payload = self.build_payload(items, base_data)
         response = self.create_normal_sale_helper(payload)
-        # mock_results = mock_zra_response()
         response = response.json()
-
-        # response = mock_results
         print(response)
         print(f"Response from ZRA: {response}")
         
@@ -351,21 +350,8 @@ class NormaSale(ZRAClient):
 
             pdf_items = payload["itemList"]
             print(customer_info, company_info, invoice, pdf_items)
-            # pdf_generator = BuildPdf()
-            # pdf_generator.build_invoice(company_info, customer_info, invoice, pdf_items, sdc_data, payload)
-
-            get_rcpt_no = response.get("data", {}).get("rcptNo")
-            
-            print("Stock master updated successfully after sale.")
-            doc_name = sell_data.get("name")
-            self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
             created_by = sell_data.get("owner")
-
-            print("This prints immediately, before delayed print")
             ocrnDt = datetime.now().strftime("%Y%m%d")
-            site = "erpnext.localhost"
-            
-            self.update_sales_status_by_inv_no(name ,1, 12, site)
             print(self.to_use_data)
             if is_stock_updated == 1:
                 print("Updating stock items...")
@@ -1163,7 +1149,7 @@ class DebitNote(ZRAClient):
                 is_export = sell_data.get("custom_export")
                 currency = sell_data.get("custom_sale_currency_")
                 exchangeRt = sell_data.get("custom_rate")
-                is_stock_updated = sell_data.get("update_stock")
+                is_stock_updated = 1
                 created_by = sell_data.get("modified_by")
                 if export_destination_country == "ASCENSION ISLAND":
                     export_destination_country = " "

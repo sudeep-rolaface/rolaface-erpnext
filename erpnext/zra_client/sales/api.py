@@ -156,7 +156,7 @@ def create_sales_invoice():
             "product_type": "Finished Goods",
             "packageUnitCode": "BOX",
             "price": 200,
-            "VatCd": "A",
+            "VatCd": "B",
             "unitOfMeasure": "PCS",
             "IplCd": "",
             "TlCd": "",
