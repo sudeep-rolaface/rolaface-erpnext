@@ -98,6 +98,12 @@ class ZRAClient:
         response.raise_for_status()
         return response
 
+    def create_sale_zra_client(self, payload):
+        response = requests.post(self.sale_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response
+
+
 
     
     

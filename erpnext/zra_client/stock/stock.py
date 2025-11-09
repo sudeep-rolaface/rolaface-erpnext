@@ -47,7 +47,6 @@ def get_item_details(item_code):
 
 
 def validate_item_and_warehouse(item_code, warehouse):
-    """Validate that Item and Warehouse exist"""
     if not frappe.db.exists("Item", item_code):
         return send_response(
             status="fail",
@@ -87,7 +86,6 @@ def create_item_stock_api():
         totTaxblAmt = totTaxAmt = totAmt = 0
         stock_items = []
 
-        # --- Loop through items ---
         for i, item in enumerate(items_data):
             item_code = item.get("item_code")
             qty = flt(item.get("qty", 0))
@@ -96,7 +94,7 @@ def create_item_stock_api():
             if not item_code or qty <= 0 or price <= 0:
                 return send_response("fail", f"Invalid data for item {i+1}", 400, 400)
 
-            # Get item details
+
             item_details = get_item_details(item_code)
             if not item_details:
                 return send_response(
@@ -106,7 +104,7 @@ def create_item_stock_api():
                     http_status=404
                 )
 
-            # VAT calculations
+
             splyAmt = round(price * qty, 4)
             taxblAmt = round(splyAmt / 1.16, 4)
             vatAmount = round(splyAmt - taxblAmt, 4)
@@ -116,7 +114,6 @@ def create_item_stock_api():
             totTaxAmt += vatAmount
             totAmt += totItemAmt
 
-            # ZRA Payload item
             itemList.append({
                 "itemSeq": i + 1,
                 "itemCd": item_code,

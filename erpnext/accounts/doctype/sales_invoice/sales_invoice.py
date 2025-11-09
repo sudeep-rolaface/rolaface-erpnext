@@ -448,9 +448,9 @@ class SalesInvoice(SellingController):
 
 	def on_submit(self):
 		self.validate_pos_paid_amount()
-		sell_order = self.as_dict()
-		sale_obj = zraSales()
-		sale_obj.create_sale_normal(sell_order)
+		# sell_order = self.as_dict()
+		# sale_obj = zraSales()
+		# sale_obj.create_sale_normal(sell_order)
 
 		if not self.auto_repeat:
 			frappe.get_cached_doc("Authorization Control").validate_approving_authority(
