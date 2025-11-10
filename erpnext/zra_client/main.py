@@ -77,6 +77,11 @@ class ZRAClient:
 
     def get_site_url(self):
         return self.site_url
+
+    def create_item_stock_zra_client(self, payload):
+        response = requests.post(url=self.save_stock_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response
     
     def create_item_zra_client(self, payload):    
         response = requests.post(url=self.create_item_url, json=payload, timeout=300)
@@ -92,6 +97,48 @@ class ZRAClient:
         response = requests.post(self.update_url, json=payload, timeout=300)
         response.raise_for_status()
         return response
+
+    def create_sale_zra_client(self, payload):
+        response = requests.post(self.sale_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response
+
+    def update_stock_zra_client(self, payload):
+        response = requests.post(url= self.save_stock_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response.json()
+
+    def save_stock_master_zra_client(self, payload):
+        response = requests.post(url=self.save_stock_master_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response.json()
+
+
+    def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
+        print("Started background updates")
+        def background_task():
+            try:
+                response = self.update_stock_zra_client(update_stock_payload)
+                if response.get("resultCd") == "000":
+                    print("Stock updated.")
+                    response = self.save_stock_master_zra_client(update_stock_master_items)
+                    if response.get("resultCd") == "000":
+                        print("Stock master updated")
+                    else:
+                        print("Failed to update stock master:", response)
+                else:
+                    print(f"Failed to update stock: {response.get('resultMsg')}")
+            except Exception as e:
+                print(f"Exception in background stock update task: {e}")
+
+        thread = threading.Thread(target=background_task)
+        thread.daemon = True  
+        thread.start()
+    
+
+
+
+
 
 
     

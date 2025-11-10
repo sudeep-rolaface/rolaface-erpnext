@@ -84,7 +84,7 @@ def validate_account(customerAccountNo):
             status_code=409,
             http_status=409
         )
-        return False
+        return 
     return True
 
 def validate_customer_type(customer_type):
@@ -160,29 +160,27 @@ def create_customer_api():
     except ValueError:
         customer_onboarding_balance = 0.0  
 
-    customerTermsAndCondtions = (frappe.form_dict.get("customer_terms"))
-
     billingAddress = {
-    "Line1": (frappe.form_dict.get("customer_billing_address_line1") or "").strip(),
-    "Line2": (frappe.form_dict.get("customer_billing_address_line2") or "").strip(),
-    "PostalCode": (frappe.form_dict.get("customer_billing_postal_code") or "").strip(),
-    "City": (frappe.form_dict.get("customer_billing_city") or "").strip(),
-    "Country": (frappe.form_dict.get("customer_billing_country") or "").strip(),
-    "State": (frappe.form_dict.get("customer_billing_state") or "").strip(),
-    "County": (frappe.form_dict.get("customer_billing_country") or "").strip()
+    "Line1": (frappe.form_dict.get("custom_billing_address_line_1") or "").strip(),
+    "Line2": (frappe.form_dict.get("custom_billing_address_line_2") or "").strip(),
+    "PostalCode": (frappe.form_dict.get("custom_billing_postal_code") or "").strip(),
+    "City": (frappe.form_dict.get("custom_billing_city") or "").strip(),
+    "Country": (frappe.form_dict.get("custom_billing_country") or "").strip(),
+    "State": (frappe.form_dict.get("custom_billing_state") or "").strip(),
+    "County": (frappe.form_dict.get("custom_billing_country") or "").strip()
     }
 
     shippingAddress = {
-        "Line1": (frappe.form_dict.get("customer_shipping_address_line1") or "").strip(),
-        "Line2": (frappe.form_dict.get("customer_shipping_address_line2") or "").strip(),
-        "PostalCode": (frappe.form_dict.get("customer_shipping_postal_code") or "").strip(),
-        "City": (frappe.form_dict.get("customer_shipping_city") or "").strip(),
-        "Country": (frappe.form_dict.get("customer_shipping_country") or "").strip(),
-        "State": (frappe.form_dict.get("customer_shipping_state") or "").strip()
+        "Line1": (frappe.form_dict.get("custom_shipping_address_line_1") or "").strip(),
+        "Line2": (frappe.form_dict.get("custom_shipping_address_line_2") or "").strip(),
+        "PostalCode": (frappe.form_dict.get("custom_shipping_postal_code") or "").strip(),
+        "City": (frappe.form_dict.get("custom_shipping_city") or "").strip(),
+        "Country": (frappe.form_dict.get("custom_shipping_country") or "").strip(),
+        "State": (frappe.form_dict.get("custom_shipping_state") or "").strip()
     }
 
-    contactPerson = (frappe.form_dict.get("customer_contact_person") or "").strip()
-    displayName = (frappe.form_dict.get("customer_display_name") or "").strip()
+    contactPerson = (frappe.form_dict.get("custom_contact_person") or "").strip()
+    displayName = (frappe.form_dict.get("custom_display_name") or "").strip()
 
     if not validate_address(billingAddress, "Billing Address"):
         return
@@ -235,7 +233,10 @@ def create_customer_api():
         }
 
         result = ZRA_CLIENT_INSTANCE.create_customer(payload)
+
+        print("Printing result ui", result)
         data = result.json()  
+        print("Printing json results",data)
 
         if data.get("resultCd") != "000":
             send_response(
@@ -271,7 +272,6 @@ def create_customer_api():
             "custom_shipping_address_city": shippingAddress["City"],
             "custom_shipping_address_state": shippingAddress["State"],
             "custom_shipping_address_country": shippingAddress["Country"],
-            "custom_tc": customerTermsAndCondtions,
             "custom_contact_person":contactPerson,
             "custom_display_name":displayName
         })
@@ -308,7 +308,6 @@ def get_all_customers_api():
                 "custom_billing_adress_city",
                 "custom_billing_adress_country",
                 "custom_billing_adress_state",
-                "custom_billing_adress_county",
                 "custom_shipping_address_line_1_",
                 "custom_shipping_address_line_2",
                 "custom_shipping_address_posta_code_",
@@ -328,9 +327,22 @@ def get_all_customers_api():
         for cust in customers:
             cust["custom_customer_tpin"] = cust.pop("tax_id")
             cust["customer_onboarding_balance"] = cust.pop("custom_onboard_balance")
+            cust["custom_shipping_address_line_1"] = cust.pop("custom_shipping_address_line_1_")
+            cust["custom_shipping_postal_code"] = cust.pop("custom_shipping_address_posta_code_")
             cust["customer_account_no"] = cust.pop("custom_account_number")
             cust["customer_currency"] = cust.pop("default_currency")
             cust["customer_email"] = cust.pop("email_id")
+            cust["custom_billing_address_line_1"] = cust.pop("custom_billing_adress_line_1")
+            cust["custom_billing_address_line_2"] = cust.pop("custom_billing_adress_line_2")
+            cust["custom_billing_postal_code"] = cust.pop("custom_billing_adress_posta_code")
+            cust["custom_billing_city"] = cust.pop("custom_billing_adress_city")
+            cust["custom_billing_state"] = cust.pop("custom_billing_adress_state")
+            cust["custom_billing_country"] = cust.pop("custom_billing_adress_country")
+            cust["custom_shipping_city"] = cust.pop("custom_shipping_address_city")
+            cust["custom_shipping_state"] = cust.pop("custom_shipping_address_state")
+            cust["custom_shipping_country"] = cust.pop("custom_shipping_address_country")
+            
+
 
 
         send_response(
@@ -410,7 +422,7 @@ def get_customer_by_id(custom_id):
         )
 
 
-@frappe.whitelist(allow_guest=False)
+@frappe.whitelist(allow_guest=False, methods="PUT")
 def update_customer_by_id():
     custom_id = (frappe.form_dict.get("id") or "").strip()
     if not custom_id:
@@ -429,28 +441,27 @@ def update_customer_by_id():
     customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
     customerAccountNo = (frappe.form_dict.get("customer_account_no") or "").strip()
     customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance"))
-    customerTermsAndCondtions = (frappe.form_dict.get("customer_terms") or "").strip()
-    customerContactPerson = (frappe.form_dict.get("customer_contact_person") or "").strip()
-    customerDisplayName = (frappe.form_dict.get("customer_display_name") or "").strip()
+    customerContactPerson = (frappe.form_dict.get("custom_contact_person") or "").strip()
+    customerDisplayName = (frappe.form_dict.get("custom_display_name") or "").strip()
 
     billingAddress = {
-        "Line1": (frappe.form_dict.get("customer_billing_address_line1") or "").strip(),
-        "Line2": (frappe.form_dict.get("customer_billing_address_line2") or "").strip(),
-        "PostalCode": (frappe.form_dict.get("customer_billing_postal_code") or "").strip(),
-        "City": (frappe.form_dict.get("customer_billing_city") or "").strip(),
-        "Country": (frappe.form_dict.get("customer_billing_country") or "").strip(),
-        "State": (frappe.form_dict.get("customer_billing_state") or "").strip(),
-        "County": (frappe.form_dict.get("customer_billing_county") or "").strip()
+        "Line1": (frappe.form_dict.get("custom_billing_address_line_1") or "").strip(),
+        "Line2": (frappe.form_dict.get("custom_billing_address_line_2") or "").strip(),
+        "PostalCode": (frappe.form_dict.get("custom_billing_postal_code") or "").strip(),
+        "City": (frappe.form_dict.get("custom_billing_city") or "").strip(),
+        "Country": (frappe.form_dict.get("custom_billing_country") or "").strip(),
+        "State": (frappe.form_dict.get("custom_billing_state") or "").strip(),
+        "County": (frappe.form_dict.get("custom_billing_county") or "").strip()
     }
 
 
     shippingAddress = {
-        "Line1": (frappe.form_dict.get("customer_shipping_address_line1") or "").strip(),
-        "Line2": (frappe.form_dict.get("customer_shipping_address_line2") or "").strip(),
-        "PostalCode": (frappe.form_dict.get("customer_shipping_postal_code") or "").strip(),
-        "City": (frappe.form_dict.get("customer_shipping_city") or "").strip(),
-        "Country": (frappe.form_dict.get("customer_shipping_country") or "").strip(),
-        "State": (frappe.form_dict.get("customer_shipping_state") or "").strip()
+        "Line1": (frappe.form_dict.get("custom_shipping_address_line1") or "").strip(),
+        "Line2": (frappe.form_dict.get("custom_shipping_address_line2") or "").strip(),
+        "PostalCode": (frappe.form_dict.get("custom_shipping_postal_code") or "").strip(),
+        "City": (frappe.form_dict.get("custom_shipping_city") or "").strip(),
+        "Country": (frappe.form_dict.get("custom_shipping_country") or "").strip(),
+        "State": (frappe.form_dict.get("custom_shipping_state") or "").strip()
     }
 
     try:
@@ -481,7 +492,6 @@ def update_customer_by_id():
             "custom_shipping_address_city": shippingAddress["City"],
             "custom_shipping_address_state": shippingAddress["State"],
             "custom_shipping_address_country": shippingAddress["Country"],
-            "custom_tc": customerTermsAndCondtions,
             "custom_contact_person": customerContactPerson,
             "custom_display_name": customerDisplayName,
 
