@@ -1,6 +1,54 @@
+from erpnext.zra_client.generic_api import send_response
+from datetime import datetime, date
 from frappe import _
 import frappe
-from erpnext.zra_client.generic_api import send_response
+
+
+
+def validate_parent_company(parent_company):
+    if frappe.db.exists("Company", parent_company):
+        return True
+    else:
+        send_response(
+            status="fail",
+            message=f"Parent Company '{parent_company}' not found.",
+            status_code=400,
+            http_status=400
+        )
+        return False
+
+def validate_company_registration_number(company_registration_number):
+    if frappe.db.exists("Company", {"custom_company_registration_number": company_registration_number}):
+        send_response(
+            status="fail",
+            message=f"Company with Registration Number '{company_registration_number}' already exists",
+            status_code=400,
+            http_status=400
+        )
+        return False
+    return True
+
+def validate_date(custom_date_of_incoporation):
+    try:
+        incorporation_date = datetime.strptime(custom_date_of_incoporation, "%d-%m-%Y").date()
+    except ValueError:
+        send_response(
+            status="fail",
+            message="Date of Incorporation must be in DD-MM-YYYY format",
+            status_code=400,
+            http_status=400
+        )
+        return False
+    if incorporation_date > date.today():
+        send_response(
+            status="fail",
+            message="Date of Incorporation cannot be in the future",
+            status_code=400,
+            http_status=400
+        )
+        return False
+
+    return True
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_company_api():
@@ -13,8 +61,52 @@ def create_company_api():
         tax_id = data.get("customer_tpin")
         phone_no = data.get("phone_no")
         email = data.get("email")
+        parent_company = data.get("parent_company")
+        custom_company_registration_number = data.get("custom_company_registration_number")
+        custom_date_of_incoporation = data.get("custom_date_of_incoporation")
+        isGroup = None
+
+        if not custom_company_registration_number:
+            send_response(
+                status="fail",
+                message="Company Registration Number must not be empty (custom_company_registration_number).",
+                status_code=400,
+                http_status=400
+            )
+        if len(custom_company_registration_number) != 10:
+            send_response(
+                status="fail",
+                message="Company Registration Number must be exactly 10 characters long",
+                status_code=400,
+                http_status=400
+            )
+            return
+        
 
 
+        if not custom_date_of_incoporation:
+            send_response(
+                status="fail",
+                message="Date of Incorporation must not be empty (custom_date_of_incoporation).",
+                status_code=400,
+                http_status=400
+            )
+            return
+
+        is_valid = validate_company_registration_number(custom_company_registration_number)
+        if not is_valid:
+            return
+        
+
+        if not validate_date(custom_date_of_incoporation):
+            return
+
+
+        if parent_company:
+            if not validate_parent_company(parent_company):
+                return
+
+            isGroup == 1
         if not tax_id:
             send_response(
                 status="fail",
@@ -97,7 +189,11 @@ def create_company_api():
             "domain": domain,
             "tax_id": tax_id,
             "email": email,
-            "phone_no": phone_no
+            "phone_no": phone_no,
+            "parent_company": parent_company,
+            "is_group": isGroup,
+            "custom_company_registration_number": custom_company_registration_number,
+            "custom_date_of_incoporation": custom_date_of_incoporation
         })
         company.insert(ignore_permissions=True)
         frappe.db.commit()
@@ -122,7 +218,7 @@ def create_company_api():
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_companies_api():
     try:
-        companies = frappe.get_all("Company", fields=["name", "company_name", "country", "domain"])
+        companies = frappe.get_all("Company", fields=["company_name", "country", "domain"])
         send_response(
             status="success",
             message="Company list retrieved", 
@@ -146,7 +242,7 @@ def get_companies_api():
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_company_api():
     try:
-        name = frappe.form_dict.get("name")
+        name = frappe.form_dict.get("company_name")
         if not name:
             return send_response(
                 status="fail",
