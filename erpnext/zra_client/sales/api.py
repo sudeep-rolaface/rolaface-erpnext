@@ -89,15 +89,15 @@ def get_item_details(item_code):
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
+    print("calling create sale api")
     customer_id = frappe.form_dict.get("customer_id")
-    sale_name = "SINV-00099",
-    exportDestCountry = frappe.form_dict.get("export_destination_country")
-    lpoNumber = frappe.form_dict.get("lpo_number")
-    isLpoSale = frappe.form_dict.get("is_lpo_transactions")
-    isExport = frappe.form_dict.get("is_export")
-    isRvatSale = frappe.form_dict.get("is_rvat_agent")
-    principalId = frappe.form_dict.get("principal_id")
-    currencyCd = frappe.form_dict.get("currency_code")
+    exportDestCountry = frappe.form_dict.get("exportDestinationCountry")
+    lpoNumber = frappe.form_dict.get("lpoMumber")
+    isLpoSale = frappe.form_dict.get("isLpoTransaction")
+    isExport = frappe.form_dict.get("isExport")
+    isRvatSale = frappe.form_dict.get("isRvatAgent")
+    principalId = frappe.form_dict.get("principalId")
+    currencyCd = frappe.form_dict.get("currencyCode")
     exchangeRate = frappe.form_dict.get("exchangeRt")
     createBy = frappe.form_dict.get("created_by")
 
@@ -140,8 +140,13 @@ def create_sales_invoice():
     for item in items:
         item_code = item.get("item_code")
         qty = item.get("qty", 1)
-        rate = item.get("rate", 0)
+        rate = item.get("price")
         vatCd = item.get("vatCd")
+        iplCd = item.get("iplCd")
+        tlCd = item.get("tlCd")
+
+
+
 
         if not item_code:
             return send_response(
@@ -184,31 +189,38 @@ def create_sales_invoice():
             "product_type": item.get("product_type", "Finished Goods"),
             "packageUnitCode": item_details.get("itemPackingUnitCd"),
             "price": rate,
-            "VatCd": item.get("VatCd", "B"),
+            "VatCd": vatCd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
-            "IplCd": item.get("IplCd", ""),
-            "TlCd": item.get("TlCd", ""),
-            "ExciseCd": item.get("ExciseCd", "")
+            "IplCd": iplCd,
+            "TlCd": tlCd,
         })
 
     sale_payload = {
         "sale_name": payload.get("sale_name", "SINV-00001"),
         "customer_name": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
-        "export_destination_country": exportDestCountry,
-        "lpo_number": lpoNumber,
-        "is_lpo_transactions": 1,
-        "is_export": 1,
-        "is_rvat_agent": 1,
-        "principal_id": principalId,
-        "currency_code": 3,
+        "exportDestinationCountry": exportDestCountry,
+        "lpoNumber": lpoNumber,
+        "isLpoTransactions": isLpoSale,
+        "isExport": isExport,
+        "isRvatAgent": isRvatSale,
+        "principalId": principalId,
+        "currencyCode": 3,
         "exchangeRt": 3,
-        "is_stock_updated": 1,
         "created_by": createBy,
         "items": sale_payload_items
     }
 
-    NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
+    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
+    print("results: ", result)
+    if result.get("resultCd") != "000":
+        return send_response(
+            status="fail",
+            message=result.get("resultMsg", "Unknown error from ZRA"),
+            status_code=400,
+            http_status=400
+        )
+
     try:
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",

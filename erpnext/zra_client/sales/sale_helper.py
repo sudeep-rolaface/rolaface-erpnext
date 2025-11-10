@@ -1,10 +1,11 @@
-import uuid
+import random
+from erpnext.zra_client.generic_api import send_response
 from erpnext.zra_client.main import ZRAClient
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import requests
+import uuid
 import frappe
-import random
 import json
 import os
 
@@ -313,6 +314,7 @@ class NormaSale(ZRAClient):
         payload = self.build_payload(items, base_data)
         response = self.create_normal_sale_helper(payload)
         response = response.json()
+        apiCallerResponse = response
         print(response)
         print(f"Response from ZRA: {response}")
         
@@ -417,7 +419,26 @@ class NormaSale(ZRAClient):
                 print(update_stock_payload, update_stock_master_items)
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
-                
+                response_status = response.get("resultCd")
+                response_message = response.get("resultMsg")
+
+                return {
+                    "resultCd": response_status,
+                    "resultMsg": response_message
+                }
+
+            else:
+                send_response(
+                    status="fail",
+                    message=f"ZRA API Error: {response.get('resultMsg', 'Unknown error')}",
+                    status_code=400,
+                    http_status=400
+                )
+                return
+
+        return response
+
+            
 
 
 class CreditNote(ZRAClient):

@@ -233,7 +233,10 @@ def create_customer_api():
         }
 
         result = ZRA_CLIENT_INSTANCE.create_customer(payload)
+
+        print("Printing result ui", result)
         data = result.json()  
+        print("Printing json results",data)
 
         if data.get("resultCd") != "000":
             send_response(
