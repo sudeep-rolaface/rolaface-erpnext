@@ -1,3 +1,5 @@
+import os
+import subprocess
 import threading
 import time
 from urllib.parse import quote
@@ -7,7 +9,7 @@ from datetime import date
 import requests
 import frappe
 import json
-
+from pathlib import Path
 
 
 
@@ -112,6 +114,34 @@ class ZRAClient:
         response = requests.post(url=self.save_stock_master_url, json=payload, timeout=300)
         response.raise_for_status()
         return response.json()
+    
+    import os
+    from datetime import datetime
+
+    def trigger_reload_via_edit(self, file_path=None):
+
+        try:
+        
+            if not file_path:
+                file_path = "/home/ubuntu/izyane-erp/frappe-bench/apps/erpnext/erpnext/zra_client/sales/api.py"
+
+    
+            with open(file_path, "r") as f:
+                content = f.read()
+
+            dummy_comment = f"# Reload trigger: {datetime.now()}\n"
+            new_content = dummy_comment + content
+
+
+            with open(file_path, "w") as f:
+                f.write(new_content)
+
+            print(f"[INFO] File {file_path} edited to trigger reload.")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to trigger reload: {e}")
+
+
 
 
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):

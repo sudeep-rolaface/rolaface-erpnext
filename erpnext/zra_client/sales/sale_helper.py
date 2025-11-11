@@ -15,6 +15,12 @@ class NormaSale(ZRAClient):
         self.taxbl_totals = {key: 0.0 for key in self.TAX_RATES}
         self.tax_amt_totals = {key: 0.0 for key in self.TAX_RATES}
         super().__init__()
+        
+    def reset_totals(self):
+        for key in self.TAX_RATES:
+            self.taxbl_totals[key] = 0.0
+            self.tax_amt_totals[key] = 0.0
+        print("[INFO] Tax totals and amounts have been reset to zero.")
 
 
 
@@ -305,6 +311,7 @@ class NormaSale(ZRAClient):
 
 
         print("\n[START] Sending sale data...")
+        self.reset_totals()
         payload = self.build_payload(items, base_data)
         response = self.create_normal_sale_helper(payload)
         response = response.json()
