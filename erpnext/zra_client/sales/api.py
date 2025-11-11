@@ -91,17 +91,41 @@ def get_item_details(item_code):
 def create_sales_invoice():
     print("calling create sale api")
     customer_id = frappe.form_dict.get("customer_id")
-    exportDestCountry = frappe.form_dict.get("exportDestinationCountry")
-    lpoNumber = frappe.form_dict.get("lpoMumber")
-    isLpoSale = frappe.form_dict.get("isLpoTransaction")
     isExport = frappe.form_dict.get("isExport")
     isRvatSale = frappe.form_dict.get("isRvatAgent")
     principalId = frappe.form_dict.get("principalId")
     currencyCd = frappe.form_dict.get("currencyCode")
-    exchangeRate = frappe.form_dict.get("exchangeRt")
+    exchangeRt = frappe.form_dict.get("exchangeRt")
     createBy = frappe.form_dict.get("created_by")
+    destnCountryCd = frappe.form_dict.get("destnCountryCd")
+    lpoNumber = frappe.form_dict.get("lpoNumber")
+        
+    if not currencyCd:
+        currencyCd = "ZMW"
+        exchangeRt = "1"
 
+    allowedCurrencies = ["ZMW", "USD", "ZRA", "GBP", "CNY", "EUR"]
 
+    if currencyCd not in allowedCurrencies:
+        send_response(
+            status="fail",
+            message=f"Invalid currency. Allowed currencies are: {', '.join(allowedCurrencies)}",
+            status_code=400,
+            http_status=400
+        )
+        return
+
+    if not exchangeRt:
+        send_response(
+            status="fail",
+            message="Exchange rate must not be null",
+            status_code=400,
+            http_status=400
+        )
+        
+        return
+    
+    
 
     try:
         payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
@@ -145,7 +169,26 @@ def create_sales_invoice():
         iplCd = item.get("iplCd")
         tlCd = item.get("tlCd")
 
+        if vatCd == "C2":
+            if lpoNumber is None:
+                send_response(
+                    status="fail",
+                    message="Local Purchase Order number (LPO) is required for transactions with VatCd 'B' and cannot be null.",
+                    status_code=400,
+                    http_status=400
+                )
+                return
+        if vatCd == "C":
+            if destnCountryCd is None:
+                send_response(
+                    status="fail",
+                    message="Destination country is required for VatCd 'C' transactions. Please ensure the export flag (isExport) is set correctly.",
+                    status_code=400,
+                    http_status=400
+                )
+                return
 
+            
 
 
         if not item_code:
@@ -192,21 +235,20 @@ def create_sales_invoice():
             "VatCd": vatCd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "IplCd": iplCd,
-            "TlCd": tlCd,
+            "TlCd": tlCd
         })
 
     sale_payload = {
         "sale_name": payload.get("sale_name", "SINV-00001"),
-        "customer_name": customer_data.get("customer_name"),
+        "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
-        "exportDestinationCountry": exportDestCountry,
+        "destnCountryCd": destnCountryCd,
         "lpoNumber": lpoNumber,
-        "isLpoTransactions": isLpoSale,
         "isExport": isExport,
         "isRvatAgent": isRvatSale,
         "principalId": principalId,
-        "currencyCode": 3,
-        "exchangeRt": 3,
+        "currencyCd": currencyCd,
+        "exchangeRt": exchangeRt,
         "created_by": createBy,
         "items": sale_payload_items
     }

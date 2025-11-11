@@ -164,16 +164,12 @@ class NormaSale(ZRAClient):
             item["vatAmt"] + item["iplAmt"] + item["tlAmt"] + item["ecmAmt"]
             for item in processed_items
         ), 2)
-        total_amount = round(sum(item["totAmt"] for item in processed_items), 2)
-
-        export_destination_country_code = base_data.get("export_destination_code")
-        if export_destination_country_code is not None:
-            destnCountryCd = export_destination_country_code
-        else:
-            destnCountryCd = None
-        
-        get_lpoNumber = base_data.get("lpoNumber")
+        total_amount = round(sum(item["totAmt"] for item in processed_items), 2)        
+        lpoNumber = base_data.get("lpoNumber")
         get_principal_id = base_data.get("principalId")
+        exchangeRt = base_data.get("exchangeRt")
+        currencyCd = base_data.get("currencyCd")
+        destnCountryCd = base_data.get("destnCountryCd")
 
         logged_in_user = "Admin"
         username = "Admin"
@@ -205,8 +201,6 @@ class NormaSale(ZRAClient):
             "modrId": username,
             "modrNm": username,
             "saleCtyCd": "1",
-            "currencyTyCd": base_data["currencyCd"],
-            "exchangeRt": base_data["exchangeRt"],
             "dbtRsnCd": "",
             "invcAdjustReason": "",
             "itemList": processed_items
@@ -214,11 +208,22 @@ class NormaSale(ZRAClient):
         if destnCountryCd:
             payload["destnCountryCd"] = destnCountryCd
 
-        if get_lpoNumber:
-            payload["lpoNumber"] = get_lpoNumber
+        if lpoNumber:
+            payload["lpoNumber"] = lpoNumber
 
         if get_principal_id:
             payload["principalId"] = get_principal_id
+            
+        if exchangeRt:
+            payload["exchangeRt"] = exchangeRt
+            
+        if currencyCd:
+            payload["currencyTyCd"] = currencyCd
+            
+        if destnCountryCd:
+            payload["destnCountryCd"] = destnCountryCd
+            
+        
 
         self.to_use_data = payload
 
@@ -238,31 +243,17 @@ class NormaSale(ZRAClient):
         return {**taxblAmt, **taxRt, **taxAmt}
 
     def send_sale_data(self, sell_data):
-        customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
+        customer_name = sell_data.get("customerName")
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
         customer_tpin = customer_doc.get("customer_tpin")
-        export_destination_country = sell_data.get("custom_destination_country")
-        lpo_number = sell_data.get("custom_lpo_number")
-        is_lpo_transactions = sell_data.get("custom__lpo_transaction")
-        is_export = sell_data.get("custom_export")
-        is_rvat_agent = sell_data.get("custom_rvat")
-        principal_id = sell_data.get("custom_principal_id")
-        currency = sell_data.get("currency_code")
+        destnCountryCd = sell_data.get("destnCountryCd")
         exchangeRt = sell_data.get("exchangeRt")
         is_stock_updated = 1
         created_by = sell_data.get("modified_by")
-
-        if export_destination_country == "ASCENSION ISLAND":
-            export_destination_country = " "
+        currencyCd = sell_data.get("currencyCd")
+        lpoNumber = sell_data.get("lpoNumber")
     
-
-        if exchangeRt is None:
-            frappe.throw(f"Exchange rate for Currency name '{currency}' not found.")
-
-
-
-
         sell_data_item = sell_data.get("items")
         items = []
         for item in sell_data_item:
@@ -302,9 +293,12 @@ class NormaSale(ZRAClient):
             "cust_name": customer_name,
             "cust_tpin": customer_tpin,
             "name": name,
-            "currencyCd": "USD",
+            "currencyCd": "ZMW",
             "exchangeRt": exchangeRt,
             "created_by": created_by,
+            "currencyCd": currencyCd,
+            "lpoNumber": lpoNumber,
+            "destnCountryCd": destnCountryCd
 
             
         }
