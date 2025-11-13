@@ -1,3 +1,4 @@
+from erpnext.zra_client.generic_api import send_response
 import os
 import subprocess
 import threading
@@ -116,24 +117,32 @@ class ZRAClient:
         return response.json()
     
     def get_next_sales_invoice_name(self):
-            year = datetime.now().year
-            prefix = "ACC-SINV"
-            
-            last_invoice = frappe.db.get_all(
-                "Sales Invoice",
-                filters={"name": ["like", f"{prefix}-{year}-%"]},
-                fields=["name"],
-                order_by="creation desc",
-                limit=1
-            )
-            if last_invoice:
-                last_number = int(last_invoice[0].name.split("-")[-1])
-                next_number = last_number + 1
-            else:
-                next_number = 1 
-            next_number_str = str(next_number).zfill(5)
-            return f"{prefix}-{year}-{next_number_str}"
-    
+        from datetime import datetime
+        year = datetime.now().year
+        prefix = "ACC-SINV"
+        
+        # Get all invoice names for the current year
+        invoices = frappe.db.get_all(
+            "Sales Invoice",
+            filters={"name": ["like", f"{prefix}-{year}-%"]},
+            fields=["name"]
+        )
+        
+        # Extract numeric part
+        numbers = []
+        for inv in invoices:
+            try:
+                number = int(inv["name"].split("-")[-1])
+                numbers.append(number)
+            except ValueError:
+                continue
+        
+        # Determine next number
+        next_number = max(numbers) + 1 if numbers else 1
+        next_number_str = str(next_number).zfill(5)
+        
+        return f"{prefix}-{year}-{next_number_str}"
+
 
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
         print("Started background updates")
@@ -187,6 +196,25 @@ class ZRAClient:
                 frappe.destroy()
 
         threading.Thread(target=worker, daemon=False).start()
+        
+    def get_sales_rcptno_by_inv_no(self, sales_inv_no, site="erpnext.localhost"):
+        try:
+            frappe.init(site=site)
+            frappe.connect()
+            frappe.set_user("Administrator")
+
+            invoice_doc = frappe.get_doc("Sales Invoice", sales_inv_no)
+            print("Invoice :", invoice_doc, "RecptNo :", invoice_doc.custom_rcptno)
+            return invoice_doc.custom_rcptno
+        except Exception as e:
+            print(f"Error fetching Sales Invoice '{sales_inv_no}': {e}")
+            send_response(
+                status="fail",
+                message=f"Error fetching Sales Invoice '{sales_inv_no}': {e}",
+                status_code=404,
+                http_status=404
+            )
+ 
 
 
 
