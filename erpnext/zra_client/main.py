@@ -115,34 +115,25 @@ class ZRAClient:
         response.raise_for_status()
         return response.json()
     
-    import os
-    from datetime import datetime
-
-    def trigger_reload_via_edit(self, file_path=None):
-
-        try:
-        
-            if not file_path:
-                file_path = "/home/ubuntu/izyane-erp/frappe-bench/apps/erpnext/erpnext/zra_client/sales/api.py"
-
+    def get_next_sales_invoice_name(self):
+            year = datetime.now().year
+            prefix = "ACC-SINV"
+            
+            last_invoice = frappe.db.get_all(
+                "Sales Invoice",
+                filters={"name": ["like", f"{prefix}-{year}-%"]},
+                fields=["name"],
+                order_by="creation desc",
+                limit=1
+            )
+            if last_invoice:
+                last_number = int(last_invoice[0].name.split("-")[-1])
+                next_number = last_number + 1
+            else:
+                next_number = 1 
+            next_number_str = str(next_number).zfill(5)
+            return f"{prefix}-{year}-{next_number_str}"
     
-            with open(file_path, "r") as f:
-                content = f.read()
-
-            dummy_comment = f"# Reload trigger: {datetime.now()}\n"
-            new_content = dummy_comment + content
-
-
-            with open(file_path, "w") as f:
-                f.write(new_content)
-
-            print(f"[INFO] File {file_path} edited to trigger reload.")
-
-        except Exception as e:
-            print(f"[ERROR] Failed to trigger reload: {e}")
-
-
-
 
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
         print("Started background updates")
@@ -164,7 +155,38 @@ class ZRAClient:
         thread = threading.Thread(target=background_task)
         thread.daemon = True  
         thread.start()
-    
+        
+
+    def update_sales_rcptno_by_inv_no(self, sales_inv_no, rcptNo, site="erpnext.localhost"):
+        def worker():
+            site_to_use = "erpnext.localhost" 
+
+            try:
+                frappe.init(site=site_to_use)
+                frappe.connect()
+                frappe.set_user("Administrator")
+
+                print(f"Waiting 40 seconds before updating Sales Invoice '{sales_inv_no}'...")
+                time.sleep(40) 
+
+                sales_list = frappe.get_all("Sales Invoice", filters={"name": sales_inv_no}, limit=1)
+                if not sales_list:
+                    print(f"No Sales Invoice found with code '{sales_inv_no}'.")
+                    return
+
+                item_doc = frappe.get_doc("Sales Invoice", sales_list[0].name)
+                item_doc.custom_rcptno = rcptNo
+                item_doc.flags.ignore_validate_update_after_submit = True
+                item_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+
+                print(f"Sales Invoice '{sales_inv_no}' custom_rcptno updated to '{rcptNo}'.")
+            except Exception as e:
+                print(f" Error updating Sales Invoice '{sales_inv_no}': {e}")
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=False).start()
 
 
 

@@ -320,6 +320,9 @@ class NormaSale(ZRAClient):
         print(f"Response from ZRA: {response}")
         
         if response.get("resultCd") == "000":
+            rcpt_no = response.get("data", {}).get("rcptNo")
+            print("Updating rctpNo")
+            self.update_sales_rcptno_by_inv_no(name, rcpt_no, 1)
 
             company_info = []
             company_info.append((

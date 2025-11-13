@@ -1,10 +1,14 @@
-import json
+import random
+from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.generic_api import send_response
 from frappe import _
 import frappe
+import json
+
 
 NORMAL_SALE_INSTANCE = NormaSale()
+ZRA_CLIENT_INSTANCE = ZRAClient()
 
 def get_customer_details(customer_id):
     if not customer_id:
@@ -143,7 +147,8 @@ def create_sales_invoice():
         return send_response(
             status="fail",
             message="Customer ID is required",
-            status_code=400
+            status_code=400,
+            http_status=400
         )
 
     if not items or not isinstance(items, list):
@@ -157,6 +162,7 @@ def create_sales_invoice():
     customer_data = get_customer_details(customer_id)
     if not customer_data or customer_data.get("status") == "fail":
         return customer_data
+
 
     invoice_items = []
     sale_payload_items = []
@@ -173,7 +179,7 @@ def create_sales_invoice():
             if lpoNumber is None:
                 send_response(
                     status="fail",
-                    message="Local Purchase Order number (LPO) is required for transactions with VatCd 'B' and cannot be null.",
+                    message="Local Purchase Order number (LPO) is required for transactions with VatCd 'C2' and cannot be null.",
                     status_code=400,
                     http_status=400
                 )
@@ -239,7 +245,8 @@ def create_sales_invoice():
         })
 
     sale_payload = {
-        "sale_name": payload.get("sale_name", "SINV-00001"),
+        
+        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "destnCountryCd": destnCountryCd,
