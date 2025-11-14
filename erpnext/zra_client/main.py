@@ -1,3 +1,6 @@
+from erpnext.zra_client.generic_api import send_response
+import os
+import subprocess
 import threading
 import time
 from urllib.parse import quote
@@ -7,7 +10,7 @@ from datetime import date
 import requests
 import frappe
 import json
-
+from pathlib import Path
 
 
 
@@ -112,6 +115,33 @@ class ZRAClient:
         response = requests.post(url=self.save_stock_master_url, json=payload, timeout=300)
         response.raise_for_status()
         return response.json()
+    
+    def get_next_sales_invoice_name(self):
+        from datetime import datetime
+        year = datetime.now().year
+        prefix = "ACC-SINV"
+        
+        # Get all invoice names for the current year
+        invoices = frappe.db.get_all(
+            "Sales Invoice",
+            filters={"name": ["like", f"{prefix}-{year}-%"]},
+            fields=["name"]
+        )
+        
+        # Extract numeric part
+        numbers = []
+        for inv in invoices:
+            try:
+                number = int(inv["name"].split("-")[-1])
+                numbers.append(number)
+            except ValueError:
+                continue
+        
+        # Determine next number
+        next_number = max(numbers) + 1 if numbers else 1
+        next_number_str = str(next_number).zfill(5)
+        
+        return f"{prefix}-{year}-{next_number_str}"
 
 
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
@@ -134,7 +164,82 @@ class ZRAClient:
         thread = threading.Thread(target=background_task)
         thread.daemon = True  
         thread.start()
-    
+        
+
+    def update_sales_rcptno_by_inv_no(self, sales_inv_no, rcptNo, site="erpnext.localhost"):
+        def worker():
+            site_to_use = "erpnext.localhost" 
+
+            try:
+                frappe.init(site=site_to_use)
+                frappe.connect()
+                frappe.set_user("Administrator")
+
+                print(f"Waiting 40 seconds before updating Sales Invoice '{sales_inv_no}'...")
+                time.sleep(40) 
+
+                sales_list = frappe.get_all("Sales Invoice", filters={"name": sales_inv_no}, limit=1)
+                if not sales_list:
+                    print(f"No Sales Invoice found with code '{sales_inv_no}'.")
+                    return
+
+                item_doc = frappe.get_doc("Sales Invoice", sales_list[0].name)
+                item_doc.custom_rcptno = rcptNo
+                item_doc.flags.ignore_validate_update_after_submit = True
+                item_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+
+                print(f"Sales Invoice '{sales_inv_no}' custom_rcptno updated to '{rcptNo}'.")
+            except Exception as e:
+                print(f" Error updating Sales Invoice '{sales_inv_no}': {e}")
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=False).start()
+        
+    def get_sales_rcptno_by_inv_no(self, sales_inv_no, site="erpnext.localhost"):
+        try:
+            frappe.init(site=site)
+            frappe.connect()
+            frappe.set_user("Administrator")
+
+            invoice_doc = frappe.get_doc("Sales Invoice", sales_inv_no)
+            print("Invoice :", invoice_doc, "RecptNo :", invoice_doc.custom_rcptno)
+            return invoice_doc.custom_rcptno
+        except Exception as e:
+            print(f"Error fetching Sales Invoice '{sales_inv_no}': {e}")
+            send_response(
+                status="fail",
+                message=f"Error fetching Sales Invoice '{sales_inv_no}': {e}",
+                status_code=404,
+                http_status=404
+            )
+    def get_sales_rcptno_by_inv_no_c(self, invoice_no):
+        """
+        Fetch the custom receipt number for a given Sales Invoice using raw SQL.
+        Returns None if not found.
+        """
+        if not invoice_no:
+            return None
+
+        invoice_no = str(invoice_no).strip()
+        query = """
+            SELECT `custom_rcptno`
+            FROM `tabSales Invoice`
+            WHERE `name` = %s
+            LIMIT 1
+        """
+        result = frappe.db.sql(query, (invoice_no,), as_dict=True)
+        print(f"[DEBUG] SQL result: {result}") 
+
+        if result and result[0].get("custom_rcptno"):
+            rcpt_no = result[0]["custom_rcptno"]
+            print(f"[INFO] Found receipt number '{rcpt_no}' for invoice '{invoice_no}'")
+            return rcpt_no
+
+        print(f"[WARN] No receipt number found for invoice '{invoice_no}'")
+        return None
+ 
 
 
 
