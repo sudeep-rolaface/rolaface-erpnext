@@ -85,13 +85,76 @@ def get_item_details(item_code):
     itemClassCd = getattr(item, "custom_itemclscd", None)
     itemPackingUnitCd = getattr(item, "custom_pkgunitcd", None)
     itemUnitCd = getattr(item, "stock_uom", None)
+    itemVatCd = getattr(item, "custom_vatcd", None)
+    itemIplCd = getattr(item, "custom_iplcd", None)
+    itemTlCd = getattr(item, "custom_tlcd", None)
 
     return {
         "itemName": itemName,
         "itemClassCd": itemClassCd,
         "itemPackingUnitCd": itemPackingUnitCd,
-        "itemUnitCd": itemUnitCd
+        "itemUnitCd": itemUnitCd,
+        "itemVatCd": itemVatCd,
+        "itemIplCd": itemIplCd,
+        "itemTlCd": itemTlCd
     }
+    
+def get_sales_item_codes(sales_invoice_no=None, item_code=None):
+    if not sales_invoice_no:
+        return send_response(
+            status="fail",
+            message="Sales Invoice number is required.",
+            status_code=400,
+            http_status=400
+        )
+
+    if not item_code:
+        return send_response(
+            status="fail",
+            message="Item code is required.",
+            status_code=400,
+            http_status=400
+        )
+
+    try:
+        invoice = frappe.get_doc("Sales Invoice", sales_invoice_no)
+        for item in invoice.items:
+            if item.item_code == item_code:
+                data = {
+                    "vatCd": item.custom_vatcd or "",
+                    "iplCd": item.custom_iplcd or "",
+                    "tlCd": item.custom_tlcd or ""
+                }
+                print("**** item codes", data)
+
+                return data
+
+        return send_response(
+            status="fail",
+            message=f"Item '{item_code}' not found in Sales Invoice '{sales_invoice_no}'.",
+            status_code=404,
+            http_status=404
+        )
+
+    except frappe.DoesNotExistError:
+        return send_response(
+            status="fail",
+            message=f"Sales Invoice '{sales_invoice_no}' does not exist.",
+            status_code=404,
+            http_status=404
+        )
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "get_sales_item_codes Error")
+
+        return send_response(
+            status="fail",
+            message=f"Unexpected error: {str(e)}",
+            status_code=500,
+            http_status=500
+        )
+
+
 
 
 
@@ -230,7 +293,11 @@ def create_sales_invoice():
             "item_code": item_code,
             "item_name": item_details.get("itemName"),
             "qty": qty,
-            "rate": rate
+            "rate": rate,
+            "custom_vatcd": vatCd,
+            "custom_iplcd": iplCd,
+            "custom_tlcd":tlCd
+        
         })
 
 
@@ -468,24 +535,40 @@ def create_credit_note_from_invoice():
         qty = qty_entry.get("qty", item.qty)
         if qty <= 0:
             continue
+        item_code = item.item_code
+        if not item_code:
+            return send_response(
+                status="fail",
+                message="Item code is required for each item",
+                status_code=400
+            )
+            
+        item_details = get_item_details(item_code)
+        if not item_details:
+            return send_response(
+                status="fail",
+                message=f"Item '{item_code}' does not exist",
+                status_code=404
+            )
 
         qty = float(qty)
         rate = float(qty_entry.get("price", item.rate))  
-        vatCd = qty_entry.get("vatCd") or getattr(item, "vatCd", "")
-        iplCd = qty_entry.get("iplCd") or getattr(item, "iplCd", "")
-        tlCd = qty_entry.get("tlCd") or getattr(item, "tlCd", "")
-
+        item_codes = get_sales_item_codes(sales_invoice_no, item_code)
         credit_items.append({
             "item_code": item.item_code,
             "item_name": item.item_name,
-            "vatCd": vatCd,
-            "iplCd": iplCd,
-            "tlCd": tlCd,
+            "vatCd": item_codes["vatCd"],
+            "iplCd": item_codes["iplCd"],
+            "tlCd": item_codes["tlCd"],
             "qty": -abs(qty),
-            "rate": rate
+            "rate": rate,
+            "custom_vatcd": item_codes["vatCd"],
+            "custom_iplcd": item_codes["iplCd"],
+            "custom_tlcd": item_codes["tlCd"]
         })
 
         item_details = get_item_details(item.item_code)
+        
         sale_payload_items.append({
             "itemCode": item.item_code,
             "itemName": item.item_name,
@@ -495,9 +578,9 @@ def create_credit_note_from_invoice():
             "packageUnitCode": item_details.get("itemPackingUnitCd"),
             "price": rate,
             "unitOfMeasure": item_details.get("itemUnitCd"),
-            "VatCd": vatCd,
-            "IplCd": iplCd,
-            "TlCd": tlCd,
+            "VatCd": item_codes["vatCd"],
+            "IplCd": item_codes["iplCd"],
+            "TlCd": item_codes["tlCd"],
         })
 
     if not credit_items:
@@ -551,96 +634,82 @@ def create_debit_note_from_invoice():
         )
 
     sales_invoice_no = payload.get("sales_invoice_no")
-    items = payload.get("items", [])
+    req_items = payload.get("items", [])
 
     if not sales_invoice_no:
-        return send_response(
-            status="fail",
-            message="Sales Invoice number is required",
-            status_code=400
-        )
+        return send_response(status="fail", message="Sales Invoice number is required", status_code=400)
 
-    if not items or not isinstance(items, list):
-        return send_response(
-            status="fail",
-            message="Items must be a non-empty list",
-            status_code=400
-        )
+    if not isinstance(req_items, list) or not req_items:
+        return send_response(status="fail", message="Items must be a non-empty list", status_code=400)
 
     if not frappe.db.exists("Sales Invoice", sales_invoice_no):
-        return send_response(
-            status="fail",
-            message=f"Sales Invoice '{sales_invoice_no}' not found",
-            status_code=404
-        )
+        return send_response(status="fail", message=f"Sales Invoice '{sales_invoice_no}' not found", status_code=404)
 
     sales_invoice = frappe.get_doc("Sales Invoice", sales_invoice_no)
     customer_doc = frappe.get_doc("Customer", sales_invoice.customer)
     customer_data = get_customer_details(customer_doc.custom_id)
+
     if not customer_data or customer_data.get("status") == "fail":
         return customer_data
 
     debit_items = []
     sale_payload_items = []
 
-    for item in items:
-        item_code = item.get("item_code")
-        qty = float(item.get("qty", 1))
-        rate = float(item.get("price", 0))
+    for inv_item in sales_invoice.items:
+        req_item = next((i for i in req_items if i.get("item_code") == inv_item.item_code), None)
+        if not req_item:
+            continue
 
-        vatCd = item.get("vatCd") or ""
-        iplCd = item.get("iplCd") or ""
-        tlCd = item.get("tlCd") or ""
-
-   
-        if vatCd == "C2" and not payload.get("lpoNumber"):
-            return send_response(
-                status="fail",
-                message="LPO number is required for VatCd 'C2'",
-                status_code=400
-            )
-        if vatCd == "C" and not payload.get("destnCountryCd"):
-            return send_response(
-                status="fail",
-                message="Destination country is required for VatCd 'C'",
-                status_code=400
-            )
-
+        qty = float(req_item.get("qty", inv_item.qty))
         if qty <= 0:
-            continue  
+            continue
+        item_code = inv_item.item_code
+        item_codes = get_sales_item_codes(sales_invoice_no, item_code)
+        
+        rate = float(req_item.get("price", inv_item.rate))
+        vatCd = item_codes["vatCd"]
+        iplCd =  item_codes["iplCd"]
+        tlCd = item_codes["tlCd"]
 
-        item_details = get_item_details(item_code)
+        if vatCd == "C2" and not payload.get("lpoNumber"):
+            return send_response(status="fail", message="LPO number is required for VatCd 'C2'", status_code=400)
+
+        if vatCd == "C" and not payload.get("destnCountryCd"):
+            return send_response(status="fail", message="Destination country is required for VatCd 'C'", status_code=400)
+
+        item_details = get_item_details(inv_item.item_code)
         if not item_details:
             return send_response(
                 status="fail",
-                message=f"Item '{item_code}' does not exist",
+                message=f"Item '{inv_item.item_code}' does not exist",
                 status_code=404
             )
 
         debit_items.append({
-            "item_code": item_code,
-            "item_name": item_details.get("itemName"),
+            "item_code": inv_item.item_code,
+            "item_name": inv_item.item_name,
             "qty": qty,
             "rate": rate,
             "vatCd": vatCd,
             "iplCd": iplCd,
-            "tlCd": tlCd
+            "tlCd": tlCd,
+            "custom_vatcd": vatCd,
+            "custom_iplcd": iplCd,
+            "custom_tlcd": tlCd
         })
-
         sale_payload_items.append({
-            "itemCode": item_code,
-            "itemName": item_details.get("itemName"),
+            "itemCode": inv_item.item_code,
+            "itemName": inv_item.item_name,
             "qty": qty,
-            "itemClassCode": item_details.get("itemClassCd") or "",
-            "product_type": item.get("product_type", "Finished Goods"),
-            "packageUnitCode": item_details.get("itemPackingUnitCd") or "",
-            "unitOfMeasure": item_details.get("itemUnitCd") or "",
+            "itemClassCode": item_details.get("itemClassCd"),
+            "product_type": getattr(inv_item, "product_type", "Finished Goods"),
+            "packageUnitCode": item_details.get("itemPackingUnitCd"),
+            "unitOfMeasure": item_details.get("itemUnitCd"),
             "price": rate,
             "VatCd": vatCd,
             "IplCd": iplCd,
             "TlCd": tlCd
         })
-
 
     if not debit_items:
         return send_response(
@@ -648,7 +717,6 @@ def create_debit_note_from_invoice():
             message="No valid items to create Debit Note",
             status_code=400
         )
-
     sale_payload = {
         "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
         "originInvoice": sales_invoice,
@@ -659,8 +727,7 @@ def create_debit_note_from_invoice():
         "items": sale_payload_items
     }
 
-    print("DEBIT PAYLOAD: ", sale_payload)
-
+    print("DEBIT PAYLOAD:", sale_payload)
     result = DEBIT_NOTE_INSTANCE.send_sale_data(sale_payload)
     if result.get("resultCd") != "000":
         return send_response(
@@ -668,7 +735,6 @@ def create_debit_note_from_invoice():
             message=result.get("resultMsg", "Unknown error from ZRA"),
             status_code=400
         )
-
     try:
         debit_note_doc = frappe.get_doc({
             "doctype": "Sales Invoice",
@@ -683,17 +749,15 @@ def create_debit_note_from_invoice():
         debit_note_doc.insert(ignore_permissions=True)
         debit_note_doc.submit()
         frappe.db.commit()
+
         return send_response(
             status="success",
-            message=f"Debit Note created for {sales_invoice_no}",
+            message=f"Debit Note '{debit_note_doc.name}' created for {sales_invoice_no}",
+            data={"debit_note_no": debit_note_doc.name},
             status_code=201,
             http_status=201
         )
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Create Debit Note API Error")
         frappe.db.rollback()
-        return send_response(
-            status="fail",
-            message=f"Unexpected Error: {str(e)}",
-            status_code=500
-        )
+        return send_response(status="fail", message=f"Unexpected Error: {str(e)}", status_code=500)
