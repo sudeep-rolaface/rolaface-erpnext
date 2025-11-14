@@ -214,6 +214,31 @@ class ZRAClient:
                 status_code=404,
                 http_status=404
             )
+    def get_sales_rcptno_by_inv_no_c(self, invoice_no):
+        """
+        Fetch the custom receipt number for a given Sales Invoice using raw SQL.
+        Returns None if not found.
+        """
+        if not invoice_no:
+            return None
+
+        invoice_no = str(invoice_no).strip()
+        query = """
+            SELECT `custom_rcptno`
+            FROM `tabSales Invoice`
+            WHERE `name` = %s
+            LIMIT 1
+        """
+        result = frappe.db.sql(query, (invoice_no,), as_dict=True)
+        print(f"[DEBUG] SQL result: {result}") 
+
+        if result and result[0].get("custom_rcptno"):
+            rcpt_no = result[0]["custom_rcptno"]
+            print(f"[INFO] Found receipt number '{rcpt_no}' for invoice '{invoice_no}'")
+            return rcpt_no
+
+        print(f"[WARN] No receipt number found for invoice '{invoice_no}'")
+        return None
  
 
 
