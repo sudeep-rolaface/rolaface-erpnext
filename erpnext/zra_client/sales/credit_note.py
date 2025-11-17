@@ -350,6 +350,21 @@ class CreditNoteSale(ZRAClient):
                 payload["custTpin"],
                 payload["custNm"]
             ))
+            
+            
+            additionInfoToBeSaved = []
+            additionInfoToBeSaved.extend([
+                payload["currencyTyCd"],
+                payload["exchangeRt"],
+                payload["totTaxAmt"]
+            ])
+            additionInfoToBeSavedItem = []
+            for item in payload["itemList"]:
+                additionInfoToBeSavedItem.append({
+                    "itemCd": item["itemCd"],
+                    "vatTaxblAmt": item["vatTaxblAmt"],
+                })
+
 
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             invoice = []
@@ -440,7 +455,9 @@ class CreditNoteSale(ZRAClient):
 
                 return {
                     "resultCd": response_status,
-                    "resultMsg": response_message
+                    "resultMsg": response_message,
+                    "additionalInfo": additionInfoToBeSaved,
+                    "additionInfoToBeSavedItem": additionInfoToBeSavedItem 
                 }
 
             else:

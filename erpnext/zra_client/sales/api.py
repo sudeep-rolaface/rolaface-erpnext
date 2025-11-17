@@ -331,6 +331,18 @@ def create_sales_invoice():
     }
 
     result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
+    additional_info = result["additionalInfo"]
+    currency = additional_info[0]
+    exchange_rate = additional_info[1]
+    total_tax = additional_info[2]
+    zra_items = result.get("additionInfoToBeSavedItem", [])
+    zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
+    for inv_item in invoice_items:
+        item_code = inv_item.get("item_code")
+        if item_code in zra_lookup:
+            inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+
+
     print("results: ", result)
     if result.get("resultCd") != "000":
         return send_response(
@@ -343,6 +355,9 @@ def create_sales_invoice():
     try:
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
+            "custom_exchange_rate": exchange_rate,
+            "custom_total_tax_amount": total_tax,
+            "custom_zra_currency": currency,
             "customer": customer_data.get("name"),
             "items": invoice_items
         })
@@ -600,10 +615,25 @@ def create_credit_note_from_invoice():
     if result.get("resultCd") != "000":
         return send_response(status="fail", message=result.get("resultMsg", "Unknown error from ZRA"), status_code=400, http_status=400)
 
+    additional_info = result["additionalInfo"]
+    currency = additional_info[0]
+    exchange_rate = additional_info[1]
+    total_tax = additional_info[2]
+    zra_items = result.get("additionInfoToBeSavedItem", [])
+    zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
+    for inv_item in credit_items:
+        item_code = inv_item.get("item_code")
+        if item_code in zra_lookup:
+            inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+            
+            
     credit_note = frappe.get_doc({
         "doctype": "Sales Invoice",
         "customer": sales_invoice.customer,
         "company": sales_invoice.company,
+        "custom_exchange_rate": exchange_rate,
+        "custom_total_tax_amount": total_tax,
+        "custom_zra_currency": currency,
         "is_return": 1,
         "return_against": sales_invoice.name,
         "items": credit_items,
@@ -735,11 +765,26 @@ def create_debit_note_from_invoice():
             message=result.get("resultMsg", "Unknown error from ZRA"),
             status_code=400
         )
+        
+    additional_info = result["additionalInfo"]
+    currency = additional_info[0]
+    exchange_rate = additional_info[1]
+    total_tax = additional_info[2]
+    zra_items = result.get("additionInfoToBeSavedItem", [])
+    print("Item Response: ", zra_items)
+    zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
+    for inv_item in debit_items:
+        item_code = inv_item.get("item_code")
+        if item_code in zra_lookup:
+            inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
     try:
         debit_note_doc = frappe.get_doc({
             "doctype": "Sales Invoice",
             "customer": sales_invoice.customer,
             "company": sales_invoice.company,
+            "custom_exchange_rate": exchange_rate,
+            "custom_total_tax_amount": total_tax,
+            "custom_zra_currency": currency,
             "is_debit_note": 1,
             "return_against": sales_invoice.name,
             "items": debit_items,
