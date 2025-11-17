@@ -1,5 +1,6 @@
 import random
 from erpnext.zra_client.generic_api import send_response
+from erpnext.zra_client.receipt.build import BuildPdf
 from erpnext.zra_client.main import ZRAClient
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
@@ -322,7 +323,6 @@ class NormaSale(ZRAClient):
         
         if response.get("resultCd") == "000":
             rcpt_no = response.get("data", {}).get("rcptNo")
-            print("Updating rctpNo")
             self.update_sales_rcptno_by_inv_no(name, rcpt_no, 1)
 
             additionInfoToBeSaved = []
@@ -373,7 +373,10 @@ class NormaSale(ZRAClient):
             print(customer_info, company_info, invoice, pdf_items)
             created_by = sell_data.get("owner")
             ocrnDt = datetime.now().strftime("%Y%m%d")
-            print(self.to_use_data)
+            pdf_items = payload["itemList"]
+            print(customer_info, company_info, invoice, pdf_items)
+            pdf_generator = BuildPdf()
+            pdf_generator.build_invoice(company_info, customer_info, invoice, pdf_items, sdc_data, payload)
             if is_stock_updated == 1:
                 print("Updating stock items...")
 
@@ -439,14 +442,22 @@ class NormaSale(ZRAClient):
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
                 response_status = response.get("resultCd")
-                response_message = response.get("resultMsg")
-                print("Response returned 1")
-                return {
-                    "resultCd": response_status,
-                    "resultMsg": response_message,
-                    "additionalInfo": additionInfoToBeSaved,
-                    "additionInfoToBeSavedItem": additionInfoToBeSavedItem 
-                }
+                if  response_status == "000":
+                    response_message = response.get("resultMsg")
+                    print("Response returned 1")
+                    return {
+                        "resultCd": response_status,
+                        "resultMsg": response_message,
+                        "additionalInfo": additionInfoToBeSaved,
+                        "additionInfoToBeSavedItem": additionInfoToBeSavedItem 
+                    }
+                    
+                else:
+                    return {
+                        "resultCd": response_status,
+                        "resultMsg": response_message,
+                    }
+                    
 
             else:
                 send_response(

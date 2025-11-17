@@ -241,6 +241,21 @@ def create_sales_invoice():
         vatCd = item.get("vatCd")
         iplCd = item.get("iplCd")
         tlCd = item.get("tlCd")
+        
+        VAT_LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
+
+        if vatCd not in VAT_LIST:
+            send_response(
+                status="fail",
+                message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
+                status_code=400,
+                http_status=400
+            )
+            return
+        
+        checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+        if checkStockStatusCode != 200:
+            return checkStockResponse
 
         if vatCd == "C2":
             if lpoNumber is None:
@@ -251,11 +266,11 @@ def create_sales_invoice():
                     http_status=400
                 )
                 return
-        if vatCd == "C":
+        if vatCd == "C1":
             if destnCountryCd is None:
                 send_response(
                     status="fail",
-                    message="Destination country is required for VatCd 'C' transactions. Please ensure the export flag (isExport) is set correctly.",
+                    message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions. ",
                     status_code=400,
                     http_status=400
                 )
@@ -331,16 +346,24 @@ def create_sales_invoice():
     }
 
     result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
-    additional_info = result["additionalInfo"]
-    currency = additional_info[0]
-    exchange_rate = additional_info[1]
-    total_tax = additional_info[2]
-    zra_items = result.get("additionInfoToBeSavedItem", [])
-    zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
-    for inv_item in invoice_items:
-        item_code = inv_item.get("item_code")
-        if item_code in zra_lookup:
-            inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+    additional_info = result.get("additionalInfo") or []
+    if additional_info and len(additional_info) >= 3:
+        currency = additional_info[0]
+        exchange_rate = additional_info[1]
+        total_tax = additional_info[2]
+    else:
+        currency = None
+        exchange_rate = None
+        total_tax = None
+
+    zra_items = result.get("additionInfoToBeSavedItem") or []
+    if zra_items:
+        zra_lookup = {item["itemCd"]: item["vatTaxblAmt"] for item in zra_items}
+        for inv_item in invoice_items:
+            item_code = inv_item.get("item_code")
+            if item_code in zra_lookup:
+                inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+
 
 
     print("results: ", result)
@@ -771,7 +794,6 @@ def create_debit_note_from_invoice():
     exchange_rate = additional_info[1]
     total_tax = additional_info[2]
     zra_items = result.get("additionInfoToBeSavedItem", [])
-    print("Item Response: ", zra_items)
     zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
     for inv_item in debit_items:
         item_code = inv_item.get("item_code")
