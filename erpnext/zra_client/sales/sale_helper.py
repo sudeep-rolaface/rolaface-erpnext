@@ -22,7 +22,8 @@ class NormaSale(ZRAClient):
             self.tax_amt_totals[key] = 0.0
         print("[INFO] Tax totals and amounts have been reset to zero.")
 
-
+    def getNormalSaleAdditionInfo(self, additionInfoToBeSaved):
+        return additionInfoToBeSaved
 
     def create_normal_sale_helper(self, payload):
         return self.create_sale_zra_client(payload)
@@ -324,6 +325,20 @@ class NormaSale(ZRAClient):
             print("Updating rctpNo")
             self.update_sales_rcptno_by_inv_no(name, rcpt_no, 1)
 
+            additionInfoToBeSaved = []
+            additionInfoToBeSaved.extend([
+                payload["currencyTyCd"],
+                payload["exchangeRt"],
+                payload["totTaxAmt"]
+            ])
+            additionInfoToBeSavedItem = []
+            for item in payload["itemList"]:
+                additionInfoToBeSavedItem.append({
+                    "itemCd": item["itemCd"],
+                    "vatTaxblAmt": item["vatTaxblAmt"],
+                })
+
+            
             company_info = []
             company_info.append((
                 self.get_company_name(),
@@ -425,10 +440,12 @@ class NormaSale(ZRAClient):
 
                 response_status = response.get("resultCd")
                 response_message = response.get("resultMsg")
-
+                print("Response returned 1")
                 return {
                     "resultCd": response_status,
-                    "resultMsg": response_message
+                    "resultMsg": response_message,
+                    "additionalInfo": additionInfoToBeSaved,
+                    "additionInfoToBeSavedItem": additionInfoToBeSavedItem 
                 }
 
             else:
@@ -439,7 +456,7 @@ class NormaSale(ZRAClient):
                     http_status=400
                 )
                 return
-
+        print("Response returned 2")
         return response
 
             
