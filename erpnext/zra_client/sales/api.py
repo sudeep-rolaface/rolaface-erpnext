@@ -162,7 +162,6 @@ def get_sales_item_codes(sales_invoice_no=None, item_code=None):
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
-    print("calling create sale api")
     customer_id = frappe.form_dict.get("customer_id")
     isExport = frappe.form_dict.get("isExport")
     isRvatSale = frappe.form_dict.get("isRvatAgent")
@@ -197,8 +196,6 @@ def create_sales_invoice():
         )
         
         return
-    
-    
 
     try:
         payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
@@ -279,9 +276,6 @@ def create_sales_invoice():
                 )
                 return
 
-            
-
-
         if not item_code:
             return send_response(
                 status="fail",
@@ -348,8 +342,6 @@ def create_sales_invoice():
         "created_by": createBy,
         "items": sale_payload_items
     }
-
-    print("Sales payload data: ",sale_payload)
     
 
     result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
@@ -370,10 +362,7 @@ def create_sales_invoice():
             item_code = inv_item.get("item_code")
             if item_code in zra_lookup:
                 inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
-
-
-
-    print("results: ", result)
+                
     if result.get("resultCd") != "000":
         return send_response(
             status="fail",
@@ -433,16 +422,58 @@ def get_sales_invoice():
     try:
         invoices = frappe.get_all(
             "Sales Invoice",
-            fields=["name", "customer", "posting_date", "grand_total", "status"],
+            fields=[
+                "name",
+                "customer",
+                "custom_rcptno",
+                "custom_zra_currency",
+                "custom_exchange_rate",
+                "posting_date",
+                "grand_total",
+                "custom_total_tax_amount",
+                "status",
+                "is_return",
+                "is_debit_note",
+                "outstanding_amount",
+            ],
             order_by="creation desc"
         )
+
+        formatted_invoices = []
+
+        for inv in invoices:
+            if inv.is_return == 1:
+                invoice_type = "Credit Note"
+
+            elif inv.is_debit_note == 1:
+                invoice_type = "Debit Note"
+
+            elif inv.grand_total < 0 or inv.outstanding_amount < 0:
+                invoice_type = "Debit Note"
+
+            else:
+                invoice_type = "Normal"
+
+
+            formatted_invoices.append({
+                "invoiceNumber": inv.name,
+                "customerName": inv.customer,
+                "receiptNumber": inv.custom_rcptno,
+                "currency": inv.custom_zra_currency,
+                "exchangeRate": inv.custom_exchange_rate,
+                "Date": str(inv.posting_date),
+                "Total": float(inv.grand_total),
+                "totalTax": inv.custom_total_tax_amount,
+                "status": inv.status,
+                "invoiceType": invoice_type
+            })
 
         return send_response(
             status="success",
             message="All Sales Invoices fetched successfully",
             status_code=200,
             http_status=200,
-            data=invoices
+            data=formatted_invoices
         )
 
     except Exception as e:
@@ -458,42 +489,71 @@ def get_sales_invoice():
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_sales_invoice_by_id():
     invoice_name = (frappe.form_dict.get("id") or "").strip()
+
     if not invoice_name:
-        send_response(
+        return send_response(
             status="fail",
             message="Invoice id is required",
             status_code=400,
             http_status=400
         )
+    if not frappe.db.exists("Sales Invoice", invoice_name):
+        return send_response(
+            status="fail",
+            message=f"Invoice {invoice_name} not found",
+            status_code=404,
+            http_status=404
+        )
 
     try:
-        if invoice_name:
-            doc = frappe.get_doc("Sales Invoice", invoice_name)
-            data = {
-                "invoice_name": doc.name,
-                "customer": doc.customer,
-                "posting_date": doc.posting_date,
-                "total": doc.grand_total,
-                "status": doc.status,
-                "items": [
-                    {
-                        "item_code": i.item_code,
-                        "item_name": i.item_name,
-                        "qty": i.qty,
-                        "rate": i.rate,
-                        "amount": i.amount
-                    }
-                    for i in doc.items
-                ]
-            }
+        doc = frappe.get_doc("Sales Invoice", invoice_name)
 
-            return send_response(
-                status="success",
-                message=f"Invoice {invoice_name} fetched successfully",
-                status_code=200,
-                http_status=200,
-                data=data
-            )
+        if doc.is_return == 1:
+            invoice_type = "Credit Note"
+        elif getattr(doc, "is_debit_note", 0) == 1:
+            invoice_type = "Debit Note"
+        elif doc.grand_total < 0 or doc.outstanding_amount < 0:
+            invoice_type = "Debit Note"
+        else:
+            invoice_type = "Normal"
+        items_data = []
+        for i in doc.items:
+            
+            itemInfo = get_item_details(i.item_code)
+            itemClassficationCode = itemInfo.get("itemClassCd")
+            items_data.append({
+                "itemCode": i.item_code,
+                "itemClassCode": itemClassficationCode,
+                "itemName": i.item_name,
+                "qty": i.qty,
+                "price": i.rate,
+                "amount": i.amount,
+                "vatCode": i.custom_vatcd,
+                "iplCode": i.custom_iplcd,
+                "tlCode": i.custom_tlcd,
+                "vatTaxableAmount": i.custom_vattaxblamt
+            })
+            
+        data = {
+            "invoiceNumber": doc.name,
+            "receiptNumber": doc.custom_rcptno,
+            "customerName": doc.customer,
+            "postingDate": str(doc.posting_date),
+            "Total": doc.grand_total,
+            "totalTax": doc.custom_total_tax_amount,
+            "status": doc.status,
+            "invoiceType": invoice_type,
+            "Receipt": doc.custom_receipt,
+            "items": items_data
+        }
+
+        return send_response(
+            status="success",
+            message=f"Invoice {invoice_name} fetched successfully",
+            status_code=200,
+            http_status=200,
+            data=data
+        )
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Get Sales Invoice API Error")
@@ -503,6 +563,7 @@ def get_sales_invoice_by_id():
             status_code=500,
             http_status=500
         )
+
 
 
 
