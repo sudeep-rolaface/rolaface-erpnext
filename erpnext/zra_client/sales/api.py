@@ -1,12 +1,14 @@
-import random
+from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.sales.credit_note import CreditNoteSale
 from erpnext.zra_client.sales.debit_note import DebitNoteSale
 from erpnext.zra_client.generic_api import send_response
 from frappe import _
+import random
 import frappe
 import json
+
 
 CREDIT_NOTE_SALE_INSTANCE = CreditNoteSale()
 DEBIT_NOTE_INSTANCE = DebitNoteSale()
@@ -331,9 +333,9 @@ def create_sales_invoice():
             "TlCd": tlCd
         })
 
-
+    new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
-        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
+        "name": new_invoice_name,
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "destnCountryCd": destnCountryCd,
@@ -384,6 +386,7 @@ def create_sales_invoice():
     try:
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
+            "name": new_invoice_name,
             "custom_exchange_rate": exchange_rate,
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
@@ -631,9 +634,10 @@ def create_credit_note_from_invoice():
     if not credit_items:
         return send_response(status="fail", message="No valid items to create Credit Note", status_code=400, http_status=400)
 
+    new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
         "originalInvoice": sales_invoice_no,
-        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
+        "name": new_invoice_name,
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "isExport": False,
@@ -783,8 +787,9 @@ def create_debit_note_from_invoice():
             message="No valid items to create Debit Note",
             status_code=400
         )
+    new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
-        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
+        "name": new_invoice_name,
         "originInvoice": sales_invoice,
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
