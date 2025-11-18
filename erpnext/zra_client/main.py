@@ -304,11 +304,30 @@ class ZRAClient:
                 http_status=400
             )
             return
+        
+    def canItemStockBeUpdate(self, item_code):
+        if not item_code:
+            return False
 
+        items = frappe.get_all(
+            "Item",
+            filters={"item_code": item_code},
+            fields=["custom_itemtycd"],
+            limit_page_length=1
+        )
 
+        print("Checking item :", items)
+        if not items:
+            return False
 
+        item_type = items[0].get("custom_itemtycd")
 
+        try:
+            item_type = int(item_type)  
+        except (ValueError, TypeError):
+            return False
 
+        return item_type in (1, 2)
 
 
 

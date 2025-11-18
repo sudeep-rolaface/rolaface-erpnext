@@ -256,6 +256,7 @@ def create_sales_invoice():
         checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
         if checkStockStatusCode != 200:
             return checkStockResponse
+    
 
         if vatCd == "C2":
             if lpoNumber is None:
@@ -307,6 +308,7 @@ def create_sales_invoice():
         invoice_items.append({
             "item_code": item_code,
             "item_name": item_details.get("itemName"),
+            "warehouse": "Lusaka 1 - IIS",
             "qty": qty,
             "rate": rate,
             "custom_vatcd": vatCd,
@@ -314,8 +316,7 @@ def create_sales_invoice():
             "custom_tlcd":tlCd
         
         })
-
-
+    
         sale_payload_items.append({
             "itemCode": item_code,
             "itemName": item_details.get("itemName"),
@@ -329,6 +330,7 @@ def create_sales_invoice():
             "IplCd": iplCd,
             "TlCd": tlCd
         })
+
 
     sale_payload = {
         "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
@@ -344,6 +346,9 @@ def create_sales_invoice():
         "created_by": createBy,
         "items": sale_payload_items
     }
+
+    print("Sales payload data: ",sale_payload)
+    
 
     result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
     additional_info = result.get("additionalInfo") or []
@@ -374,6 +379,7 @@ def create_sales_invoice():
             status_code=400,
             http_status=400
         )
+    canUpdateInvoice = all(ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) for item in items)
 
     try:
         doc = frappe.get_doc({
@@ -382,6 +388,7 @@ def create_sales_invoice():
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
             "customer": customer_data.get("name"),
+            "update_stock": 1 if canUpdateInvoice else 0,  
             "items": invoice_items
         })
         doc.insert(ignore_permissions=True)
@@ -650,7 +657,11 @@ def create_credit_note_from_invoice():
         if item_code in zra_lookup:
             inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
             
-            
+    canUpdateInvoice = all(
+        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) 
+        for item in credit_items
+    )
+
     credit_note = frappe.get_doc({
         "doctype": "Sales Invoice",
         "customer": sales_invoice.customer,
@@ -662,6 +673,7 @@ def create_credit_note_from_invoice():
         "return_against": sales_invoice.name,
         "items": credit_items,
         "posting_date": frappe.utils.today(),
+        "update_stock": 1 if canUpdateInvoice else 0,
         "title": f"Credit for {sales_invoice_no}"
     })
     credit_note.insert(ignore_permissions=True)
@@ -789,7 +801,11 @@ def create_debit_note_from_invoice():
             message=result.get("resultMsg", "Unknown error from ZRA"),
             status_code=400
         )
-        
+    
+    canUpdateInvoice = all(
+        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) 
+        for item in debit_items
+    )
     additional_info = result["additionalInfo"]
     currency = additional_info[0]
     exchange_rate = additional_info[1]
@@ -812,6 +828,7 @@ def create_debit_note_from_invoice():
             "return_against": sales_invoice.name,
             "items": debit_items,
             "posting_date": frappe.utils.today(),
+            "update_stock": 1 if canUpdateInvoice else 0,
             "title": f"Debit for {sales_invoice_no}"
         })
         debit_note_doc.insert(ignore_permissions=True)
