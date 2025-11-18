@@ -1,5 +1,6 @@
 import random
 from erpnext.zra_client.generic_api import send_response
+from erpnext.zra_client.receipt.build import BuildPdf
 from erpnext.zra_client.main import ZRAClient
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
@@ -22,8 +23,6 @@ class NormaSale(ZRAClient):
             self.tax_amt_totals[key] = 0.0
         print("[INFO] Tax totals and amounts have been reset to zero.")
 
-    def getNormalSaleAdditionInfo(self, additionInfoToBeSaved):
-        return additionInfoToBeSaved
 
     def create_normal_sale_helper(self, payload):
         return self.create_sale_zra_client(payload)
@@ -177,6 +176,7 @@ class NormaSale(ZRAClient):
         exchangeRt = base_data.get("exchangeRt")
         currencyCd = base_data.get("currencyCd")
         destnCountryCd = base_data.get("destnCountryCd")
+        invoiceName = base_data.get("name")
 
         logged_in_user = "Admin"
         username = "Admin"
@@ -277,6 +277,7 @@ class NormaSale(ZRAClient):
             itemName = item.get("itemName")
             qty = item.get("qty")
             actual_stock = item.get('actual_qty', 0)
+            price = item.get("price")
             remaining_stock = 0
             items.append({
                 "itemCd": itemCd,
@@ -288,7 +289,7 @@ class NormaSale(ZRAClient):
                 "ExciseCd": getExciseCd,
                 "VatCd": getVatCd,
                 "itemNm": itemName,
-                "prc": 5000,
+                "prc": price,
                 "qty": qty
                 
             })
@@ -322,7 +323,6 @@ class NormaSale(ZRAClient):
         
         if response.get("resultCd") == "000":
             rcpt_no = response.get("data", {}).get("rcptNo")
-            print("Updating rctpNo")
             self.update_sales_rcptno_by_inv_no(name, rcpt_no, 1)
 
             additionInfoToBeSaved = []
@@ -350,14 +350,14 @@ class NormaSale(ZRAClient):
         
             customer_info = []
             customer_info.append((
-                payload["custTpin"],
+                "2484778086",
                 payload["custNm"]
             ))
 
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             invoice = []
             invoice.append((
-                payload["cisInvcNo"],
+                base_data["name"],
                 self.todays_date(),
                 "TAX INVOICE",
                 get_qrcode_url
@@ -373,7 +373,10 @@ class NormaSale(ZRAClient):
             print(customer_info, company_info, invoice, pdf_items)
             created_by = sell_data.get("owner")
             ocrnDt = datetime.now().strftime("%Y%m%d")
-            print(self.to_use_data)
+            pdf_items = payload["itemList"]
+            print(customer_info, company_info, invoice, pdf_items)
+            pdf_generator = BuildPdf()
+            pdf_generator.build_invoice(company_info, customer_info, invoice, pdf_items, sdc_data, payload)
             if is_stock_updated == 1:
                 print("Updating stock items...")
 
@@ -439,14 +442,22 @@ class NormaSale(ZRAClient):
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
                 response_status = response.get("resultCd")
-                response_message = response.get("resultMsg")
-                print("Response returned 1")
-                return {
-                    "resultCd": response_status,
-                    "resultMsg": response_message,
-                    "additionalInfo": additionInfoToBeSaved,
-                    "additionInfoToBeSavedItem": additionInfoToBeSavedItem 
-                }
+                if  response_status == "000":
+                    response_message = response.get("resultMsg")
+                    print("Response returned 1")
+                    return {
+                        "resultCd": response_status,
+                        "resultMsg": response_message,
+                        "additionalInfo": additionInfoToBeSaved,
+                        "additionInfoToBeSavedItem": additionInfoToBeSavedItem 
+                    }
+                    
+                else:
+                    return {
+                        "resultCd": response_status,
+                        "resultMsg": response_message,
+                    }
+                    
 
             else:
                 send_response(

@@ -33,6 +33,7 @@ ORIGIN_SCD_ID = "SDC0010002709"
 COMPANY_NAME = "IZYANE INOVSOLUTIONS LIMITED"
 COMPANY_PHONE_NO = "+260 777 123456"
 COMPANY_EMAIL = "info@izyane.com"
+SET_USER = "Administrator"
 
 class ZRAClient:
     def __init__(self):
@@ -55,9 +56,17 @@ class ZRAClient:
         self.company_name = COMPANY_NAME
         self.company_phone_number = COMPANY_PHONE_NO
         self.company_email = COMPANY_EMAIL
+        self.admin_user = SET_USER
+        
 
     def get_tpin(self):
         return self.tpin
+    
+    def get_current_user(self):
+        return self.admin_user
+    
+    def get_current_site(self):
+        return self.site_url
 
     def get_origin_sdc_id(self):
         return self.org_sdc_id
@@ -121,14 +130,12 @@ class ZRAClient:
         year = datetime.now().year
         prefix = "ACC-SINV"
         
-        # Get all invoice names for the current year
         invoices = frappe.db.get_all(
             "Sales Invoice",
             filters={"name": ["like", f"{prefix}-{year}-%"]},
             fields=["name"]
         )
-        
-        # Extract numeric part
+    
         numbers = []
         for inv in invoices:
             try:
@@ -136,8 +143,7 @@ class ZRAClient:
                 numbers.append(number)
             except ValueError:
                 continue
-        
-        # Determine next number
+    
         next_number = max(numbers) + 1 if numbers else 1
         next_number_str = str(next_number).zfill(5)
         
@@ -215,10 +221,6 @@ class ZRAClient:
                 http_status=404
             )
     def get_sales_rcptno_by_inv_no_c(self, invoice_no):
-        """
-        Fetch the custom receipt number for a given Sales Invoice using raw SQL.
-        Returns None if not found.
-        """
         if not invoice_no:
             return None
 
@@ -239,10 +241,93 @@ class ZRAClient:
 
         print(f"[WARN] No receipt number found for invoice '{invoice_no}'")
         return None
- 
+    
 
+    def check_stock(self, item_code, required_qty):
+        warehouse = "Lusaka 1 - IIS"
+        try:
+            required_qty = float(required_qty)
+        except (TypeError, ValueError):
+            send_response(
+                status="fail",
+                message="Required quantity must be a valid number",
+                status_code=400,
+                http_status=400
+            )
+            return
 
+        if not item_code:
+            send_response(
+                status="fail",
+                message="Item code is required",
+                status_code=400,
+                http_status=400
+            )
+            return
 
+        if required_qty <= 0:
+            send_response(
+                status="fail",
+                message="Required quantity must be greater than 0",
+                status_code=400,
+                http_status=400
+            )
+            return
+
+        bin_doc = frappe.get_value(
+            "Bin",
+            {"item_code": item_code, "warehouse": warehouse},
+            ["actual_qty", "reserved_qty"],
+            as_dict=True
+        )
+
+        if not bin_doc:
+            send_response(
+                status="fail",
+                message=f"Item {item_code} not found in warehouse {warehouse}",
+                status_code=404,
+                http_status=404
+            )
+            return
+
+        available_qty = bin_doc["actual_qty"] - bin_doc["reserved_qty"]
+        print(f"Available stock for {item_code}: {available_qty}, Required: {required_qty}")
+
+        if available_qty >= required_qty:
+            return {"status": "success", "available_qty": available_qty}, 200
+        else:
+            needed_qty = required_qty - available_qty
+            send_response(
+                status="fail",
+                message =f"Not enough stock: {available_qty} available, {required_qty} required. You need {needed_qty} more.",
+                status_code=400,
+                http_status=400
+            )
+            return
+        
+    def canItemStockBeUpdate(self, item_code):
+        if not item_code:
+            return False
+
+        items = frappe.get_all(
+            "Item",
+            filters={"item_code": item_code},
+            fields=["custom_itemtycd"],
+            limit_page_length=1
+        )
+
+        print("Checking item :", items)
+        if not items:
+            return False
+
+        item_type = items[0].get("custom_itemtycd")
+
+        try:
+            item_type = int(item_type)  
+        except (ValueError, TypeError):
+            return False
+
+        return item_type in (1, 2)
 
 
 

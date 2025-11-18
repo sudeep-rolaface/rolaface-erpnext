@@ -261,6 +261,32 @@ class SalesInvoice(SellingController):
 				"overflow_type": "billing",
 			}
 		]
+	
+	@staticmethod
+	def get_next_invoice_name():
+		last_invoice = frappe.db.sql(
+			"""
+			SELECT name FROM `tabSales Invoice`
+			WHERE name LIKE 'INV-%%'
+			ORDER BY LENGTH(name) DESC, name DESC
+			LIMIT 1
+			""",
+			as_dict=True,
+		)
+
+		if last_invoice:
+			try:
+				last_number = int(last_invoice[0]["name"].split("-")[1])
+				return f"INV-{last_number + 1:04}"
+				
+			except (IndexError, ValueError):
+				return "INV-0001"
+		else:
+			return "INV-0001"
+
+	def autoname(self):
+		if not self.name:
+			self.name = SalesInvoice.get_next_invoice_name()
 
 	def set_indicator(self):
 		"""Set indicator for portal"""

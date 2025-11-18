@@ -1,12 +1,14 @@
-import random
+from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.sales.credit_note import CreditNoteSale
 from erpnext.zra_client.sales.debit_note import DebitNoteSale
 from erpnext.zra_client.generic_api import send_response
 from frappe import _
+import random
 import frappe
 import json
+
 
 CREDIT_NOTE_SALE_INSTANCE = CreditNoteSale()
 DEBIT_NOTE_INSTANCE = DebitNoteSale()
@@ -241,6 +243,22 @@ def create_sales_invoice():
         vatCd = item.get("vatCd")
         iplCd = item.get("iplCd")
         tlCd = item.get("tlCd")
+        
+        VAT_LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
+
+        if vatCd not in VAT_LIST:
+            send_response(
+                status="fail",
+                message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
+                status_code=400,
+                http_status=400
+            )
+            return
+        
+        checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+        if checkStockStatusCode != 200:
+            return checkStockResponse
+    
 
         if vatCd == "C2":
             if lpoNumber is None:
@@ -251,11 +269,11 @@ def create_sales_invoice():
                     http_status=400
                 )
                 return
-        if vatCd == "C":
+        if vatCd == "C1":
             if destnCountryCd is None:
                 send_response(
                     status="fail",
-                    message="Destination country is required for VatCd 'C' transactions. Please ensure the export flag (isExport) is set correctly.",
+                    message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions. ",
                     status_code=400,
                     http_status=400
                 )
@@ -292,6 +310,7 @@ def create_sales_invoice():
         invoice_items.append({
             "item_code": item_code,
             "item_name": item_details.get("itemName"),
+            "warehouse": "Lusaka 1 - IIS",
             "qty": qty,
             "rate": rate,
             "custom_vatcd": vatCd,
@@ -299,8 +318,7 @@ def create_sales_invoice():
             "custom_tlcd":tlCd
         
         })
-
-
+    
         sale_payload_items.append({
             "itemCode": item_code,
             "itemName": item_details.get("itemName"),
@@ -315,8 +333,9 @@ def create_sales_invoice():
             "TlCd": tlCd
         })
 
+    new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
-        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
+        "name": new_invoice_name,
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "destnCountryCd": destnCountryCd,
@@ -330,17 +349,28 @@ def create_sales_invoice():
         "items": sale_payload_items
     }
 
+    print("Sales payload data: ",sale_payload)
+    
+
     result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
-    additional_info = result["additionalInfo"]
-    currency = additional_info[0]
-    exchange_rate = additional_info[1]
-    total_tax = additional_info[2]
-    zra_items = result.get("additionInfoToBeSavedItem", [])
-    zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
-    for inv_item in invoice_items:
-        item_code = inv_item.get("item_code")
-        if item_code in zra_lookup:
-            inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+    additional_info = result.get("additionalInfo") or []
+    if additional_info and len(additional_info) >= 3:
+        currency = additional_info[0]
+        exchange_rate = additional_info[1]
+        total_tax = additional_info[2]
+    else:
+        currency = None
+        exchange_rate = None
+        total_tax = None
+
+    zra_items = result.get("additionInfoToBeSavedItem") or []
+    if zra_items:
+        zra_lookup = {item["itemCd"]: item["vatTaxblAmt"] for item in zra_items}
+        for inv_item in invoice_items:
+            item_code = inv_item.get("item_code")
+            if item_code in zra_lookup:
+                inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+
 
 
     print("results: ", result)
@@ -351,14 +381,17 @@ def create_sales_invoice():
             status_code=400,
             http_status=400
         )
+    canUpdateInvoice = all(ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) for item in items)
 
     try:
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
+            "name": new_invoice_name,
             "custom_exchange_rate": exchange_rate,
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
             "customer": customer_data.get("name"),
+            "update_stock": 1 if canUpdateInvoice else 0,  
             "items": invoice_items
         })
         doc.insert(ignore_permissions=True)
@@ -601,8 +634,10 @@ def create_credit_note_from_invoice():
     if not credit_items:
         return send_response(status="fail", message="No valid items to create Credit Note", status_code=400, http_status=400)
 
+    new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
-        "name": sales_invoice_no,
+        "originalInvoice": sales_invoice_no,
+        "name": new_invoice_name,
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "isExport": False,
@@ -626,7 +661,11 @@ def create_credit_note_from_invoice():
         if item_code in zra_lookup:
             inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
             
-            
+    canUpdateInvoice = all(
+        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) 
+        for item in credit_items
+    )
+
     credit_note = frappe.get_doc({
         "doctype": "Sales Invoice",
         "customer": sales_invoice.customer,
@@ -638,6 +677,7 @@ def create_credit_note_from_invoice():
         "return_against": sales_invoice.name,
         "items": credit_items,
         "posting_date": frappe.utils.today(),
+        "update_stock": 1 if canUpdateInvoice else 0,
         "title": f"Credit for {sales_invoice_no}"
     })
     credit_note.insert(ignore_permissions=True)
@@ -747,8 +787,9 @@ def create_debit_note_from_invoice():
             message="No valid items to create Debit Note",
             status_code=400
         )
+    new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
-        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
+        "name": new_invoice_name,
         "originInvoice": sales_invoice,
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
@@ -765,13 +806,16 @@ def create_debit_note_from_invoice():
             message=result.get("resultMsg", "Unknown error from ZRA"),
             status_code=400
         )
-        
+    
+    canUpdateInvoice = all(
+        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) 
+        for item in debit_items
+    )
     additional_info = result["additionalInfo"]
     currency = additional_info[0]
     exchange_rate = additional_info[1]
     total_tax = additional_info[2]
     zra_items = result.get("additionInfoToBeSavedItem", [])
-    print("Item Response: ", zra_items)
     zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
     for inv_item in debit_items:
         item_code = inv_item.get("item_code")
@@ -789,6 +833,7 @@ def create_debit_note_from_invoice():
             "return_against": sales_invoice.name,
             "items": debit_items,
             "posting_date": frappe.utils.today(),
+            "update_stock": 1 if canUpdateInvoice else 0,
             "title": f"Debit for {sales_invoice_no}"
         })
         debit_note_doc.insert(ignore_permissions=True)
