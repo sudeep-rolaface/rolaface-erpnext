@@ -33,6 +33,7 @@ ORIGIN_SCD_ID = "SDC0010002709"
 COMPANY_NAME = "IZYANE INOVSOLUTIONS LIMITED"
 COMPANY_PHONE_NO = "+260 777 123456"
 COMPANY_EMAIL = "info@izyane.com"
+SET_USER = "Administrator"
 
 class ZRAClient:
     def __init__(self):
@@ -55,9 +56,17 @@ class ZRAClient:
         self.company_name = COMPANY_NAME
         self.company_phone_number = COMPANY_PHONE_NO
         self.company_email = COMPANY_EMAIL
+        self.admin_user = SET_USER
+        
 
     def get_tpin(self):
         return self.tpin
+    
+    def get_current_user(self):
+        return self.admin_user
+    
+    def get_current_site(self):
+        return self.site_url
 
     def get_origin_sdc_id(self):
         return self.org_sdc_id

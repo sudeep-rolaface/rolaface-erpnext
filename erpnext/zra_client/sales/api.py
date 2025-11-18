@@ -625,7 +625,8 @@ def create_credit_note_from_invoice():
         return send_response(status="fail", message="No valid items to create Credit Note", status_code=400, http_status=400)
 
     sale_payload = {
-        "name": sales_invoice_no,
+        "originalInvoice": sales_invoice_no,
+        "name": ZRA_CLIENT_INSTANCE.get_next_sales_invoice_name(),
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "isExport": False,

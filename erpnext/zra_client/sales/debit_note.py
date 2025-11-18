@@ -1,8 +1,9 @@
-import random
 from erpnext.zra_client.generic_api import send_response
+from erpnext.zra_client.receipt.build import BuildPdf
 from erpnext.zra_client.main import ZRAClient
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
+import random
 import requests
 import uuid
 import frappe
@@ -208,7 +209,7 @@ class DebitNoteSale(ZRAClient):
             "bhfId": self.get_branch_code(),
             "orgSdcId": self.get_origin_sdc_id(),
             "orgInvcNo":  originRcptNo,
-            "cisInvcNo":  str(uuid.uuid4()),
+            "cisInvcNo": name,
             "custTpin": base_data["cust_tpin"],
             "custNm": base_data["cust_name"],
             "salesTyCd": "N",
@@ -274,6 +275,7 @@ class DebitNoteSale(ZRAClient):
 
     def send_sale_data(self, sell_data):
         customer_name = sell_data.get("customerName")
+        originInvoice = sell_data.get("originInvoice")
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
         customer_tpin = customer_doc.get("customer_tpin")
@@ -302,6 +304,7 @@ class DebitNoteSale(ZRAClient):
             qty = item.get("qty")
             actual_stock = item.get('actual_qty', 0)
             remaining_stock = 0
+            price = item.get("price")
             items.append({
                 "itemCd": itemCd,
                 "packageUnitCode": packageUnitCode,
@@ -312,7 +315,7 @@ class DebitNoteSale(ZRAClient):
                 "ExciseCd": getExciseCd,
                 "VatCd": getVatCd,
                 "itemNm": itemName,
-                "prc": 5000,
+                "prc": price,
                 "qty": qty
                 
             })
@@ -323,6 +326,7 @@ class DebitNoteSale(ZRAClient):
         base_data = {
             "cust_name": customer_name,
             "cust_tpin": customer_tpin,
+            "originInvoice": originInvoice,
             "name": name,
             "currencyCd": "ZMW",
             "exchangeRt": "1",
@@ -382,7 +386,7 @@ class DebitNoteSale(ZRAClient):
             invoice.append((
                 payload["cisInvcNo"],
                 self.todays_date(),
-                "TAX INVOICE",
+                "DEBIT NOTE",
                 get_qrcode_url
                 
             ))
@@ -394,6 +398,8 @@ class DebitNoteSale(ZRAClient):
 
             pdf_items = payload["itemList"]
             print(customer_info, company_info, invoice, pdf_items)
+            pdf_generator = BuildPdf()
+            pdf_generator.build_invoice(company_info, customer_info, invoice, pdf_items, sdc_data, payload)
             created_by = sell_data.get("owner")
             ocrnDt = datetime.now().strftime("%Y%m%d")
             print(self.to_use_data)

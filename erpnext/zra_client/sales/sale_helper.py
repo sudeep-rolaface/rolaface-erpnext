@@ -23,8 +23,6 @@ class NormaSale(ZRAClient):
             self.tax_amt_totals[key] = 0.0
         print("[INFO] Tax totals and amounts have been reset to zero.")
 
-    def getNormalSaleAdditionInfo(self, additionInfoToBeSaved):
-        return additionInfoToBeSaved
 
     def create_normal_sale_helper(self, payload):
         return self.create_sale_zra_client(payload)
@@ -178,6 +176,7 @@ class NormaSale(ZRAClient):
         exchangeRt = base_data.get("exchangeRt")
         currencyCd = base_data.get("currencyCd")
         destnCountryCd = base_data.get("destnCountryCd")
+        invoiceName = base_data.get("name")
 
         logged_in_user = "Admin"
         username = "Admin"
@@ -278,6 +277,7 @@ class NormaSale(ZRAClient):
             itemName = item.get("itemName")
             qty = item.get("qty")
             actual_stock = item.get('actual_qty', 0)
+            price = item.get("price")
             remaining_stock = 0
             items.append({
                 "itemCd": itemCd,
@@ -289,7 +289,7 @@ class NormaSale(ZRAClient):
                 "ExciseCd": getExciseCd,
                 "VatCd": getVatCd,
                 "itemNm": itemName,
-                "prc": 5000,
+                "prc": price,
                 "qty": qty
                 
             })
@@ -350,14 +350,14 @@ class NormaSale(ZRAClient):
         
             customer_info = []
             customer_info.append((
-                payload["custTpin"],
+                "2484778086",
                 payload["custNm"]
             ))
 
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             invoice = []
             invoice.append((
-                payload["cisInvcNo"],
+                base_data["name"],
                 self.todays_date(),
                 "TAX INVOICE",
                 get_qrcode_url
