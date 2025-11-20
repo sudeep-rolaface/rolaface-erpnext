@@ -230,6 +230,8 @@ def create_customer_api():
             "useYn": "Y",
             "regrNm": frappe.session.user,
             "regrId": frappe.session.user,
+            "modrNm": frappe.session.user,
+            "modrId": frappe.session.user,
         }
 
         result = ZRA_CLIENT_INSTANCE.create_customer(payload)

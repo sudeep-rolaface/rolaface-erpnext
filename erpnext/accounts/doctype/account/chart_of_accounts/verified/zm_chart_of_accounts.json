@@ -1,0 +1,10 @@
+{
+  "country": "Zambia",
+  "tree": [
+    {"account_name": "Assets", "root_type": "Asset", "is_group": 1},
+    {"account_name": "Liabilities", "root_type": "Liability", "is_group": 1},
+    {"account_name": "Equity", "root_type": "Equity", "is_group": 1},
+    {"account_name": "Income", "root_type": "Income", "is_group": 1},
+    {"account_name": "Expenses", "root_type": "Expense", "is_group": 1}
+  ]
+}
