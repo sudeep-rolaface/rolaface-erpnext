@@ -84,6 +84,8 @@ def create_item_api():
     custom_reorder_level = data.get("custom_reorder_level")
     custom_min_stock_level = data.get("custom_min_stock_level")
     custom_max_stock_level = data.get("custom_max_stock_level")
+    custom_sales_account = data.get("custom_sales_account")
+    custom_purchase_account = data.get("custom_purchase_account")
     
     if not custom_selling_price:
         send_response(
@@ -258,7 +260,9 @@ def create_item_api():
             "custom_tracking_method": custom_tracking_method,
             "custom_reorder_level": custom_reorder_level,
             "custom_min_stock_level": custom_min_stock_level,
-            "custom_max_stock_level": custom_max_stock_level,   
+            "custom_max_stock_level": custom_max_stock_level,
+            "custom_sales_account": custom_sales_account,
+            "custom_purchase_account": custom_purchase_account 
         })
         item.insert(ignore_permissions=True)
         frappe.db.commit()
@@ -386,6 +390,8 @@ def get_item_by_id_api():
                 "custom_reorder_level",
                 "custom_min_stock_level",
                 "custom_max_stock_level",
+                "custom_sales_account",
+                "custom_purchase_account"
             ],
             limit_page_length=1
         )
@@ -827,3 +833,6 @@ def delete_item_group():
             message=f"Failed to delete Item Group: {str(e)}",
             status_code=500
         )
+        
+        
+        
