@@ -176,14 +176,16 @@ def create_item_stock_api():
                 data=None,
                 http_status=400
             )
-
+        company = "Izyane"
         stock_entry = frappe.get_doc({
             "doctype": "Stock Entry",
+            "company": company,  
             "stock_entry_type": "Material Receipt",
             "custom_original_sar_no": data_result.get("orgSarNo", 0),
             "custom_registration_type_code": PAYLOAD.get("regTyCd"),
             "custom_sar_type_code": PAYLOAD.get("sarTyCd"),
             "custom_total_taxable_amount": round(totTaxblAmt, 4),
+            "difference_account": "Stock Adjustment - " + company, 
             "items": stock_items
         })
 
