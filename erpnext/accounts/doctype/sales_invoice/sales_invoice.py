@@ -288,6 +288,11 @@ class SalesInvoice(SellingController):
 		if not self.name:
 			self.name = SalesInvoice.get_next_invoice_name()
 
+	def autoname(self):
+		if not self.name:
+			# use the class/static method on this class to generate the name
+			self.name = self.get_next_quotation_name()
+
 	def set_indicator(self):
 		"""Set indicator for portal"""
 		if self.outstanding_amount < 0:
