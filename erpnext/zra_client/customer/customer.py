@@ -423,108 +423,108 @@ def get_customer_by_id(custom_id):
             http_status=500
         )
 
-
-@frappe.whitelist(allow_guest=False, methods="PUT")
+@frappe.whitelist(allow_guest=False, methods=["PUT"])
 def update_customer_by_id():
     custom_id = (frappe.form_dict.get("id") or "").strip()
     if not custom_id:
-        send_response(
-            status="fail",
-            message="Customer id is required (id)",
-            status_code=400,
-            http_status=400
-        )
-        return
+        return {
+            "status": "fail",
+            "message": "Customer id is required (id)",
+            "data": None,
+            "status_code": 400
+        }
 
+    customer = frappe.db.exists("Customer", {"custom_id": custom_id})
+    if not customer:
+        return {
+            "status": "fail",
+            "message": "Customer not found",
+            "data": None,
+            "status_code": 404
+        }
+
+    customer = frappe.get_doc("Customer", {"custom_id": custom_id})
     customer_name = (frappe.form_dict.get("customer_name") or "").strip()
     email_id = (frappe.form_dict.get("customer_email") or "").strip()
     mobile_no = (frappe.form_dict.get("mobile_no") or "").strip()
-    customerType = (frappe.form_dict.get("customer_type") or "").strip()
-    customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
-    customerAccountNo = (frappe.form_dict.get("customer_account_no") or "").strip()
-    customerOnboardingBalance = (frappe.form_dict.get("customer_onboarding_balance"))
-    customerContactPerson = (frappe.form_dict.get("custom_contact_person") or "").strip()
-    customerDisplayName = (frappe.form_dict.get("custom_display_name") or "").strip()
+    customer_type = (frappe.form_dict.get("customer_type") or "").strip()
+    customer_currency = (frappe.form_dict.get("customer_currency") or "").strip()
+    customer_account_no = (frappe.form_dict.get("customer_account_no") or "").strip()
+    customer_onboarding_balance = frappe.form_dict.get("customer_onboarding_balance")
+    customer_contact_person = (frappe.form_dict.get("custom_contact_person") or "").strip()
+    customer_display_name = (frappe.form_dict.get("custom_display_name") or "").strip()
 
-    billingAddress = {
-        "Line1": (frappe.form_dict.get("custom_billing_address_line_1") or "").strip(),
-        "Line2": (frappe.form_dict.get("custom_billing_address_line_2") or "").strip(),
-        "PostalCode": (frappe.form_dict.get("custom_billing_postal_code") or "").strip(),
-        "City": (frappe.form_dict.get("custom_billing_city") or "").strip(),
-        "Country": (frappe.form_dict.get("custom_billing_country") or "").strip(),
-        "State": (frappe.form_dict.get("custom_billing_state") or "").strip(),
-        "County": (frappe.form_dict.get("custom_billing_county") or "").strip()
+    billing_address = {
+        "line1": (frappe.form_dict.get("custom_billing_address_line_1") or "").strip(),
+        "line2": (frappe.form_dict.get("custom_billing_address_line_2") or "").strip(),
+        "postal_code": (frappe.form_dict.get("custom_billing_postal_code") or "").strip(),
+        "city": (frappe.form_dict.get("custom_billing_city") or "").strip(),
+        "country": (frappe.form_dict.get("custom_billing_country") or "").strip(),
+        "state": (frappe.form_dict.get("custom_billing_state") or "").strip(),
+        "county": (frappe.form_dict.get("custom_billing_county") or "").strip()
     }
 
-
-    shippingAddress = {
-        "Line1": (frappe.form_dict.get("custom_shipping_address_line1") or "").strip(),
-        "Line2": (frappe.form_dict.get("custom_shipping_address_line2") or "").strip(),
-        "PostalCode": (frappe.form_dict.get("custom_shipping_postal_code") or "").strip(),
-        "City": (frappe.form_dict.get("custom_shipping_city") or "").strip(),
-        "Country": (frappe.form_dict.get("custom_shipping_country") or "").strip(),
-        "State": (frappe.form_dict.get("custom_shipping_state") or "").strip()
+    shipping_address = {
+        "line1": (frappe.form_dict.get("custom_shipping_address_line1") or "").strip(),
+        "line2": (frappe.form_dict.get("custom_shipping_address_line2") or "").strip(),
+        "postal_code": (frappe.form_dict.get("custom_shipping_postal_code") or "").strip(),
+        "city": (frappe.form_dict.get("custom_shipping_city") or "").strip(),
+        "country": (frappe.form_dict.get("custom_shipping_country") or "").strip(),
+        "state": (frappe.form_dict.get("custom_shipping_state") or "").strip()
     }
 
-    try:
-        customer = frappe.get_doc("Customer", {"custom_id": custom_id})
-        if not customer:
-            send_response(status="fail", message="Customer not found", status_code=400, http_status=400)
-            return
+    field_mapping = {
+        "customer_name": customer_name,
+        "mobile_no": mobile_no,
+        "email_id": email_id,
+        "customer_type": customer_type,
+        "default_currency": customer_currency,
+        "custom_account_number": customer_account_no,
+        "custom_onboard_balance": customer_onboarding_balance,
+        "custom_billing_adress_line_1": billing_address["line1"],
+        "custom_billing_adress_line_2": billing_address["line2"],
+        "custom_billing_adress_posta_code": billing_address["postal_code"],
+        "custom_billing_adress_city": billing_address["city"],
+        "custom_billing_adress_country": billing_address["country"],
+        "custom_billing_adress_state": billing_address["state"],
+        "custom_billing_adress_county": billing_address["county"],
+        "custom_shipping_address_line_1_": shipping_address["line1"],
+        "custom_shipping_address_line_2_": shipping_address["line2"],
+        "custom_shipping_address_posta_code_": shipping_address["postal_code"],
+        "custom_shipping_address_city": shipping_address["city"],
+        "custom_shipping_address_state": shipping_address["state"],
+        "custom_shipping_address_country": shipping_address["country"],
+        "custom_contact_person": customer_contact_person,
+        "custom_display_name": customer_display_name
+    }
 
-        updated_fields = {}
-        field_mapping = {
-            "customer_name": customer_name,
-            "mobile_no": mobile_no,
-            "email_id": email_id,
-            "customer_type": customerType,
-            "default_currency": customerCurrency,
-            "custom_account_number": customerAccountNo,
-            "custom_onboard_balance": customerOnboardingBalance,
-            "custom_billing_adress_line_1": billingAddress["Line1"],
-            "custom_billing_adress_line_2": billingAddress["Line2"],
-            "custom_billing_adress_posta_code": billingAddress["PostalCode"],
-            "custom_billing_adress_city": billingAddress["City"],
-            "custom_billing_adress_country": billingAddress["Country"],
-            "custom_billing_adress_state": billingAddress["State"],
-            "custom_billing_adress_county": billingAddress["County"],
-            "custom_shipping_address_line_1_": shippingAddress["Line1"],
-            "custom_shipping_address_line_2_": shippingAddress["Line2"],
-            "custom_shipping_address_posta_code_": shippingAddress["PostalCode"],
-            "custom_shipping_address_city": shippingAddress["City"],
-            "custom_shipping_address_state": shippingAddress["State"],
-            "custom_shipping_address_country": shippingAddress["Country"],
-            "custom_contact_person": customerContactPerson,
-            "custom_display_name": customerDisplayName,
+    updated_fields = {}
+    for key, value in field_mapping.items():
+        if value not in (None, ""):
+            setattr(customer, key, value)
+            updated_fields[key] = value
 
+    if not updated_fields:
+        return {
+            "status": "fail",
+            "message": "No valid fields provided to update.",
+            "data": None,
+            "status_code": 400
         }
 
-        for key, value in field_mapping.items():
-            if value: 
-                setattr(customer, key, value)
-                updated_fields[key] = value
+    try:
+        customer.ignore_mandatory = True
+        customer.flags.ignore_links = True
 
-        if not updated_fields:
-            send_response(
-                status="fail",
-                message="No valid fields provided to update.",
-                status_code=400,
-                http_status=400
-            )
-            return
-
-        customer.save()
+        customer.save(ignore_permissions=True)
         frappe.db.commit()
 
-        send_response(
-            status="success",
-            message="Customer updated successfully",
-            status_code=200,
-            http_status=200
-        )
-
-    except frappe.DoesNotExistError:
-        send_response(status="fail", message="Customer not found", status_code=400, http_status=400)
+        return {
+            "status": "success",
+            "message": "Customer updated successfully",
+            "data": updated_fields,
+            "status_code": 200
+        }
 
     except Exception as e:
         return {
@@ -533,6 +533,7 @@ def update_customer_by_id():
             "data": None,
             "status_code": 500
         }
+
 
 
 @frappe.whitelist(allow_guest=False)

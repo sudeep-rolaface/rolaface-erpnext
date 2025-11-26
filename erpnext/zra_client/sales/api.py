@@ -15,6 +15,83 @@ DEBIT_NOTE_INSTANCE = DebitNoteSale()
 NORMAL_SALE_INSTANCE = NormaSale()
 ZRA_CLIENT_INSTANCE = ZRAClient()
 
+def ensure_account(account_name, account_type="Expense", company="Izyane"):
+    """Create account if it doesn't exist"""
+    if not frappe.db.exists("Account", {"account_name": account_name, "company": company}):
+        acct = frappe.get_doc({
+            "doctype": "Account",
+            "account_name": account_name,
+            "company": company,
+            "account_type": account_type,
+            "root_type": "Expense" if account_type=="Expense" else "Income",
+            "is_group": 0
+        })
+        acct.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+def ensure_company_accounts(company_name):
+    try:
+        # Step 1: Get Expense root group
+        expense_root = frappe.get_all("Account", filters={
+            "root_type": "Expense",
+            "company": company_name,
+            "is_group": 1
+        }, limit=1)
+
+        if not expense_root:
+            frappe.throw(f"Expense root account not found for company {company_name}")
+
+        expense_root_name = expense_root[0].name
+
+        # Step 2: Create Round Off group if not exists
+        round_off_account_name = "Round Off - Izyane - I"
+        if not frappe.db.exists("Account", {"account_name": round_off_account_name, "company": company_name}):
+            round_off_group = frappe.get_doc({
+                "doctype": "Account",
+                "account_name": round_off_account_name,
+                "company": company_name,
+                "parent_account": expense_root_name,
+                "account_type": "Round Off",  # Must be Round Off type
+                "root_type": "Expense",
+                "is_group": 1
+            })
+            round_off_group.insert(ignore_permissions=True)
+            frappe.db.commit()
+        else:
+            round_off_group = frappe.get_doc("Account", round_off_account_name)
+
+        # Step 3: Create Stock Difference ledger under Round Off
+        stock_diff_name = "Stock Difference - Izyane - I"
+        if not frappe.db.exists("Account", {"account_name": stock_diff_name, "company": company_name}):
+            stock_diff = frappe.get_doc({
+                "doctype": "Account",
+                "account_name": stock_diff_name,
+                "company": company_name,
+                "parent_account": round_off_account_name,
+                "account_type": "Expense Account",
+                "root_type": "Expense",
+                "is_group": 0
+            })
+            stock_diff.insert(ignore_permissions=True)
+            frappe.db.commit()
+
+        # Step 4: Assign accounts to company
+        company = frappe.get_doc("Company", company_name)
+        updated = False
+        if not company.round_off_account:
+            company.round_off_account = round_off_account_name
+            updated = True
+        if not company.default_expense_account:
+            company.default_expense_account = stock_diff_name
+            updated = True
+        if updated:
+            company.save(ignore_permissions=True)
+            frappe.db.commit()
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Ensure Company Accounts Error")
+
+
 
 def get_customer_details(customer_id):
     if not customer_id:
@@ -162,6 +239,7 @@ def get_sales_item_codes(sales_invoice_no=None, item_code=None):
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
+    # ensure_company_accounts("Izyane")
     customer_id = frappe.form_dict.get("customer_id")
     isExport = frappe.form_dict.get("isExport")
     isRvatSale = frappe.form_dict.get("isRvatAgent")
@@ -304,12 +382,13 @@ def create_sales_invoice():
         invoice_items.append({
             "item_code": item_code,
             "item_name": item_details.get("itemName"),
-            "warehouse": "Lusaka 1 - IIS",
+            "warehouse": "Finished Goods - Izyane",
             "qty": qty,
             "rate": rate,
             "custom_vatcd": vatCd,
             "custom_iplcd": iplCd,
-            "custom_tlcd":tlCd
+            "custom_tlcd":tlCd,
+            "expense_account": "Stock Difference - Izyane - I",
         
         })
     
@@ -371,7 +450,6 @@ def create_sales_invoice():
             http_status=400
         )
     canUpdateInvoice = all(ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) for item in items)
-
     try:
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
@@ -380,7 +458,7 @@ def create_sales_invoice():
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
             "customer": customer_data.get("name"),
-            "update_stock": 1 if canUpdateInvoice else 0,  
+            "update_stock": 1 if canUpdateInvoice else 0,
             "items": invoice_items
         })
         doc.insert(ignore_permissions=True)
@@ -673,7 +751,9 @@ def create_credit_note_from_invoice():
             "rate": rate,
             "custom_vatcd": item_codes["vatCd"],
             "custom_iplcd": item_codes["iplCd"],
-            "custom_tlcd": item_codes["tlCd"]
+            "custom_tlcd": item_codes["tlCd"],
+            "warehouse": "Finished Goods - Izyane",
+            "expense_account": "Stock Difference - Izyane - I",
         })
 
         item_details = get_item_details(item.item_code)
@@ -826,7 +906,9 @@ def create_debit_note_from_invoice():
             "tlCd": tlCd,
             "custom_vatcd": vatCd,
             "custom_iplcd": iplCd,
-            "custom_tlcd": tlCd
+            "custom_tlcd": tlCd,
+            "warehouse": "Finished Goods - Izyane",
+            "expense_account": "Stock Difference - Izyane - I",
         })
         sale_payload_items.append({
             "itemCode": inv_item.item_code,

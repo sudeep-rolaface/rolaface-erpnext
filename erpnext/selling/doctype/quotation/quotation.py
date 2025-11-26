@@ -119,7 +119,31 @@ class Quotation(SellingController):
 		utm_source: DF.Link | None
 		valid_till: DF.Date | None
 	# end: auto-generated types
+ 
+	@staticmethod
+	def get_next_quotation_name():
+		last_quotation = frappe.db.sql(
+			"""
+			SELECT name FROM `tabQuotation`
+			WHERE name LIKE 'QUO-%%'
+			ORDER BY LENGTH(name) DESC, name DESC
+			LIMIT 1
+			""",
+			as_dict=True,
+		)
 
+		if last_quotation:
+			try:
+				last_number = int(last_quotation[0]["name"].split("-")[1])
+				return f"QUO-{last_number + 1:04}"
+			except (IndexError, ValueError):
+				return "QUO-0001"
+		else:
+			return "QUO-0001"
+
+	def autoname(self):
+		if not self.name:
+			self.name = Quotation.get_next_quotation_name()
 	def set_indicator(self):
 		if self.docstatus == 1:
 			self.indicator_color = "blue"

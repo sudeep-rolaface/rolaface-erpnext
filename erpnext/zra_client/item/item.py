@@ -48,12 +48,12 @@ def create_item_api():
     item_name = (frappe.form_dict.get("item_name") or "").strip()
     item_group = (frappe.form_dict.get("item_group") or "").strip()
     unitOfMeasureCd = (frappe.form_dict.get("unitOfMeasureCd") or "").strip()
-    custom_itemclscd = (frappe.form_dict.get("itemClassCd") or "").strip()
-    custom_itemtycd = (frappe.form_dict.get("itemtycd") or "").strip()
-    custom_orgnnatcd = (frappe.form_dict.get("itemOriginCountryCd") or "").strip()
-    custom_pkgunitcd = (frappe.form_dict.get("itemPackageUnitCd") or "").strip()
-    custom_svcchargeyn = (frappe.form_dict.get("svcChargeYn") or "").strip()
-    custom_isrcaplcbyn = (frappe.form_dict.get("isrcAplcbYn") or "").strip()
+    custom_itemclscd = (frappe.form_dict.get("custom_itemclscd") or "").strip()
+    custom_itemtycd = (frappe.form_dict.get("custom_itemtycd") or "").strip()
+    custom_orgnnatcd = (frappe.form_dict.get("custom_orgnnatcd") or "").strip()
+    custom_pkgunitcd = (frappe.form_dict.get("custom_pkgunitcd") or "").strip()
+    custom_svcchargeyn = (frappe.form_dict.get("custom_svcchargeyn") or "").strip()
+    custom_isrcaplcbyn = (frappe.form_dict.get("custom_isrcaplcbyn") or "").strip()
     custom_selling_price = data.get("custom_selling_price")
     custom_purchase_amount = data.get("custom_purchase_amount")
     custom_buying_price = data.get("custom_buying_price")
@@ -152,12 +152,12 @@ def create_item_api():
         "item_name": item_name,
         "item_group": item_group,
         "unitOfMeasureCd": unitOfMeasureCd,
-        "itemClassCd": custom_itemclscd,
-        "itemtycd": custom_itemtycd,
-        "itemOriginCountryCd": custom_orgnnatcd,
-        "itemPackageUnitCd": custom_pkgunitcd,
-        "svcChargeYn": custom_svcchargeyn,
-        "isrcAplcbYn": custom_isrcaplcbyn,
+        "custom_itemclscd": custom_itemclscd,
+        "custom_itemtycd": custom_itemtycd,
+        "custom_orgnnatcd": custom_orgnnatcd,
+        "custom_pkgunitcd,": custom_pkgunitcd,
+        "custom_svcchargeyn": custom_svcchargeyn,
+        "custom_isrcaplcbyn": custom_isrcaplcbyn,
         "price": custom_selling_price,
     }
 
@@ -508,13 +508,6 @@ def update_item_api():
         bool(data.get("custom_export_code")),
         bool(data.get("custom_local_purchase_order_code"))
     ]
-    if codes.count(True) != 1:
-        return send_response(
-            status="fail",
-            message="Exactly one of custom_non_export_code, custom_export_code, or custom_local_purchase_order_code must be provided.",
-            status_code=400,
-            http_status=400
-        )
 
     VALID_NON_EXPORT_CODES = ["A", "B", "C3", "D", "E"]
     VALID_LOCAL_PURCHASE_ORDER_CODES = ["C1"]
@@ -593,6 +586,12 @@ def update_item_api():
             status_code=400,
             http_status=400
         )
+        
+    custom_non_export_code = updated_fields.get("custom_non_export_code", item.custom_non_export_code)
+    custom_local_purchase_order_code = updated_fields.get("custom_local_purchase_order_code", item.custom_local_purchase_order_code)
+    custom_export_code = updated_fields.get("custom_export_code", item.custom_export_code)
+    
+    VAT_CODE = custom_non_export_code or custom_local_purchase_order_code or custom_export_code
 
     PAYLOAD = {
         "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
@@ -605,7 +604,7 @@ def update_item_api():
         "pkgUnitCd": item.custom_pkgunitcd,
         "qtyUnitCd": item.stock_uom,
         "dftPrc": float(item.standard_rate or 0),
-        "vatCatCd": getattr(item, "custom_vattycd", "A"),
+        "vatCatCd": VAT_CODE,
         "svcChargeYn": getattr(item, "custom_svcchargeyn", "N"),
         "sftyQty": 0,
         "isrcAplcbYn": getattr(item, "custom_isrcaplcbyn", "N"),
@@ -657,7 +656,7 @@ def get_all_item_groups_api():
     try:
         item_groups = frappe.get_all(
             "Item Group",
-            fields=["name", "item_group_name"],
+            fields=["name", "item_group_name", "custom_description", "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account"],
             order_by="item_group_name asc"
         )
 
@@ -681,9 +680,54 @@ def get_all_item_groups_api():
 
 @frappe.whitelist(allow_guest=False)
 def create_item_group_api():
+    data = frappe.form_dict
     item_group_name = (frappe.form_dict.get("item_group_name") or "").strip()
     parent_item_group = (frappe.form_dict.get("parent_item_group") or "All Item Groups").strip()
     is_group = frappe.form_dict.get("is_group")
+    custom_id = data.get("custom_id")
+    custom_description = data.get("custom_description")
+    custom_sales_account = data.get("custom_sales_account")
+    custom_selling_price = data.get("custom_selling_price")
+    custom_unit_of_measurement = data.get("custom_unit_of_measurement")
+    
+    
+    if not custom_id:
+        return send_response(
+            status="fail",
+            message="custom_id is required",
+            status_code=400,
+            http_status=400
+        )
+    
+    if not custom_description:
+        return send_response(
+            status="fail",
+            message="custom_description is required",
+            status_code=400,
+            http_status=400
+        )
+    if not custom_sales_account:
+        return send_response(
+            status="fail",
+            message="custom_sales_account is required",
+            status_code=400,
+            http_status=400
+        )
+    if not custom_selling_price:
+        return send_response(
+            status="fail",
+            message="custom_selling_price is required",
+            status_code=400,
+            http_status=400
+        )
+    if not custom_unit_of_measurement:
+        return send_response(
+            status="fail",
+            message="custom_unit_of_measurement is required",
+            status_code=400,
+            http_status=400
+        )
+    
 
     if not item_group_name:
         return send_response(
@@ -707,6 +751,11 @@ def create_item_group_api():
         item_group = frappe.get_doc({
             "doctype": "Item Group",
             "item_group_name": item_group_name,
+            "custom_id": custom_id,
+            "custom_description": custom_description,
+            "custom_sales_account": custom_sales_account,
+            "custom_selling_price": custom_selling_price,
+            "custom_unit_of_measurement": custom_unit_of_measurement,
             "parent_item_group": "All Item Groups",
             "is_group": is_group or 0
         })

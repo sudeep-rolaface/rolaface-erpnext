@@ -244,7 +244,7 @@ class ZRAClient:
     
 
     def check_stock(self, item_code, required_qty):
-        warehouse = "Lusaka 1 - IIS"
+        warehouse = "Finished Goods - Izyane"
         try:
             required_qty = float(required_qty)
         except (TypeError, ValueError):

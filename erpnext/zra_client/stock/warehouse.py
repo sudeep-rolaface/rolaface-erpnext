@@ -6,7 +6,7 @@ import frappe
 import json
 
 @frappe.whitelist(allow_guest=False)
-def create_warehouse_api(warehouse_name=None, warehouse_type=None, company="Izyane"):
+def create_warehouse_api(warehouse_name=None, warehouse_type=None, company="Default Company"):
     if not warehouse_name:
         return send_response(
             status="fail",
