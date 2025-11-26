@@ -656,7 +656,7 @@ def get_all_item_groups_api():
     try:
         item_groups = frappe.get_all(
             "Item Group",
-            fields=["name", "item_group_name"],
+            fields=["name", "item_group_name", "custom_description", "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account"],
             order_by="item_group_name asc"
         )
 
@@ -680,9 +680,54 @@ def get_all_item_groups_api():
 
 @frappe.whitelist(allow_guest=False)
 def create_item_group_api():
+    data = frappe.form_dict
     item_group_name = (frappe.form_dict.get("item_group_name") or "").strip()
     parent_item_group = (frappe.form_dict.get("parent_item_group") or "All Item Groups").strip()
     is_group = frappe.form_dict.get("is_group")
+    custom_id = data.get("custom_id")
+    custom_description = data.get("custom_description")
+    custom_sales_account = data.get("custom_sales_account")
+    custom_selling_price = data.get("custom_selling_price")
+    custom_unit_of_measurement = data.get("custom_unit_of_measurement")
+    
+    
+    if not custom_id:
+        return send_response(
+            status="fail",
+            message="custom_id is required",
+            status_code=400,
+            http_status=400
+        )
+    
+    if not custom_description:
+        return send_response(
+            status="fail",
+            message="custom_description is required",
+            status_code=400,
+            http_status=400
+        )
+    if not custom_sales_account:
+        return send_response(
+            status="fail",
+            message="custom_sales_account is required",
+            status_code=400,
+            http_status=400
+        )
+    if not custom_selling_price:
+        return send_response(
+            status="fail",
+            message="custom_selling_price is required",
+            status_code=400,
+            http_status=400
+        )
+    if not custom_unit_of_measurement:
+        return send_response(
+            status="fail",
+            message="custom_unit_of_measurement is required",
+            status_code=400,
+            http_status=400
+        )
+    
 
     if not item_group_name:
         return send_response(
@@ -706,6 +751,11 @@ def create_item_group_api():
         item_group = frappe.get_doc({
             "doctype": "Item Group",
             "item_group_name": item_group_name,
+            "custom_id": custom_id,
+            "custom_description": custom_description,
+            "custom_sales_account": custom_sales_account,
+            "custom_selling_price": custom_selling_price,
+            "custom_unit_of_measurement": custom_unit_of_measurement,
             "parent_item_group": "All Item Groups",
             "is_group": is_group or 0
         })
