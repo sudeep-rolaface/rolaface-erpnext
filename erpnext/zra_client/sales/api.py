@@ -239,7 +239,7 @@ def get_sales_item_codes(sales_invoice_no=None, item_code=None):
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
-    # ensure_company_accounts("Izyane")
+    data = frappe.form_dict
     customer_id = frappe.form_dict.get("customer_id")
     isExport = frappe.form_dict.get("isExport")
     isRvatSale = frappe.form_dict.get("isRvatAgent")
@@ -249,7 +249,85 @@ def create_sales_invoice():
     createBy = frappe.form_dict.get("created_by")
     destnCountryCd = frappe.form_dict.get("destnCountryCd")
     lpoNumber = frappe.form_dict.get("lpoNumber")
-        
+    custom_invoice_status = frappe.form_dict.get("custom_invoice_status")
+    custom_terms_and_conditions = frappe.form_dict.get("custom_terms_and_conditions")
+    custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
+    custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
+    custom_billing_address_postal_code = data.get("custom_billing_address_postal_code")
+    custom_billing_address_city = data.get("custom_billing_address_city")
+    custom_billing_address_state = data.get("custom_billing_address_state")
+    custom_billing_address_country = data.get("custom_billing_address_country")
+    custom_payment_terms = data.get("custom_payment_terms")
+    custom_payment_method = data.get("custom_payment_method")
+    custom_bank_name = data.get("custom_bank_name")
+    custom_account_number = data.get("custom_account_number")
+    custom_routing_number = data.get("custom_routing_number")
+    custom_swift = data.get("custom_swift")
+    custom_invoice_type = data.get("custom_invoice_type")
+    
+    required_fields = {
+    "custom_billing_address_line_1": "Billing Address Line 1 is required.",
+    "custom_billing_address_line_2": "Billing Address Line 2 is required.",
+    "custom_billing_address_postal_code": "Postal Code is required.",
+    "custom_billing_address_city": "City is required.",
+    "custom_billing_address_state": "State/Province is required.",
+    "custom_billing_address_country": "Country is required.",
+    "custom_payment_terms": "Payment terms are required.",
+    "custom_payment_method": "Payment method is required.",
+    "custom_bank_name": "Bank name is required.",
+    "custom_account_number": "Account number is required.",
+    "custom_routing_number": "Routing number is required.",
+    "custom_swift": "SWIFT code is required."
+    }
+    
+    
+    
+    for field, error_message in required_fields.items():
+        if not data.get(field):
+            return send_response(
+                status="fail",
+                message=error_message,
+                status_code=400,
+                http_status=400
+            )
+            
+    allowedInvoiceType = ["Non-Export", "Export", "LPO"]
+
+    if not custom_invoice_type:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_invoice_type",
+            status_code=400,
+            http_status=400
+        )
+
+    if custom_invoice_type not in allowedInvoiceType:
+        return send_response(
+            status="fail",
+            message=f"Invalid custom_invoice_type. Allowed values are: {', '.join(allowedInvoiceType)}",
+            status_code=400,
+            http_status=400
+        )
+
+    if not custom_invoice_status:
+        send_response(
+            status="fail",
+            message="Invoice status is required(custom_invoice_status)",
+            status_code=400,
+            http_status=400
+        )
+        return
+    allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
+
+    if custom_invoice_status not in allowedInvoiceStatus:
+        send_response(
+            status="fail",
+            message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
+            status_code=400,
+            http_status=400
+        )
+        return
+
     if not currencyCd:
         currencyCd = "ZMW"
         exchangeRt = "1"
@@ -318,6 +396,17 @@ def create_sales_invoice():
         vatCd = item.get("vatCd")
         iplCd = item.get("iplCd")
         tlCd = item.get("tlCd")
+        discount = float(item.get("discount", 0))
+        description = item.get("description")
+        validatedDiscount = discount if discount else 0
+        if not description:
+            send_response(
+                status="fail",
+                message="Item description is required",
+                status_code=400,
+                http_status=400
+            )
+            return
         
         VAT_LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
 
@@ -385,9 +474,11 @@ def create_sales_invoice():
             "warehouse": "Finished Goods - Izyane",
             "qty": qty,
             "rate": rate,
+            "discount_amount": validatedDiscount,
             "custom_vatcd": vatCd,
             "custom_iplcd": iplCd,
             "custom_tlcd":tlCd,
+            "description": description,
             "expense_account": "Stock Difference - Izyane - I",
         
         })
@@ -403,7 +494,9 @@ def create_sales_invoice():
             "VatCd": vatCd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "IplCd": iplCd,
-            "TlCd": tlCd
+            "TlCd": tlCd,
+            "dcAmt": validatedDiscount
+            
         })
 
     new_invoice_name = SalesInvoice.get_next_invoice_name()
@@ -454,9 +547,24 @@ def create_sales_invoice():
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
             "name": new_invoice_name,
+            "custom_invoice_type": custom_invoice_type,
             "custom_exchange_rate": exchange_rate,
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
+            "custom_invoice_status": custom_invoice_status,
+            "custom_terms_and_conditions": custom_terms_and_conditions,
+            "custom_billing_address_line_1": custom_billing_address_line_1,
+            "custom_billing_address_line_2": custom_billing_address_line_2,
+            "custom_billing_address_postal_code": custom_billing_address_postal_code,
+            "custom_billing_address_city": custom_billing_address_city,
+            "custom_billing_address_state": custom_billing_address_state,
+            "custom_billing_address_country": custom_billing_address_country,
+            "custom_payment_terms": custom_payment_terms,
+            "custom_payment_method": custom_payment_method,
+            "custom_bank_name": custom_bank_name,
+            "custom_account_number": custom_account_number,
+            "custom_routing_number": custom_routing_number,
+            "custom_swift": custom_swift,
             "customer": customer_data.get("name"),
             "update_stock": 1 if canUpdateInvoice else 0,
             "items": invoice_items
@@ -503,13 +611,14 @@ def get_sales_invoice():
             fields=[
                 "name",
                 "customer",
+                "custom_invoice_type",
                 "custom_rcptno",
                 "custom_zra_currency",
                 "custom_exchange_rate",
                 "posting_date",
                 "grand_total",
                 "custom_total_tax_amount",
-                "status",
+                "custom_invoice_status",
                 "is_return",
                 "is_debit_note",
                 "outstanding_amount",
@@ -542,8 +651,9 @@ def get_sales_invoice():
                 "Date": str(inv.posting_date),
                 "Total": float(inv.grand_total),
                 "totalTax": inv.custom_total_tax_amount,
-                "status": inv.status,
-                "invoiceType": invoice_type
+                "custom_invoice_status": inv.custom_invoice_status,
+                "invoiceTypeParent": invoice_type,
+                "custom_invoice_type": inv.custom_invoice_type
             })
 
         return send_response(
@@ -595,6 +705,7 @@ def get_sales_invoice_by_id():
         else:
             invoice_type = "Normal"
         items_data = []
+        total_item_discount = 0
         for i in doc.items:
             
             itemInfo = get_item_details(i.item_code)
@@ -605,23 +716,42 @@ def get_sales_invoice_by_id():
                 "itemName": i.item_name,
                 "qty": i.qty,
                 "price": i.rate,
+                "discount": total_item_discount,
                 "amount": i.amount,
                 "vatCode": i.custom_vatcd,
                 "iplCode": i.custom_iplcd,
                 "tlCode": i.custom_tlcd,
-                "vatTaxableAmount": i.custom_vattaxblamt
+                "vatTaxableAmount": i.custom_vattaxblamt,
+                "description": i.description
             })
+            
+            total_item_discount += i.discount_amount
             
         data = {
             "invoiceNumber": doc.name,
+            "custom_invoice_type": doc.custom_invoice_type,
             "receiptNumber": doc.custom_rcptno,
             "customerName": doc.customer,
             "postingDate": str(doc.posting_date),
             "Total": doc.grand_total,
             "totalTax": doc.custom_total_tax_amount,
-            "status": doc.status,
-            "invoiceType": invoice_type,
+            # "status": doc.status,
+            # "invoiceType": invoice_type,
             "Receipt": doc.custom_receipt,
+            "custom_invoice_status": doc.custom_invoice_status,
+            "custom_terms_and_conditions": doc.custom_terms_and_conditions,
+            "custom_billing_address_line_1": doc.custom_billing_address_line_1,
+            "custom_billing_address_line_2": doc.custom_billing_address_line_2,
+            "custom_billing_address_postal_code": doc.custom_billing_address_postal_code,
+            "custom_billing_address_city": doc.custom_billing_address_city,
+            "custom_billing_address_state": doc.custom_billing_address_state,
+            "custom_billing_address_country": doc.custom_billing_address_country,
+            "custom_payment_terms": doc.custom_payment_terms,
+            "custom_payment_method": doc.custom_payment_method,
+            "custom_bank_name": doc.custom_bank_name,
+            "custom_account_number": doc.custom_account_number,
+            "custom_routing_number": doc.custom_routing_number,
+            "custom_swift": doc.custom_swift,
             "items": items_data
         }
 
