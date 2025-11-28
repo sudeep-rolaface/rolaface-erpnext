@@ -194,6 +194,19 @@ def create_quotation():
     valid_till = data.get("valid_till")
     transaction_date = data.get("transaction_date")
     custom_industry_bases = data.get("custom_industry_bases")
+    custom_tc = data.get("custom_tc")
+    custom_swift = data.get("custom_swift")
+    custom_bank_name = data.get("custom_bank_name")
+    custom_payment_terms = data.get("custom_payment_terms")
+    custom_payment_method = data.get("custom_payment_method")
+    custom_account_number = data.get("custom_account_number")
+    custom_routing_number = data.get("custom_routing_number")
+    custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
+    custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
+    custom_billing_address_city = data.get("custom_billing_address_city")
+    custom_billing_address_postal_code = data.get("custom_billing_address_postal_code")
+
+
     items = data.get("items")
     
     next_name = Quotation.get_next_quotation_name()
@@ -280,6 +293,89 @@ def create_quotation():
         )
 
     company_name = company_check[0]["name"]
+
+    custom_tc = data.get("custom_tc")
+    if not custom_tc:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_tc",
+            status_code=400
+        )
+
+    custom_swift = data.get("custom_swift")
+    if not custom_swift:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_swift",
+            status_code=400
+        )
+
+    custom_bank_name = data.get("custom_bank_name")
+    if not custom_bank_name:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_bank_name",
+            status_code=400
+        )
+
+    custom_payment_terms = data.get("custom_payment_terms")
+    if not custom_payment_terms:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_payment_terms",
+            status_code=400
+        )
+
+    custom_payment_method = data.get("custom_payment_method")
+    if not custom_payment_method:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_payment_method",
+            status_code=400
+        )
+
+    custom_account_number = data.get("custom_account_number")
+    if not custom_account_number:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_account_number",
+            status_code=400
+        )
+
+    custom_routing_number = data.get("custom_routing_number")
+    if not custom_routing_number:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_routing_number",
+            status_code=400
+        )
+
+    custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
+    if not custom_billing_address_line_1:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_billing_address_line_1",
+            status_code=400
+        )
+
+    # Optional field
+    custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
+
+    custom_billing_address_city = data.get("custom_billing_address_city")
+    if not custom_billing_address_city:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_billing_address_city",
+            status_code=400
+        )
+
+    custom_billing_address_postal_code = data.get("custom_billing_address_postal_code")
+    if not custom_billing_address_postal_code:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_billing_address_postal_code",
+            status_code=400
+        )
 
 
     if not items:
@@ -380,6 +476,7 @@ def create_quotation():
             "company": company_name,
             "currency": currency,
             "valid_till": valid_till,
+            "custom_tc": custom_tc,
             "custom_industry_bases": custom_industry_bases,
             "transaction_date": transaction_date,
             "items": items
@@ -403,149 +500,7 @@ def create_quotation():
             status_code=500,
             http_status=500
         )
-
-
-@frappe.whitelist(allow_guest=False)
-def update_quotation_terms_and_conditions_by_id():
-    data = frappe.local.form_dict
-    quotation_id = data.get("quotation_id")
-    custom_tc = data.get("custom_tc")
-
-    if not quotation_id:
-        return send_response(
-            status="fail",
-            message=_("Quotation ID is required"),
-            status_code=400,
-            http_status=400
-        )
-
-    if custom_tc is None:
-        return send_response(
-            status="fail",
-            message=_("custom_tc is required"),
-            status_code=400,
-            http_status=400
-        )
-
-    try:
-        custom_tc_int = int(custom_tc)
-        if custom_tc_int < 1 or custom_tc_int > 6:
-            return send_response(
-                status="fail",
-                message=_("custom_tc must be a number between 1 and 6"),
-                status_code=400,
-                http_status=400
-            )
-    except ValueError:
-        return send_response(
-            status="fail",
-            message=_("custom_tc must be a valid number"),
-            status_code=400,
-            http_status=400
-        )
-
-    try:
-        quotation = frappe.get_doc("Quotation", quotation_id)
-    except frappe.DoesNotExistError:
-        return send_response(
-            status="fail",
-            message=f"Quotation with id {quotation_id} not found",
-            status_code=404,
-            http_status=404
-        )
-
-    try:
-        quotation.custom_tc = custom_tc_int
-        quotation.save(ignore_permissions=True)
-        frappe.db.commit()
-
-        return send_response(
-            status="success",
-            message=_("Terms and Conditions updated successfully"),
-            data={"quotation_id": quotation.name},
-            status_code=200,
-            http_status=200
-        )
-
-    except frappe.ValidationError as ve:
-        return send_response(
-            status="fail",
-            message=str(ve),
-            status_code=400,
-            http_status=400
-        )
-    except Exception as e:
-        return send_response(
-            status="fail",
-            message=str(e),
-            status_code=500,
-            http_status=500
-        )
-
-@frappe.whitelist(allow_guest=False)
-def update_quotation_address():
-    data = frappe.local.form_dict
-    quotation_id = data.get("quotation_id")
-    required_fields = [
-        "custom_swift",
-        "custom_bank_name",
-        "custom_payment_terms",
-        "custom_payment_method",
-        "custom_account_number",
-        "custom_routing_number",
-        "custom_billing_address_line_1",
-        "custom_billing_address_line_2",
-        "custom_billing_address_city",
-        "custom_billing_address_postal_code"
-    ]
-    if not quotation_id:
-        return send_response(
-            status="fail",
-            message=_("Quotation ID is required"),
-            status_code=400,
-            http_status=400
-        )
-    for field in required_fields:
-        if not data.get(field):
-            return send_response(
-                status="fail",
-                message=_(f"{field.replace('_', ' ').title()} is required"),
-                status_code=400,
-                http_status=400
-            )
-
-    try:
-        quotation = frappe.get_doc("Quotation", quotation_id)
-    except frappe.DoesNotExistError:
-        return send_response(
-            status="fail",
-            message=f"Quotation with id {quotation_id} not found",
-            status_code=404,
-            http_status=404
-        )
-
-    try:
-        for field in required_fields:
-            setattr(quotation, field, data.get(field))
-
-        quotation.save(ignore_permissions=True)
-        frappe.db.commit()
-
-        return send_response(
-            status="success",
-            message=_("Quotation address updated successfully"),
-            data={"quotation_id": quotation.name},
-            status_code=200,
-            http_status=200
-        )
-
-    except Exception as e:
-        return send_response(
-            status="fail",
-            message=str(e),
-            status_code=500,
-            http_status=500
-        )
+        
 @frappe.whitelist(allow_guest=False)
 def update_quotation():
     data = frappe.local.form_dict

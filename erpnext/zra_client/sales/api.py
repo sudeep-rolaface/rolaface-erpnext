@@ -263,6 +263,7 @@ def create_sales_invoice():
     custom_account_number = data.get("custom_account_number")
     custom_routing_number = data.get("custom_routing_number")
     custom_swift = data.get("custom_swift")
+    custom_invoice_type = data.get("custom_invoice_type")
     
     required_fields = {
     "custom_billing_address_line_1": "Billing Address Line 1 is required.",
@@ -276,9 +277,11 @@ def create_sales_invoice():
     "custom_bank_name": "Bank name is required.",
     "custom_account_number": "Account number is required.",
     "custom_routing_number": "Routing number is required.",
-    "custom_swift": "SWIFT/BIC code is required."
+    "custom_swift": "SWIFT code is required."
     }
-
+    
+    
+    
     for field, error_message in required_fields.items():
         if not data.get(field):
             return send_response(
@@ -287,11 +290,25 @@ def create_sales_invoice():
                 status_code=400,
                 http_status=400
             )
+            
+    allowedInvoiceType = ["Non-Export", "Export", "LPO"]
 
-    
-    
-    
-    
+    if not custom_invoice_type:
+        return send_response(
+            status="fail",
+            message="Missing required field: custom_invoice_type",
+            status_code=400,
+            http_status=400
+        )
+
+    if custom_invoice_type not in allowedInvoiceType:
+        return send_response(
+            status="fail",
+            message=f"Invalid custom_invoice_type. Allowed values are: {', '.join(allowedInvoiceType)}",
+            status_code=400,
+            http_status=400
+        )
+
     if not custom_invoice_status:
         send_response(
             status="fail",
@@ -379,6 +396,17 @@ def create_sales_invoice():
         vatCd = item.get("vatCd")
         iplCd = item.get("iplCd")
         tlCd = item.get("tlCd")
+        discount = float(item.get("discount", 0))
+        description = item.get("description")
+        validatedDiscount = discount if discount else 0
+        if not description:
+            send_response(
+                status="fail",
+                message="Item description is required",
+                status_code=400,
+                http_status=400
+            )
+            return
         
         VAT_LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
 
@@ -446,9 +474,11 @@ def create_sales_invoice():
             "warehouse": "Finished Goods - Izyane",
             "qty": qty,
             "rate": rate,
+            "discount_amount": validatedDiscount,
             "custom_vatcd": vatCd,
             "custom_iplcd": iplCd,
             "custom_tlcd":tlCd,
+            "description": description,
             "expense_account": "Stock Difference - Izyane - I",
         
         })
@@ -464,7 +494,9 @@ def create_sales_invoice():
             "VatCd": vatCd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "IplCd": iplCd,
-            "TlCd": tlCd
+            "TlCd": tlCd,
+            "dcAmt": validatedDiscount
+            
         })
 
     new_invoice_name = SalesInvoice.get_next_invoice_name()
@@ -515,6 +547,7 @@ def create_sales_invoice():
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
             "name": new_invoice_name,
+            "custom_invoice_type": custom_invoice_type,
             "custom_exchange_rate": exchange_rate,
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
@@ -578,6 +611,7 @@ def get_sales_invoice():
             fields=[
                 "name",
                 "customer",
+                "custom_invoice_type",
                 "custom_rcptno",
                 "custom_zra_currency",
                 "custom_exchange_rate",
@@ -618,7 +652,8 @@ def get_sales_invoice():
                 "Total": float(inv.grand_total),
                 "totalTax": inv.custom_total_tax_amount,
                 "custom_invoice_status": inv.custom_invoice_status,
-                "invoiceType": invoice_type
+                "invoiceTypeParent": invoice_type,
+                "custom_invoice_type": inv.custom_invoice_type
             })
 
         return send_response(
@@ -670,6 +705,7 @@ def get_sales_invoice_by_id():
         else:
             invoice_type = "Normal"
         items_data = []
+        total_item_discount = 0
         for i in doc.items:
             
             itemInfo = get_item_details(i.item_code)
@@ -680,22 +716,27 @@ def get_sales_invoice_by_id():
                 "itemName": i.item_name,
                 "qty": i.qty,
                 "price": i.rate,
+                "discount": total_item_discount,
                 "amount": i.amount,
                 "vatCode": i.custom_vatcd,
                 "iplCode": i.custom_iplcd,
                 "tlCode": i.custom_tlcd,
-                "vatTaxableAmount": i.custom_vattaxblamt
+                "vatTaxableAmount": i.custom_vattaxblamt,
+                "description": i.description
             })
+            
+            total_item_discount += i.discount_amount
             
         data = {
             "invoiceNumber": doc.name,
+            "custom_invoice_type": doc.custom_invoice_type,
             "receiptNumber": doc.custom_rcptno,
             "customerName": doc.customer,
             "postingDate": str(doc.posting_date),
             "Total": doc.grand_total,
             "totalTax": doc.custom_total_tax_amount,
-            "status": doc.status,
-            "invoiceType": invoice_type,
+            # "status": doc.status,
+            # "invoiceType": invoice_type,
             "Receipt": doc.custom_receipt,
             "custom_invoice_status": doc.custom_invoice_status,
             "custom_terms_and_conditions": doc.custom_terms_and_conditions,

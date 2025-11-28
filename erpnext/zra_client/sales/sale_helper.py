@@ -276,7 +276,6 @@ class NormaSale(ZRAClient):
             getVatCd = item.get("VatCd")
             itemName = item.get("itemName")
             qty = item.get("qty")
-            actual_stock = item.get('actual_qty', 0)
             price = item.get("price")
             remaining_stock = 0
             items.append({
