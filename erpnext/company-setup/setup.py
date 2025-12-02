@@ -71,18 +71,17 @@ def validate_date(custom_date_of_incoporation):
 def create_company_api():
     try:
         data = frappe.form_dict
-        company_name = data.get("company_name")
+        company_name = data.get("name")
         currency = data.get("currency")
-
         country = data.get("country")
         domain = data.get("domain")
-        tax_id = data.get("company_tpin")
+        tax_id = data.get("tpin")
         phone_no = data.get("phone_no")
         email = data.get("email")
-        custom_company_status = data.get("custom_company_status")
-        custom_company_registration_number = data.get("custom_company_registration_number")
+        custom_company_status = data.get("companyStatus")
+        custom_company_registration_number = data.get("companyRegistrationNumber")
         custom_date_of_incoporation = data.get("custom_date_of_incoporation")
-        custom_company_type = data.get("custom_company_type")
+        custom_company_type = data.get("company_type")
         custom_company_industry_type = data.get("custom_company_industry_type")
         custom_financial_year_begins = data.get("custom_financial_year_begins")
         custom_alternate_number = data.get("custom_alternate_number")
