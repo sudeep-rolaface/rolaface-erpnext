@@ -495,7 +495,7 @@ def create_sales_invoice():
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "IplCd": iplCd,
             "TlCd": tlCd,
-            "dcAmt": validatedDiscount
+            "discountRate": validatedDiscount
             
         })
 
