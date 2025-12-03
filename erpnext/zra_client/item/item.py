@@ -726,18 +726,100 @@ def update_item_api():
 @frappe.whitelist(allow_guest=False)
 def get_all_item_groups_api():
     try:
-        item_groups = frappe.get_all(
+        args = frappe.request.args
+        page = args.get("page")
+        if not page:
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        page_size = args.get("page_size")
+        if not page_size:
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        start = (page - 1) * page_size
+        end = start + page_size
+        all_groups = frappe.get_all(
             "Item Group",
-            fields=["name", "item_group_name", "custom_description", "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account"],
+            fields=[
+                "name",
+                "item_group_name",
+                "custom_description",
+                "custom_unit_of_measurement",
+                "custom_selling_price",
+                "custom_sales_account"
+            ],
             order_by="item_group_name asc"
         )
 
-        return send_response(
+        total_groups = len(all_groups)
+
+        if total_groups == 0:
+            return send_response(
+                status="success",
+                message="No item groups found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+     
+        groups = all_groups[start:end]
+        total_pages = (total_groups + page_size - 1) // page_size
+
+        response_data = {
+            "success": True,
+            "message": "Item groups fetched successfully",
+            "data": groups,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_groups,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+
+        return send_response_list(
             status="success",
-            message=f"{len(item_groups)} item groups fetched successfully",
-            data=item_groups,
+            message="Item groups fetched successfully",
             status_code=200,
-            http_status=200
+            http_status=200,
+            data=response_data
         )
 
     except Exception as e:
@@ -749,6 +831,7 @@ def get_all_item_groups_api():
             status_code=500,
             http_status=500
         )
+
 
 @frappe.whitelist(allow_guest=False)
 def create_item_group_api():
