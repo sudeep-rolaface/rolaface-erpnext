@@ -1,5 +1,5 @@
+from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.selling.doctype.quotation.quotation import Quotation
-from erpnext.zra_client.generic_api import send_response
 from erpnext.zra_client.main import ZRAClient
 from frappe import _
 import frappe
@@ -43,35 +43,119 @@ def get_customer_details(customer_id):
             status_code=500,
             http_status=500
         )
+
 @frappe.whitelist(allow_guest=False)
 def get_all_quotations():
     try:
-        quotations = frappe.get_all("Quotation", 
-                                    fields=[
-                                        "name", 
-                                        "customer_name",
-                                        "custom_industry_bases",
-                                        "transaction_date", 
-                                        "valid_till",
-                                        "grand_total",
-                                        "currency"
-                                        ])
-        return send_response(
-            status="success",
-            message=_("Quotations fetched successfully"),
-            data=quotations,
-            status_code=200,
-            http_status=200
+        args = frappe.request.args
+        page = args.get("page")
+        if not page:
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        
+        page_size = args.get("page_size")
+        if not page_size:
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        all_quotations = frappe.get_all(
+            "Quotation",
+            fields=[
+                "name",
+                "customer_name",
+                "custom_industry_bases",
+                "transaction_date",
+                "valid_till",
+                "grand_total",
+                "currency"
+            ],
+            order_by="creation desc"
         )
-    
+
+        total_quotations = len(all_quotations)
+
+        if total_quotations == 0:
+            return send_response(
+                status="success",
+                message="No quotations found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+
+        quotations = all_quotations[start:end]
+        total_pages = (total_quotations + page_size - 1) // page_size
+
+        response_data = {
+            "success": True,
+            "message": "Quotations fetched successfully",
+            "data": quotations,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_quotations,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+
+        return send_response_list(
+            status="success",
+            message="Quotations fetched successfully",
+            status_code=200,
+            http_status=200,
+            data=response_data
+        )
+
     except Exception as e:
-        send_response(
+        frappe.log_error(frappe.get_traceback(), "Get All Quotations API Error")
+        return send_response(
             status="fail",
             message=str(e),
             status_code=500,
             http_status=500
-        ) 
-        return  
+        )
+
     
 
 @frappe.whitelist(allow_guest=False)
