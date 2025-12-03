@@ -1,4 +1,4 @@
-from erpnext.zra_client.generic_api import send_response
+from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.main import ZRAClient
 from frappe import _
 import frappe
@@ -145,47 +145,109 @@ def generate_customer_id():
 
 @frappe.whitelist(allow_guest=False)
 def create_customer_api():
-    tpin = (frappe.form_dict.get("custom_customer_tpin") or "")
-    customer_name = (frappe.form_dict.get("customer_name") or "").strip()
-    email_id = (frappe.form_dict.get("customer_email") or "").strip()
-    mobile_no = (frappe.form_dict.get("mobile_no") or "")
-    customerType = (frappe.form_dict.get("customer_type") or "").strip()
-    customerEmail = (frappe.form_dict.get("customer_email") or "").strip()
-    customerCurrency = (frappe.form_dict.get("customer_currency") or "").strip()
-    customerAccountNo = (frappe.form_dict.get("customer_account_no") or "")
-    customer_onboarding_balance = frappe.form_dict.get("customer_onboarding_balance") or "0"
+    tpin = (frappe.form_dict.get("tpin") or "")
+    customer_name = (frappe.form_dict.get("name") or "").strip()
+    email_id = (frappe.form_dict.get("email") or "").strip()
+    mobile_no = (frappe.form_dict.get("mobile") or "")
+    customerType = (frappe.form_dict.get("type") or "").strip()
+    customerEmail = (frappe.form_dict.get("email") or "").strip()
+    customerCurrency = (frappe.form_dict.get("currency") or "").strip()
+    customerAccountNo = (frappe.form_dict.get("accountNumber") or "")
+    customer_onboarding_balance = frappe.form_dict.get("onboardingBalance") or "0"
 
     try:
         customer_onboarding_balance = float(customer_onboarding_balance)
     except ValueError:
         customer_onboarding_balance = 0.0  
 
-    billingAddress = {
-    "Line1": (frappe.form_dict.get("custom_billing_address_line_1") or "").strip(),
-    "Line2": (frappe.form_dict.get("custom_billing_address_line_2") or "").strip(),
-    "PostalCode": (frappe.form_dict.get("custom_billing_postal_code") or "").strip(),
-    "City": (frappe.form_dict.get("custom_billing_city") or "").strip(),
-    "Country": (frappe.form_dict.get("custom_billing_country") or "").strip(),
-    "State": (frappe.form_dict.get("custom_billing_state") or "").strip(),
-    "County": (frappe.form_dict.get("custom_billing_country") or "").strip()
-    }
+    billing_address_line_1 = (frappe.form_dict.get("billingAddressLine1") or "").strip()
+    billing_address_line_2 = (frappe.form_dict.get("billingAddressLine2") or "").strip()
+    billing_postal_code = (frappe.form_dict.get("billingPostalCode") or "").strip()
+    billing_city = (frappe.form_dict.get("billingCity") or "").strip()
+    billing_state = (frappe.form_dict.get("billingState") or "").strip()
+    billing_country = (frappe.form_dict.get("billingCountry") or "").strip()
 
-    shippingAddress = {
-        "Line1": (frappe.form_dict.get("custom_shipping_address_line_1") or "").strip(),
-        "Line2": (frappe.form_dict.get("custom_shipping_address_line_2") or "").strip(),
-        "PostalCode": (frappe.form_dict.get("custom_shipping_postal_code") or "").strip(),
-        "City": (frappe.form_dict.get("custom_shipping_city") or "").strip(),
-        "Country": (frappe.form_dict.get("custom_shipping_country") or "").strip(),
-        "State": (frappe.form_dict.get("custom_shipping_state") or "").strip()
-    }
+    shipping_address_line_1 = (frappe.form_dict.get("shippingAddressLine1") or "").strip()
+    shipping_address_line_2 = (frappe.form_dict.get("shippingAddressLine2") or "").strip()
+    shipping_postal_code = (frappe.form_dict.get("shippingPostalCode") or "").strip()
+    shipping_city = (frappe.form_dict.get("shippingCity") or "").strip()
+    shipping_state = (frappe.form_dict.get("shippingState") or "").strip()
+    shipping_country = (frappe.form_dict.get("shippingCountry") or "").strip()
+    
+    terms = frappe.form_dict.get("terms") or {}
+    selling = terms.get("selling") or {}
 
-    contactPerson = (frappe.form_dict.get("custom_contact_person") or "").strip()
-    displayName = (frappe.form_dict.get("custom_display_name") or "").strip()
+    general = (selling.get("general") or "").strip()
+    delivery = (selling.get("delivery") or "").strip()
+    cancellation = (selling.get("cancellation") or "").strip()
+    warranty = (selling.get("warranty") or "").strip()
+    liability = (selling.get("liability") or "").strip()
+    payment_terms_data = selling.get("payment") or {}
+    dueDates = payment_terms_data.get("dueDates", "")
+    lateCharges = payment_terms_data.get("lateCharges", "")
+    tax = payment_terms_data.get("tax", "")
+    notes = payment_terms_data.get("notes", "")
+    phases = payment_terms_data.get("phases", [])
 
-    if not validate_address(billingAddress, "Billing Address"):
+    
+    print("TERMS:", terms)
+    print("GENERAL:", general)
+    print("DELIVERY:", delivery)
+    print("CANCELLATION:", cancellation)
+    print("WARRANTY:", warranty)
+    print("LIABILITY:", liability)
+    
+    send_response(
+        status="fail",
+        message="Doing validate. please wait",
+        status_code=400,
+        http_status=400
+    )
+
+    
+    if not billing_address_line_1:
+        send_response(status="fail", message="Billing address line 1 is required (billingAddressLine1)", status_code=400, http_status=400)
         return
-    if not validate_address(shippingAddress, "Shipping Address"):
+
+    if not billing_postal_code:
+        send_response(status="fail", message="Billing postal code is required (billingPostalCode)", status_code=400, http_status=400)
         return
+
+    if not billing_city:
+        send_response(status="fail", message="Billing city is required (billingCity)", status_code=400, http_status=400)
+        return
+
+    if not billing_state:
+        send_response(status="fail", message="Billing state is required (billingState)", status_code=400, http_status=400)
+        return
+
+    if not billing_country:
+        send_response(status="fail", message="Billing country is required (billingCountry)", status_code=400, http_status=400)
+        return
+
+    if not shipping_address_line_1:
+        send_response(status="fail", message="Shipping address line 1 is required (shippingAddressLine1)", status_code=400, http_status=400)
+        return
+
+    if not shipping_postal_code:
+        send_response(status="fail", message="Shipping postal code is required (shippingPostalCode)", status_code=400, http_status=400)
+        return
+
+    if not shipping_city:
+        send_response(status="fail", message="Shipping city is required (shippingCity)", status_code=400, http_status=400)
+        return
+
+    if not shipping_state:
+        send_response(status="fail", message="Shipping state is required (shippingState)", status_code=400, http_status=400)
+        return
+
+    if not shipping_country:
+        send_response(status="fail", message="Shipping country is required (shippingCountry)", status_code=400, http_status=400)
+        return
+
+
+    contactPerson = (frappe.form_dict.get("contactPerson") or "").strip()
+    displayName = (frappe.form_dict.get("displayName") or "").strip()
 
 
     if not customerCurrency:
@@ -261,29 +323,96 @@ def create_customer_api():
             "default_currency": customerCurrency,
             "custom_account_number": customerAccountNo,
             "custom_onboard_balance": customer_onboarding_balance,
-            "custom_billing_adress_line_1": billingAddress["Line1"],
-            "custom_billing_adress_line_2": billingAddress["Line2"],
-            "custom_billing_adress_posta_code": billingAddress["PostalCode"],
-            "custom_billing_adress_city": billingAddress["City"],
-            "custom_billing_adress_country": billingAddress["Country"],
-            "custom_billing_adress_state": billingAddress["State"],
-            "custom_billing_adress_county": billingAddress.get("County", ""),
-            "custom_shipping_address_line_1_": shippingAddress["Line1"],
-            "custom_shipping_address_line_2": shippingAddress["Line2"],
-            "custom_shipping_address_posta_code_": shippingAddress["PostalCode"],
-            "custom_shipping_address_city": shippingAddress["City"],
-            "custom_shipping_address_state": shippingAddress["State"],
-            "custom_shipping_address_country": shippingAddress["Country"],
+            "custom_billing_adress_line_1": billing_address_line_1,
+            "custom_billing_adress_line_2": billing_address_line_2,
+            "custom_billing_adress_posta_code": billing_postal_code,
+            "custom_billing_adress_city": billing_city,
+            "custom_billing_adress_country": billing_country,
+            "custom_billing_adress_state": billing_state,
+            "custom_shipping_address_line_1_": shipping_address_line_1,
+            "custom_shipping_address_line_2": shipping_address_line_2,
+            "custom_shipping_address_posta_code_": shipping_postal_code,
+            "custom_shipping_address_city": shipping_city,
+            "custom_shipping_address_state": shipping_state,
+            "custom_shipping_address_country": shipping_country,
             "custom_contact_person":contactPerson,
             "custom_display_name":displayName
         })
 
         customer.insert()
+        customer = frappe.form_dict.get("customer")
+
+        terms_doc = frappe.get_doc({
+            "doctype": "Customer Terms",
+            "customer": id,
+            "general": general,
+            "delivery": delivery,
+            "cancellation": cancellation,
+            "warranty": warranty,
+            "liability": liability
+        })
+        terms_doc.insert()
         frappe.db.commit()
+        
+        if payment_terms_data:
+            payment_doc = frappe.get_doc({
+                "doctype": "Payment Terms",
+                "customer": id,
+                "duedates": dueDates,     
+                "latecharges": lateCharges, 
+                "tax": tax,
+                "notes": notes
+            })
+            payment_doc.insert()
+            frappe.db.commit()
+        if phases:
+            for phase in phases:
+             
+                phase_doc = frappe.get_doc({
+                    "doctype": "Payment Terms Phases",
+                    "customer": id, 
+                    "phase": phase.get("name"),
+                    "percentage": phase.get("percentage", ""),
+                    "condition": phase.get("condition", "")
+                })
+                phase_doc.insert()
+                frappe.db.commit()
+
+
+        
+        customer = frappe.get_doc("Customer", {"custom_id": id})
+        def safe_attr(obj, attr):
+            return getattr(obj, attr, "") or "" 
+        data = {
+            "id": safe_attr(customer, "custom_id"),
+            "tpin": safe_attr(customer, "tax_id"),
+            "name": safe_attr(customer, "customer_name"),
+            "type": safe_attr(customer, "customer_type"),
+            "mobile": safe_attr(customer, "mobile_no"),
+            "email": safe_attr(customer, "email_id"),
+            "contactPerson": safe_attr(customer, "custom_contact_person"),
+            "displayName": safe_attr(customer, "custom_display_name"),
+            "currency": safe_attr(customer, "default_currency"),
+            "accountNumber": safe_attr(customer, "custom_account_number"),
+            "onboardingBalance": safe_attr(customer, "custom_onboard_balance"),
+            "billingAddressLine1": safe_attr(customer, "custom_billing_adress_line_1"),
+            "billingAddressLine2": safe_attr(customer, "custom_billing_adress_line_2"),
+            "billingPostalCode": safe_attr(customer, "custom_billing_adress_posta_code"),
+            "billingCity": safe_attr(customer, "custom_billing_adress_city"),
+            "billingState": safe_attr(customer, "custom_billing_adress_state"),
+            "billingCountry": safe_attr(customer, "custom_billing_adress_country"),
+            "shippingAddressLine1": safe_attr(customer, "custom_shipping_address_line_1_"),
+            "shippingAddressLine2": safe_attr(customer, "custom_shipping_address_line_2"),
+            "shippingPostalCode": safe_attr(customer, "custom_shipping_address_posta_code_"),
+            "shippingCity": safe_attr(customer, "custom_shipping_address_city"),
+            "shippingState": safe_attr(customer, "custom_shipping_address_state"),
+            "shippingCountry": safe_attr(customer, "custom_shipping_address_country"),
+        }
 
         send_response(
             status="success",
             message="Customer created successfully.",
+            data = data,
             status_code=201,
             http_status=200
         )
@@ -292,79 +421,104 @@ def create_customer_api():
     except Exception as e:
         send_response(status="error", message=f"API call failed: {str(e)}", data=None, http_status=500)
         return
-
     
-
+    
 @frappe.whitelist(allow_guest=False)
 def get_all_customers_api():
     try:
-        customers = frappe.get_all(
+        args = frappe.request.args
+        page = args.get("page")
+        if not page:
+            send_response(status="error", message="'page' parameter is required.", status_code=400, data=None, http_status=400)
+            return
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            send_response(status="error", message="'page' must be a positive integer.", status_code=400, data=None, http_status=400)
+            return
+
+        page_size = args.get("page_size")
+        if not page_size:
+            send_response(status="error", message="'page_size' parameter is required.", status_code=400, data=None, http_status=400)
+            return
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            send_response(status="error", message="'page_size' must be a positive integer.", status_code=400, data=None, http_status=400)
+            return
+
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        all_customers = frappe.get_all(
             "Customer",
             fields=[
-                "custom_id", "name", "customer_name", "customer_type",
-                "tax_id", "mobile_no", "email_id", "default_currency",
-                "custom_account_number", "custom_onboard_balance",
-                "custom_billing_adress_line_1",
-                "custom_billing_adress_line_2",
-                "custom_billing_adress_posta_code",
-                "custom_billing_adress_city",
-                "custom_billing_adress_country",
-                "custom_billing_adress_state",
-                "custom_shipping_address_line_1_",
-                "custom_shipping_address_line_2",
-                "custom_shipping_address_posta_code_",
-                "custom_shipping_address_city",
-                "custom_shipping_address_state",
-                "custom_shipping_address_country",
+                "custom_id", 
+                "customer_name", 
+                "customer_type",
+                "tax_id", 
+                "mobile_no", 
+                "email_id", 
+                "default_currency",
+                "custom_account_number", 
+                "custom_onboard_balance",
                 "custom_contact_person",
                 "custom_display_name",
             ],
             order_by="customer_name asc"
         )
 
-        if not customers:
+        total_customers = len(all_customers)
+        if not all_customers:
             send_response(status="success", message="No customers found.", status_code=200, data=[], http_status=200)
             return
 
+        customers = all_customers[start:end]
         for cust in customers:
-            cust["custom_customer_tpin"] = cust.pop("tax_id")
-            cust["customer_onboarding_balance"] = cust.pop("custom_onboard_balance")
-            cust["custom_shipping_address_line_1"] = cust.pop("custom_shipping_address_line_1_")
-            cust["custom_shipping_postal_code"] = cust.pop("custom_shipping_address_posta_code_")
-            cust["customer_account_no"] = cust.pop("custom_account_number")
-            cust["customer_currency"] = cust.pop("default_currency")
-            cust["customer_email"] = cust.pop("email_id")
-            cust["custom_billing_address_line_1"] = cust.pop("custom_billing_adress_line_1")
-            cust["custom_billing_address_line_2"] = cust.pop("custom_billing_adress_line_2")
-            cust["custom_billing_postal_code"] = cust.pop("custom_billing_adress_posta_code")
-            cust["custom_billing_city"] = cust.pop("custom_billing_adress_city")
-            cust["custom_billing_state"] = cust.pop("custom_billing_adress_state")
-            cust["custom_billing_country"] = cust.pop("custom_billing_adress_country")
-            cust["custom_shipping_city"] = cust.pop("custom_shipping_address_city")
-            cust["custom_shipping_state"] = cust.pop("custom_shipping_address_state")
-            cust["custom_shipping_country"] = cust.pop("custom_shipping_address_country")
-            
+            cust["id"] = cust.pop("custom_id")
+            cust["tpin"] = cust.pop("tax_id")
+            cust["name"] = cust.pop("customer_name")
+            cust["contactPerson"] = cust.pop("custom_contact_person")
+            cust["displayName"] = cust.pop("custom_display_name")
+            cust["mobile"] = cust.pop("mobile_no")
+            cust["type"] = cust.pop("customer_type")
+            cust["email"] = cust.pop("email_id")
+            cust["accountNumber"] = cust.pop("custom_account_number")
+            cust["currency"] = cust.pop("default_currency")
+            cust["onboardingBalance"] = cust.pop("custom_onboard_balance")
 
-
-
-        send_response(
+        total_pages = (total_customers + page_size - 1) // page_size
+        
+        response_data = {
+            "success": True,
+            "message": "Customers retrieved successfully",
+            "data": customers,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_customers,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        send_response_list(
             status="success",
             message="Customers retrieved successfully",
             status_code=200,
-            data=customers,
+            data=response_data,
             http_status=200
         )
         return
 
     except Exception as e:
-        send_response(
-            status="error",
-            message=f"Failed to retrieve customers: {str(e)}",
-            status_code=500,
-            data=None,
-            http_status=500
-        )
+        send_response(status="error", message=f"Failed to retrieve customers: {str(e)}", status_code=500, data=None, http_status=500)
         return
+
 
 
 @frappe.whitelist(allow_guest=False)
@@ -373,30 +527,84 @@ def get_customer_by_id(custom_id):
         customer = frappe.get_doc("Customer", {"custom_id": custom_id})
         def safe_attr(obj, attr):
             return getattr(obj, attr, "") or "" 
+        
+        try:
+            terms_doc = frappe.get_doc("Customer Terms", {"customer": custom_id})
+
+
+            payment_phases_docs = frappe.get_all(
+                "Payment Terms",
+                filters={"customer": custom_id},
+                fields=["dueDates", "lateCharges", "tax", "notes"]
+            )
+
+            phases_docs = frappe.get_all(
+                "Payment Terms Phases",
+                filters={"customer": custom_id},  
+                fields=["phase", "percentage", "condition"]
+            )
+
+            phases_list = []
+            print("Phase list :", phases_docs)
+            for p in phases_docs:
+                phases_list.append({
+                    "name": p.get("phase"),
+                    "percentage": p.get("percentage"),
+                    "condition": p.get("condition")
+                })
+
+    
+            payment_info = {}
+            if payment_phases_docs:
+                first = payment_phases_docs[0]
+                payment_info = {
+                    "phases": phases_list,
+                    "dueDates": first.get("dueDates"),
+                    "lateCharges": first.get("lateCharges"),
+                    "tax": first.get("tax"),
+                    "notes": first.get("notes")
+                }
+
+            terms = {
+                "selling": {
+                    "general": safe_attr(terms_doc, "general"),
+                    "payment": payment_info,
+                    "delivery": safe_attr(terms_doc, "delivery"),
+                    "cancellation": safe_attr(terms_doc, "cancellation"),
+                    "warranty": safe_attr(terms_doc, "warranty"),
+                    "liability": safe_attr(terms_doc, "liability")
+                }
+            }
+
+
+
+        except frappe.DoesNotExistError:
+            terms = {}
         data = {
-            "custom_customer_tpin": safe_attr(customer, "tax_id"),
-            "name": safe_attr(customer, "name"),
-            "customer_name": safe_attr(customer, "customer_name"),
-            "customer_type": safe_attr(customer, "customer_type"),
-            "mobile_no": safe_attr(customer, "mobile_no"),
-            "customer_email": safe_attr(customer, "email_id"),
-            "custom_contact_person": safe_attr(customer, "custom_contact_person"),
-            "custom_display_name": safe_attr(customer, "custom_display_name"),
-            "customer_currency": safe_attr(customer, "default_currency"),
-            "customer_account_no": safe_attr(customer, "custom_account_number"),
-            "customer_onboarding_balance": safe_attr(customer, "custom_onboard_balance"),
-            "custom_billing_address_line_1": safe_attr(customer, "custom_billing_adress_line_1"),
-            "custom_billing_address_line_2": safe_attr(customer, "custom_billing_adress_line_2"),
-            "custom_billing_address_postal_code": safe_attr(customer, "custom_billing_adress_posta_code"),
-            "custom_billing_address_city": safe_attr(customer, "custom_billing_adress_city"),
-            "custom_billing_address_state": safe_attr(customer, "custom_billing_adress_state"),
-            "custom_billing_address_country": safe_attr(customer, "custom_billing_adress_country"),
-            "custom_shipping_address_line_1": safe_attr(customer, "custom_shipping_address_line_1_"),
-            "custom_shipping_address_line_2": safe_attr(customer, "custom_shipping_address_line_2"),
-            "custom_shipping_address_postal_code": safe_attr(customer, "custom_shipping_address_posta_code_"),
-            "custom_shipping_address_city": safe_attr(customer, "custom_shipping_address_city"),
-            "custom_shipping_address_state": safe_attr(customer, "custom_shipping_address_state"),
-            "custom_shipping_address_country": safe_attr(customer, "custom_shipping_address_country"),
+            "id": safe_attr(customer, "custom_id"),
+            "tpin": safe_attr(customer, "tax_id"),
+            "name": safe_attr(customer, "customer_name"),
+            "type": safe_attr(customer, "customer_type"),
+            "mobile": safe_attr(customer, "mobile_no"),
+            "email": safe_attr(customer, "email_id"),
+            "contactPerson": safe_attr(customer, "custom_contact_person"),
+            "displayName": safe_attr(customer, "custom_display_name"),
+            "currency": safe_attr(customer, "default_currency"),
+            "accountNumber": safe_attr(customer, "custom_account_number"),
+            "onboardingBalance": safe_attr(customer, "custom_onboard_balance"),
+            "billingAddressLine1": safe_attr(customer, "custom_billing_adress_line_1"),
+            "billingAddressLine2": safe_attr(customer, "custom_billing_adress_line_2"),
+            "billingPostalCode": safe_attr(customer, "custom_billing_adress_posta_code"),
+            "billingCity": safe_attr(customer, "custom_billing_adress_city"),
+            "billingState": safe_attr(customer, "custom_billing_adress_state"),
+            "billingCountry": safe_attr(customer, "custom_billing_adress_country"),
+            "shippingAddressLine1": safe_attr(customer, "custom_shipping_address_line_1_"),
+            "shippingAddressLine2": safe_attr(customer, "custom_shipping_address_line_2"),
+            "shippingPostalCode": safe_attr(customer, "custom_shipping_address_posta_code_"),
+            "shippingCity": safe_attr(customer, "custom_shipping_address_city"),
+            "shippingState": safe_attr(customer, "custom_shipping_address_state"),
+            "shippingCountry": safe_attr(customer, "custom_shipping_address_country"),
+            "terms": terms
         }
 
         return send_response(
@@ -422,7 +630,7 @@ def get_customer_by_id(custom_id):
             data=None,
             http_status=500
         )
-
+        
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
 def update_customer_by_id():
     custom_id = (frappe.form_dict.get("id") or "").strip()
@@ -434,8 +642,7 @@ def update_customer_by_id():
             "status_code": 400
         }
 
-    customer = frappe.db.exists("Customer", {"custom_id": custom_id})
-    if not customer:
+    if not frappe.db.exists("Customer", {"custom_id": custom_id}):
         return {
             "status": "fail",
             "message": "Customer not found",
@@ -444,95 +651,128 @@ def update_customer_by_id():
         }
 
     customer = frappe.get_doc("Customer", {"custom_id": custom_id})
-    customer_name = (frappe.form_dict.get("customer_name") or "").strip()
-    email_id = (frappe.form_dict.get("customer_email") or "").strip()
-    mobile_no = (frappe.form_dict.get("mobile_no") or "").strip()
-    customer_type = (frappe.form_dict.get("customer_type") or "").strip()
-    customer_currency = (frappe.form_dict.get("customer_currency") or "").strip()
-    customer_account_no = (frappe.form_dict.get("customer_account_no") or "").strip()
-    customer_onboarding_balance = frappe.form_dict.get("customer_onboarding_balance")
-    customer_contact_person = (frappe.form_dict.get("custom_contact_person") or "").strip()
-    customer_display_name = (frappe.form_dict.get("custom_display_name") or "").strip()
 
-    billing_address = {
-        "line1": (frappe.form_dict.get("custom_billing_address_line_1") or "").strip(),
-        "line2": (frappe.form_dict.get("custom_billing_address_line_2") or "").strip(),
-        "postal_code": (frappe.form_dict.get("custom_billing_postal_code") or "").strip(),
-        "city": (frappe.form_dict.get("custom_billing_city") or "").strip(),
-        "country": (frappe.form_dict.get("custom_billing_country") or "").strip(),
-        "state": (frappe.form_dict.get("custom_billing_state") or "").strip(),
-        "county": (frappe.form_dict.get("custom_billing_county") or "").strip()
-    }
-
-    shipping_address = {
-        "line1": (frappe.form_dict.get("custom_shipping_address_line1") or "").strip(),
-        "line2": (frappe.form_dict.get("custom_shipping_address_line2") or "").strip(),
-        "postal_code": (frappe.form_dict.get("custom_shipping_postal_code") or "").strip(),
-        "city": (frappe.form_dict.get("custom_shipping_city") or "").strip(),
-        "country": (frappe.form_dict.get("custom_shipping_country") or "").strip(),
-        "state": (frappe.form_dict.get("custom_shipping_state") or "").strip()
-    }
 
     field_mapping = {
-        "customer_name": customer_name,
-        "mobile_no": mobile_no,
-        "email_id": email_id,
-        "customer_type": customer_type,
-        "default_currency": customer_currency,
-        "custom_account_number": customer_account_no,
-        "custom_onboard_balance": customer_onboarding_balance,
-        "custom_billing_adress_line_1": billing_address["line1"],
-        "custom_billing_adress_line_2": billing_address["line2"],
-        "custom_billing_adress_posta_code": billing_address["postal_code"],
-        "custom_billing_adress_city": billing_address["city"],
-        "custom_billing_adress_country": billing_address["country"],
-        "custom_billing_adress_state": billing_address["state"],
-        "custom_billing_adress_county": billing_address["county"],
-        "custom_shipping_address_line_1_": shipping_address["line1"],
-        "custom_shipping_address_line_2_": shipping_address["line2"],
-        "custom_shipping_address_posta_code_": shipping_address["postal_code"],
-        "custom_shipping_address_city": shipping_address["city"],
-        "custom_shipping_address_state": shipping_address["state"],
-        "custom_shipping_address_country": shipping_address["country"],
-        "custom_contact_person": customer_contact_person,
-        "custom_display_name": customer_display_name
+        "customer_name": frappe.form_dict.get("name"),
+        "mobile_no": frappe.form_dict.get("mobile"),
+        "email_id": frappe.form_dict.get("email"),
+        "customer_type": frappe.form_dict.get("type"),
+        "default_currency": frappe.form_dict.get("currency"),
+        "custom_account_number": frappe.form_dict.get("accountNumber"),
+        "custom_onboard_balance": frappe.form_dict.get("onboardingBalance"),
+        "custom_billing_address_line_1": frappe.form_dict.get("billingAddressLine1"),
+        "custom_billing_address_line_2": frappe.form_dict.get("billingAddressLine2"),
+        "custom_billing_address_postal_code": frappe.form_dict.get("billingPostalCode"),
+        "custom_billing_address_city": frappe.form_dict.get("billingCity"),
+        "custom_billing_address_state": frappe.form_dict.get("billingState"),
+        "custom_billing_address_country": frappe.form_dict.get("billingCountry"),
+        "custom_shipping_address_line_1": frappe.form_dict.get("shippingAddressLine1"),
+        "custom_shipping_address_line_2": frappe.form_dict.get("shippingAddressLine2"),
+        "custom_shipping_address_postal_code": frappe.form_dict.get("shippingPostalCode"),
+        "custom_shipping_address_city": frappe.form_dict.get("shippingCity"),
+        "custom_shipping_address_state": frappe.form_dict.get("shippingState"),
+        "custom_shipping_address_country": frappe.form_dict.get("shippingCountry"),
+        "custom_contact_person": frappe.form_dict.get("contactPerson"),
+        "custom_display_name": frappe.form_dict.get("displayName")
     }
 
-    updated_fields = {}
     for key, value in field_mapping.items():
         if value not in (None, ""):
             setattr(customer, key, value)
-            updated_fields[key] = value
 
-    if not updated_fields:
+    if not validate_customer_type(customer.customer_type):
         return {
             "status": "fail",
-            "message": "No valid fields provided to update.",
+            "message": "Invalid customer type",
             "data": None,
             "status_code": 400
         }
 
-    try:
-        customer.ignore_mandatory = True
-        customer.flags.ignore_links = True
+    terms = frappe.form_dict.get("terms") or {}
+    selling = terms.get("selling") or {}
+    if selling:
+        terms_doc = frappe.get_all("Customer Terms", filters={"customer": custom_id}, limit_page_length=1)
+        if terms_doc:
+            terms_doc = frappe.get_doc("Customer Terms", terms_doc[0].name)
+        else:
+            terms_doc = frappe.get_doc({"doctype": "Customer Terms", "customer": custom_id})
 
-        customer.save(ignore_permissions=True)
-        frappe.db.commit()
+        terms_doc.general = selling.get("general") or ""
+        terms_doc.delivery = selling.get("delivery") or ""
+        terms_doc.cancellation = selling.get("cancellation") or ""
+        terms_doc.warranty = selling.get("warranty") or ""
+        terms_doc.liability = selling.get("liability") or ""
+        terms_doc.save(ignore_permissions=True)
 
-        return {
-            "status": "success",
-            "message": "Customer updated successfully",
-            "data": updated_fields,
-            "status_code": 200
-        }
+        payment = selling.get("payment") or {}
+        data = ""
+        if payment:
+            payment_doc_list = frappe.get_all("Payment Terms", filters={"customer": custom_id}, limit_page_length=1)
+            if payment_doc_list:
+                payment_doc = frappe.get_doc("Payment Terms", payment_doc_list[0].name)
+            else:
+                payment_doc = frappe.get_doc({"doctype": "Payment Terms", "customer": custom_id})
 
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": _("Failed to update customer: {0}").format(str(e)),
-            "data": None,
-            "status_code": 500
-        }
+            payment_doc.duedates = payment.get("dueDates", "")
+            payment_doc.latecharges = payment.get("lateCharges", "")
+            payment_doc.tax = payment.get("tax", "")
+            payment_doc.notes = payment.get("notes", "")
+            payment_doc.save(ignore_permissions=True)
+
+            phases = payment.get("phases", [])
+            for phase in phases:
+                phase_doc = frappe.get_doc({
+                    "doctype": "Payment Terms Phases",
+                    "customer": custom_id,
+                    "phase": phase.get("name"),
+                    "percentage": phase.get("percentage", ""),
+                    "condition": phase.get("condition", "")
+                })
+                phase_doc.insert(ignore_permissions=True)
+
+    customer.ignore_mandatory = True
+    customer.flags.ignore_links = True
+    customer.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    def safe_attr(obj, attr):
+        return getattr(obj, attr, "") or ""
+
+    customer = frappe.get_doc("Customer", {"custom_id": custom_id})
+    data = {
+        "id": safe_attr(customer, "custom_id"),
+        "tpin": safe_attr(customer, "tax_id"),
+        "name": safe_attr(customer, "customer_name"),
+        "type": safe_attr(customer, "customer_type"),
+        "mobile": safe_attr(customer, "mobile_no"),
+        "email": safe_attr(customer, "email_id"),
+        "contactPerson": safe_attr(customer, "custom_contact_person"),
+        "displayName": safe_attr(customer, "custom_display_name"),
+        "currency": safe_attr(customer, "default_currency"),
+        "accountNumber": safe_attr(customer, "custom_account_number"),
+        "onboardingBalance": safe_attr(customer, "custom_onboard_balance"),
+        "billingAddressLine1": safe_attr(customer, "custom_billing_address_line_1"),
+        "billingAddressLine2": safe_attr(customer, "custom_billing_address_line_2"),
+        "billingPostalCode": safe_attr(customer, "custom_billing_address_postal_code"),
+        "billingCity": safe_attr(customer, "custom_billing_address_city"),
+        "billingState": safe_attr(customer, "custom_billing_address_state"),
+        "billingCountry": safe_attr(customer, "custom_billing_address_country"),
+        "shippingAddressLine1": safe_attr(customer, "custom_shipping_address_line_1"),
+        "shippingAddressLine2": safe_attr(customer, "custom_shipping_address_line_2"),
+        "shippingPostalCode": safe_attr(customer, "custom_shipping_address_postal_code"),
+        "shippingCity": safe_attr(customer, "custom_shipping_address_city"),
+        "shippingState": safe_attr(customer, "custom_shipping_address_state"),
+        "shippingCountry": safe_attr(customer, "custom_shipping_address_country"),
+    }
+
+    return {
+        "status": "success",
+        "message": "Customer updated successfully",
+        "data": data,
+        "status_code": 200
+    }
+
 
 
 

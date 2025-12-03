@@ -1,9 +1,9 @@
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
+from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.sales.credit_note import CreditNoteSale
 from erpnext.zra_client.sales.debit_note import DebitNoteSale
-from erpnext.zra_client.generic_api import send_response
 from frappe import _
 import random
 import frappe
@@ -495,7 +495,7 @@ def create_sales_invoice():
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "IplCd": iplCd,
             "TlCd": tlCd,
-            "dcAmt": validatedDiscount
+            "discountRate": validatedDiscount
             
         })
 
@@ -606,7 +606,57 @@ def create_sales_invoice():
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_sales_invoice():
     try:
-        invoices = frappe.get_all(
+        args = frappe.request.args
+
+        page = args.get("page")
+        if not page:
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        # -------- Validate Page Size --------
+        page_size = args.get("page_size")
+        if not page_size:
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        all_invoices = frappe.get_all(
             "Sales Invoice",
             fields=[
                 "name",
@@ -626,21 +676,29 @@ def get_sales_invoice():
             order_by="creation desc"
         )
 
+        total_invoices = len(all_invoices)
+
+        if total_invoices == 0:
+            return send_response(
+                status="success",
+                message="No sales invoices found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+        invoices = all_invoices[start:end]
         formatted_invoices = []
 
         for inv in invoices:
             if inv.is_return == 1:
                 invoice_type = "Credit Note"
-
             elif inv.is_debit_note == 1:
                 invoice_type = "Debit Note"
-
             elif inv.grand_total < 0 or inv.outstanding_amount < 0:
                 invoice_type = "Debit Note"
-
             else:
                 invoice_type = "Normal"
-
 
             formatted_invoices.append({
                 "invoiceNumber": inv.name,
@@ -656,12 +714,28 @@ def get_sales_invoice():
                 "custom_invoice_type": inv.custom_invoice_type
             })
 
-        return send_response(
+        total_pages = (total_invoices + page_size - 1) // page_size
+
+        response_data = {
+            "success": True,
+            "message": "Sales invoices retrieved successfully",
+            "data": formatted_invoices,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_invoices,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+
+        return send_response_list(
             status="success",
-            message="All Sales Invoices fetched successfully",
+            message="Sales invoices retrieved successfully",
             status_code=200,
             http_status=200,
-            data=formatted_invoices
+            data=response_data
         )
 
     except Exception as e:
@@ -669,9 +743,11 @@ def get_sales_invoice():
         return send_response(
             status="fail",
             message=str(e),
+            data=None,
             status_code=500,
             http_status=500
         )
+
 
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])

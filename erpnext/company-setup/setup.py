@@ -73,16 +73,15 @@ def create_company_api():
         data = frappe.form_dict
         company_name = data.get("company_name")
         currency = data.get("currency")
-
         country = data.get("country")
         domain = data.get("domain")
         tax_id = data.get("company_tpin")
         phone_no = data.get("phone_no")
         email = data.get("email")
-        custom_company_status = data.get("custom_company_status")
-        custom_company_registration_number = data.get("custom_company_registration_number")
+        custom_company_status = data.get("companyStatus")
+        custom_company_registration_number = data.get("companyRegistrationNumber")
         custom_date_of_incoporation = data.get("custom_date_of_incoporation")
-        custom_company_type = data.get("custom_company_type")
+        custom_company_type = data.get("company_type")
         custom_company_industry_type = data.get("custom_company_industry_type")
         custom_financial_year_begins = data.get("custom_financial_year_begins")
         custom_alternate_number = data.get("custom_alternate_number")
@@ -210,25 +209,118 @@ def get_companies_api():
         return
 
 
-
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_company_api():
     try:
-        id = frappe.form_dict.get("custom_company_id")
-        if not id:
+        custom_company_id = frappe.form_dict.get("custom_company_id")
+        if not custom_company_id:
             return send_response(
                 status="fail",
-                message="Company id is required (id)",
+                message="Company id is required (custom_company_id)",
                 status_code=400,
                 http_status=400
             )
 
-        result = frappe.get_list("Company", filters={"custom_company_id": id}, fields=["name"])
-        if not result:
-            return send_response(status="fail", message="Company not found", status_code=404, http_status=404)
+        company_list = frappe.get_list("Company", filters={"custom_company_id": custom_company_id}, fields=["name"])
+        if not company_list:
+            return send_response(
+                status="fail",
+                message="Company not found",
+                status_code=404,
+                http_status=404
+            )
 
-        company = frappe.get_doc("Company", result[0].name)
+        company = frappe.get_doc("Company", company_list[0].name)
 
+        def safe_attr(obj, attr):
+            return getattr(obj, attr, "") or ""
+
+        selling_terms = {}
+        try:
+            terms_doc = frappe.get_doc("Company Selling Terms", {"company": custom_company_id})
+
+            payment_docs = frappe.get_all(
+                "Company Selling Payments",
+                filters={"company": custom_company_id},
+                fields=["dueDates", "lateCharges", "tax", "notes"]
+            )
+
+            phases_docs = frappe.get_all(
+                "Company Selling Payments Phases",
+                filters={"company": custom_company_id},
+                fields=["phase_name", "percentage", "condition"]
+            )
+
+            phases_list = [
+                {"phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
+                for p in phases_docs
+            ]
+
+            payment_info = {}
+            if payment_docs:
+                first = payment_docs[0]
+                payment_info = {
+                    "phases": phases_list,
+                    "dueDates": first.get("dueDates"),
+                    "lateCharges": first.get("lateCharges"),
+                    "taxes": first.get("tax"),
+                    "notes": first.get("notes")
+                }
+
+            selling_terms = {
+                "general": safe_attr(terms_doc, "general"),
+                "payment": payment_info,
+                "delivery": safe_attr(terms_doc, "delivery"),
+                "cancellation": safe_attr(terms_doc, "cancellation"),
+                "warranty": safe_attr(terms_doc, "warranty"),
+                "liability": safe_attr(terms_doc, "liability")
+            }
+        except frappe.DoesNotExistError:
+            selling_terms = {}
+            
+        buying_terms = {}
+        try:
+            terms_doc = frappe.get_doc("Company Buying Terms", {"company": custom_company_id})
+
+            payment_docs = frappe.get_all(
+                "Company Buying Payments",
+                filters={"company": custom_company_id},
+                fields=["type", "dueDates", "lateCharges", "taxes", "specialNotes"]
+            )
+
+            phases_docs = frappe.get_all(
+                "Company Buying Payments Phases",
+                filters={"company": custom_company_id},
+                fields=["phase_name", "percentage", "condition"]
+            )
+
+            phases_list = [
+                {"phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
+                for p in phases_docs
+            ]
+
+            payment_info = {}
+            if payment_docs:
+                first = payment_docs[0]
+                payment_info = {
+                    "type": first.get("type"),
+                    "phases": phases_list,
+                    "dueDates": first.get("dueDates"),
+                    "lateCharges": first.get("lateCharges"),
+                    "taxes": first.get("taxes"),
+                    "specialNotes": first.get("specialNotes")
+                }
+
+            buying_terms = {
+                "general": safe_attr(terms_doc, "general"),
+                "payment": payment_info,
+                "delivery": safe_attr(terms_doc, "delivery"),
+                "cancellation": safe_attr(terms_doc, "cancellation"),
+                "warranty": safe_attr(terms_doc, "warranty"),
+                "liability": safe_attr(terms_doc, "liability")
+            }
+        except frappe.DoesNotExistError:
+            buying_terms = {}
 
         data = {
             "default_currency": company.default_currency,
@@ -262,8 +354,11 @@ def get_company_api():
             "custom_branch_address": company.custom_branch_address,
             "custom_date_of_addition": company.custom_date_of_addition,
             "custom_opening_balance": company.custom_opening_balance,
+            "terms": {
+                "selling": selling_terms,
+                "buying": buying_terms
+            }
         }
-
 
         return send_response(
             status="success",
@@ -289,6 +384,7 @@ def get_company_api():
             status_code=500,
             http_status=500
         )
+
 
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
 def update_accounts_company_info():
@@ -482,3 +578,106 @@ def update_company_info():
             http_status=500
         )
         return
+    
+@frappe.whitelist(allow_guest=False, methods=["PUT"])
+def update_company_terms_and_conditions():
+    custom_company_id = (frappe.form_dict.get("custom_company_id") or "").strip()
+
+    if not custom_company_id:
+        return send_response(
+            status="fail",
+            message="custom_company_id is required",
+            status_code=400,
+            http_status=400
+        )
+
+    company = frappe.get_list("Company", filters={"custom_company_id": custom_company_id}, fields=["name"])
+    if not company:
+        return send_response(
+            status="fail",
+            message="Company not found",
+            status_code=404,
+            http_status=404
+        )
+
+    terms = frappe.form_dict.get("terms") or {}
+
+    selling = terms.get("selling") or {}
+    selling_payment = selling.get("payment") or {}
+    selling_phases = selling_payment.get("phases", [])
+
+    selling_terms_doc = frappe.get_doc("Company Selling Terms", frappe.db.exists("Company Selling Terms", {"company": custom_company_id})) \
+                        if frappe.db.exists("Company Selling Terms", {"company": custom_company_id}) \
+                        else frappe.new_doc("Company Selling Terms")
+    selling_terms_doc.company = custom_company_id
+    selling_terms_doc.general = (selling.get("general") or "").strip()
+    selling_terms_doc.delivery = (selling.get("delivery") or "").strip()
+    selling_terms_doc.cancellation = (selling.get("cancellation") or "").strip()
+    selling_terms_doc.warranty = (selling.get("warranty") or "").strip()
+    selling_terms_doc.liability = (selling.get("liability") or "").strip()
+    selling_terms_doc.save(ignore_permissions=True)
+
+    sell_payment_doc = frappe.get_doc("Company Selling Payments", frappe.db.exists("Company Selling Payments", {"company": custom_company_id})) \
+                        if frappe.db.exists("Company Selling Payments", {"company": custom_company_id}) \
+                        else frappe.new_doc("Company Selling Payments")
+    sell_payment_doc.company = custom_company_id
+    sell_payment_doc.type = selling_payment.get("type")
+    sell_payment_doc.duedates = selling_payment.get("dueDates", "")
+    sell_payment_doc.latecharges = selling_payment.get("lateCharges", "")
+    sell_payment_doc.tax = selling_payment.get("taxes", "")
+    sell_payment_doc.notes = selling_payment.get("specialNotes", "")
+    sell_payment_doc.save(ignore_permissions=True)
+
+    frappe.db.delete("Company Selling Payments Phases", {"company": custom_company_id})
+    for p in selling_phases:
+        phase_doc = frappe.new_doc("Company Selling Payments Phases")
+        phase_doc.company = custom_company_id
+        phase_doc.phase_name = p.get("phase")
+        phase_doc.percentage = p.get("percentage")
+        phase_doc.condition = p.get("when")
+        phase_doc.insert(ignore_permissions=True)
+
+
+    buying = terms.get("buying") or {}
+    buying_payment = buying.get("payment") or {}
+    buying_phases = buying_payment.get("phases", [])
+
+    buying_terms_doc = frappe.get_doc("Company Buying Terms", frappe.db.exists("Company Buying Terms", {"company": custom_company_id})) \
+                        if frappe.db.exists("Company Buying Terms", {"company": custom_company_id}) \
+                        else frappe.new_doc("Company Buying Terms")
+    buying_terms_doc.company = custom_company_id
+    buying_terms_doc.general = (buying.get("general") or "").strip()
+    buying_terms_doc.delivery = (buying.get("delivery") or "").strip()
+    buying_terms_doc.cancellation = (buying.get("cancellation") or "").strip()
+    buying_terms_doc.warranty = (buying.get("warranty") or "").strip()
+    buying_terms_doc.liability = (buying.get("liability") or "").strip()
+    buying_terms_doc.save(ignore_permissions=True)
+
+    buy_payment_doc = frappe.get_doc("Company Buying Payments", frappe.db.exists("Company Buying Payments", {"company": custom_company_id})) \
+                        if frappe.db.exists("Company Buying Payments", {"company": custom_company_id}) \
+                        else frappe.new_doc("Company Buying Payments")
+    
+    buy_payment_doc.company = custom_company_id
+    buy_payment_doc.type = buying_payment.get("type")
+    buy_payment_doc.duedates = buying_payment.get("dueDates", "")
+    buy_payment_doc.latecharges = buying_payment.get("lateCharges", "")
+    buy_payment_doc.taxes = buying_payment.get("taxes", "")
+    buy_payment_doc.specialnotes = buying_payment.get("specialNotes", "")
+    buy_payment_doc.save(ignore_permissions=True)
+
+    frappe.db.delete("Company Buying Payments Phases", {"company": custom_company_id})
+    for p in buying_phases:
+        phase_doc = frappe.new_doc("Company Buying Payments Phases")
+        phase_doc.company = custom_company_id
+        phase_doc.phase_name = p.get("phase")
+        phase_doc.percentage = p.get("percentage")
+        phase_doc.condition = p.get("when")
+        phase_doc.insert(ignore_permissions=True)
+
+    frappe.db.commit()
+
+    return send_response(
+        status="success",
+        message="Company terms and conditions updated successfully",
+        status_code=200
+    )
