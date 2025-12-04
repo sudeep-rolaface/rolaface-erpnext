@@ -640,7 +640,7 @@ def get_customer_by_id(custom_id):
             http_status=500
         )
         
-@frappe.whitelist(allow_guest=False, methods=["PUT"])
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_customer_by_id():
     custom_id = (frappe.form_dict.get("id") or "").strip()
     if not custom_id:
@@ -732,40 +732,50 @@ def update_customer_by_id():
             phases = payment.get("phases", [])
 
             for phase in phases:
-                phase_id = phase.get("id")  
+                phase_id = phase.get("id")
                 phase_name = phase.get("name")
                 phase_percentage = phase.get("percentage")
                 phase_condition = phase.get("condition")
+                is_delete = phase.get("isDelete", 0)  
 
-    
                 existing = frappe.get_all(
                     "Payment Terms Phases",
-                    filters={
-                        "customer": custom_id,
-                        "id": phase_id
-                    },
+                    filters={"customer": custom_id, "id": phase_id},
                     limit=1
                 )
 
                 if existing:
                     phase_doc = frappe.get_doc("Payment Terms Phases", existing[0].name)
+
+                    if is_delete:
+        
+                        frappe.delete_doc("Payment Terms Phases", phase_doc.name, ignore_permissions=True)
+                        continue 
+
+      
                     phase_doc.phase = phase_name
                     phase_doc.percentage = phase_percentage
                     phase_doc.condition = phase_condition
                     phase_doc.save(ignore_permissions=True)
 
                 else:
+                    if is_delete:
+           
+                        continue
+
+
+                    random_id = "{:06d}".format(random.randint(0, 999999))
                     phase_doc = frappe.get_doc({
                         "doctype": "Payment Terms Phases",
                         "customer": custom_id,
-                        "id": phase_id,  
+                        "id": random_id,
                         "phase": phase_name,
                         "percentage": phase_percentage,
                         "condition": phase_condition
                     })
                     phase_doc.insert(ignore_permissions=True)
 
-
+   
                 customer.ignore_mandatory = True
                 customer.flags.ignore_links = True
                 customer.save(ignore_permissions=True)
@@ -814,23 +824,71 @@ def update_customer_by_id():
 @frappe.whitelist(allow_guest=False)
 def delete_customer_by_id():
     id = (frappe.form_dict.get("id") or "").strip()
+
     if not id:
-        send_response(status="fail", message="Customer id is required", status_code=400, http_status=400)
+        send_response(
+            status="fail",
+            message="Customer id is required",
+            status_code=400,
+            http_status=400
+        )
         return
+
     try:
         customer = frappe.get_doc("Customer", {"custom_id": id})
-        if customer:
-            customer.delete()
-            frappe.db.commit()
-            send_response(status="success", message="Customer with TPIN deleted successfully", status_code=204,http_status=204) 
+
+        if not customer:
+            send_response(
+                status="fail",
+                message="Customer not found",
+                status_code=404,
+                http_status=404
+            )
             return
-        else:
-            send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
-            return
+        terms_list = frappe.get_all(
+            "Payment Terms",
+            filters={"customer": id},
+            pluck="name"
+        )
+
+        for term in terms_list:
+            frappe.delete_doc("Payment Terms", term, force=1)
+
+        phases_list = frappe.get_all(
+            "Payment Terms Phases",
+            filters={"customer": id},
+            pluck="name"
+        )
+
+        for phase in phases_list:
+            frappe.delete_doc("Payment Terms Phases", phase, force=1)
+
+        customer.delete()
+        frappe.db.commit()
+
+        send_response(
+            status="success",
+            message="Customer and all related terms/conditions/phases deleted successfully",
+            status_code=200,
+            http_status=200
+        )
+        return
 
     except frappe.DoesNotExistError:
-        send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
+        send_response(
+            status="fail",
+            message="Customer not found",
+            status_code=404,
+            http_status=404
+        )
         return
+
     except Exception as e:
-        send_response(status="error", message=f"Failed to retrieve customers: {str(e)}", status_code=500, data=None, http_status=500)
+        send_response(
+            status="error",
+            message=f"Failed to delete customer: {str(e)}",
+            status_code=500,
+            http_status=500
+        )
         return
+

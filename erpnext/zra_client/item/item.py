@@ -775,7 +775,7 @@ def get_all_item_groups_api():
         all_groups = frappe.get_all(
             "Item Group",
             fields=[
-                "name",
+                "custom_id",
                 "item_group_name",
                 "custom_description",
                 "custom_unit_of_measurement",
@@ -831,6 +831,74 @@ def get_all_item_groups_api():
             status_code=500,
             http_status=500
         )
+@frappe.whitelist(allow_guest=False)
+def get_item_group_by_id_api():
+    try:
+        args = frappe.request.args
+        custom_id = args.get("custom_id")
+        name = args.get("name")
+
+        if not custom_id and not name:
+            return send_response(
+                status="fail",
+                message="Provide either 'custom_id' or 'name'.",
+                status_code=400,
+                http_status=400
+            )
+
+        if custom_id:
+            item_group_name = frappe.db.get_value(
+                "Item Group", 
+                {"custom_id": custom_id}, 
+                "name"
+            )
+            if not item_group_name:
+                return send_response(
+                    status="fail",
+                    message=f"Item Group with custom_id '{custom_id}' not found.",
+                    status_code=404,
+                    http_status=404
+                )
+        else:
+            if not frappe.db.exists("Item Group", name):
+                return send_response(
+                    status="fail",
+                    message=f"Item Group '{name}' not found.",
+                    status_code=404,
+                    http_status=404
+                )
+            item_group_name = name
+
+
+        doc = frappe.get_doc("Item Group", item_group_name)
+        filtered_data = {
+            "name": doc.name,
+            "item_group_name": doc.item_group_name,
+            "custom_id": doc.custom_id,
+            "custom_description": doc.custom_description,
+            "custom_unit_of_measurement": doc.custom_unit_of_measurement,
+            "custom_selling_price": doc.custom_selling_price,
+            "custom_sales_account": doc.custom_sales_account
+        }
+
+        return send_response(
+            status="success",
+            message="Item Group fetched successfully",
+            data=filtered_data,
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get Item Group By ID Error")
+        return send_response(
+            status="error",
+            message="Failed to fetch item group",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
 
 
 @frappe.whitelist(allow_guest=False)
@@ -893,6 +961,14 @@ def create_item_group_api():
         )
     if isinstance(is_group, str):
         is_group = is_group.lower() in ["true", "1", "yes"]
+
+    if frappe.db.exists("Item Group", {"custom_id": custom_id}):
+        return send_response(
+            status="fail",
+            message=f"custom_id '{custom_id}' is already used. Enter a unique ID.",
+            status_code=409,
+            http_status=409
+        )
 
     if frappe.db.exists("Item Group", {"item_group_name": item_group_name}):
         return send_response(
@@ -994,6 +1070,7 @@ def update_item_group_api():
             message=f"Failed to update Item Group: {str(e)}",
             status_code=500
         )
+        
 
 
 
