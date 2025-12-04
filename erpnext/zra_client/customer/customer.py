@@ -1,5 +1,7 @@
+import random
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.main import ZRAClient
+from frappe.utils import random_string
 from frappe import _
 import frappe
 import re
@@ -203,6 +205,10 @@ def create_customer_api():
         status_code=400,
         http_status=400
     )
+    
+    if not mobile_no.isdigit() or len(mobile_no) != 10:
+        send_response(status="fail", message="Mobile number must be 10 digits only", status_code=400, http_status=400)
+        return
 
     
     if not billing_address_line_1:
@@ -367,9 +373,11 @@ def create_customer_api():
             frappe.db.commit()
         if phases:
             for phase in phases:
-             
+                
+                random_id = "{:06d}".format(random.randint(0, 999999)) 
                 phase_doc = frappe.get_doc({
                     "doctype": "Payment Terms Phases",
+                    "id": random_id,
                     "customer": id, 
                     "phase": phase.get("name"),
                     "percentage": phase.get("percentage", ""),
@@ -541,13 +549,14 @@ def get_customer_by_id(custom_id):
             phases_docs = frappe.get_all(
                 "Payment Terms Phases",
                 filters={"customer": custom_id},  
-                fields=["phase", "percentage", "condition"]
+                fields=["id","phase", "percentage", "condition"]
             )
 
             phases_list = []
             print("Phase list :", phases_docs)
             for p in phases_docs:
                 phases_list.append({
+                    "id": p.get("id"),
                     "name": p.get("phase"),
                     "percentage": p.get("percentage"),
                     "condition": p.get("condition")
@@ -721,20 +730,46 @@ def update_customer_by_id():
             payment_doc.save(ignore_permissions=True)
 
             phases = payment.get("phases", [])
-            for phase in phases:
-                phase_doc = frappe.get_doc({
-                    "doctype": "Payment Terms Phases",
-                    "customer": custom_id,
-                    "phase": phase.get("name"),
-                    "percentage": phase.get("percentage", ""),
-                    "condition": phase.get("condition", "")
-                })
-                phase_doc.insert(ignore_permissions=True)
 
-    customer.ignore_mandatory = True
-    customer.flags.ignore_links = True
-    customer.save(ignore_permissions=True)
-    frappe.db.commit()
+            for phase in phases:
+                phase_id = phase.get("id")  
+                phase_name = phase.get("name")
+                phase_percentage = phase.get("percentage")
+                phase_condition = phase.get("condition")
+
+    
+                existing = frappe.get_all(
+                    "Payment Terms Phases",
+                    filters={
+                        "customer": custom_id,
+                        "id": phase_id
+                    },
+                    limit=1
+                )
+
+                if existing:
+                    phase_doc = frappe.get_doc("Payment Terms Phases", existing[0].name)
+                    phase_doc.phase = phase_name
+                    phase_doc.percentage = phase_percentage
+                    phase_doc.condition = phase_condition
+                    phase_doc.save(ignore_permissions=True)
+
+                else:
+                    phase_doc = frappe.get_doc({
+                        "doctype": "Payment Terms Phases",
+                        "customer": custom_id,
+                        "id": phase_id,  
+                        "phase": phase_name,
+                        "percentage": phase_percentage,
+                        "condition": phase_condition
+                    })
+                    phase_doc.insert(ignore_permissions=True)
+
+
+                customer.ignore_mandatory = True
+                customer.flags.ignore_links = True
+                customer.save(ignore_permissions=True)
+                frappe.db.commit()
 
     def safe_attr(obj, attr):
         return getattr(obj, attr, "") or ""
