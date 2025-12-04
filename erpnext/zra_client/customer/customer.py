@@ -755,10 +755,11 @@ def update_customer_by_id():
                     phase_doc.save(ignore_permissions=True)
 
                 else:
+                    random_id = "{:06d}".format(random.randint(0, 999999))
                     phase_doc = frappe.get_doc({
                         "doctype": "Payment Terms Phases",
                         "customer": custom_id,
-                        "id": phase_id,  
+                        "id": random_id,  
                         "phase": phase_name,
                         "percentage": phase_percentage,
                         "condition": phase_condition
