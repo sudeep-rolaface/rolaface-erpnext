@@ -824,23 +824,71 @@ def update_customer_by_id():
 @frappe.whitelist(allow_guest=False)
 def delete_customer_by_id():
     id = (frappe.form_dict.get("id") or "").strip()
+
     if not id:
-        send_response(status="fail", message="Customer id is required", status_code=400, http_status=400)
+        send_response(
+            status="fail",
+            message="Customer id is required",
+            status_code=400,
+            http_status=400
+        )
         return
+
     try:
         customer = frappe.get_doc("Customer", {"custom_id": id})
-        if customer:
-            customer.delete()
-            frappe.db.commit()
-            send_response(status="success", message="Customer with TPIN deleted successfully", status_code=204,http_status=204) 
+
+        if not customer:
+            send_response(
+                status="fail",
+                message="Customer not found",
+                status_code=404,
+                http_status=404
+            )
             return
-        else:
-            send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
-            return
+        terms_list = frappe.get_all(
+            "Payment Terms",
+            filters={"customer": id},
+            pluck="name"
+        )
+
+        for term in terms_list:
+            frappe.delete_doc("Payment Terms", term, force=1)
+
+        phases_list = frappe.get_all(
+            "Payment Terms Phases",
+            filters={"customer": id},
+            pluck="name"
+        )
+
+        for phase in phases_list:
+            frappe.delete_doc("Payment Terms Phases", phase, force=1)
+
+        customer.delete()
+        frappe.db.commit()
+
+        send_response(
+            status="success",
+            message="Customer and all related terms/conditions/phases deleted successfully",
+            status_code=200,
+            http_status=200
+        )
+        return
 
     except frappe.DoesNotExistError:
-        send_response(status="fail", message="Customer not found", status_code=404, http_status=404)
+        send_response(
+            status="fail",
+            message="Customer not found",
+            status_code=404,
+            http_status=404
+        )
         return
+
     except Exception as e:
-        send_response(status="error", message=f"Failed to retrieve customers: {str(e)}", status_code=500, data=None, http_status=500)
+        send_response(
+            status="error",
+            message=f"Failed to delete customer: {str(e)}",
+            status_code=500,
+            http_status=500
+        )
         return
+
