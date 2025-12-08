@@ -45,6 +45,7 @@ def check_if_group_exists(group_name):
 @frappe.whitelist(allow_guest=False)
 def create_item_api():
     data = frappe.form_dict
+    print(data)
     item_name = (frappe.form_dict.get("item_name") or "").strip()
     item_group = (frappe.form_dict.get("item_group") or "").strip()
     unitOfMeasureCd = (frappe.form_dict.get("unitOfMeasureCd") or "").strip()
