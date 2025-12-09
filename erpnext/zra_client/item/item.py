@@ -45,122 +45,104 @@ def check_if_group_exists(group_name):
 @frappe.whitelist(allow_guest=False)
 def create_item_api():
     data = frappe.form_dict
-    item_name = (frappe.form_dict.get("item_name") or "").strip()
-    item_group = (frappe.form_dict.get("item_group") or "").strip()
-    unitOfMeasureCd = (frappe.form_dict.get("unitOfMeasureCd") or "").strip()
-    custom_itemclscd = (frappe.form_dict.get("custom_itemclscd") or "").strip()
-    custom_itemtycd = (frappe.form_dict.get("custom_itemtycd") or "").strip()
-    custom_orgnnatcd = (frappe.form_dict.get("custom_orgnnatcd") or "").strip()
-    custom_pkgunitcd = (frappe.form_dict.get("custom_pkgunitcd") or "").strip()
-    custom_svcchargeyn = (frappe.form_dict.get("custom_svcchargeyn") or "").strip()
-    custom_isrcaplcbyn = (frappe.form_dict.get("custom_isrcaplcbyn") or "").strip()
-    custom_selling_price = data.get("custom_selling_price")
-    custom_purchase_amount = data.get("custom_purchase_amount")
-    custom_buying_price = data.get("custom_buying_price")
-    custom_suk = data.get("custom_suk")
-    custom_kg = data.get("custom_kg")
-    custom_vendor = data.get("custom_vendor")
-    custom_non_export_tax = data.get("custom_non_export_tax")
-    custom_non_export_code = data.get("custom_non_export_code")
-    custom_non_export_name = data.get("custom_non_export_name")
-    custom_non_export_description = data.get("custom_non_export_description")
-    custom_non_export_tax_perct = data.get("custom_non_export_tax_perct")
-    custom_export_tax = data.get("custom_export_tax")
-    custom_export_code = data.get("custom_export_code")
-    custom_export_name = data.get("custom_export_name")
-    custom_export_description = data.get("custom_export_description")
-    custom_export_tax_perct = data.get("custom_export_tax_perct")
-    custom_local_purchase_order_tax = data.get("custom_local_purchase_order_tax")
-    custom_local_purchase_order_code = data.get("custom_local_purchase_order_code")
-    custom_local_purchase_order_name = data.get("custom_local_purchase_order_name")
-    custom_local_purchase_order_description = data.get("custom_local_purchase_order_description")
-    custom_local_purchase_order_perct = data.get("custom_local_purchase_order_perct")
-    custom_dimension = data.get("custom_dimension")
-    custom_weight = data.get("custom_weight")
-    custom_dimension = data.get("custom_dimension")
-    custom_valuation = data.get("custom_valuation")
-    custom_is_track_inventory = data.get("custom_is_track_inventory")
-    custom_tracking_method = data.get("custom_tracking_method")
-    custom_reorder_level = data.get("custom_reorder_level")
-    custom_min_stock_level = data.get("custom_min_stock_level")
-    custom_max_stock_level = data.get("custom_max_stock_level")
-    custom_sales_account = data.get("custom_sales_account")
-    custom_purchase_account = data.get("custom_purchase_account")
-    
+    print(data)
+
+    item_name = (data.get("itemName") or "").strip()
+    item_group = (data.get("itemGroup") or "").strip()
+    unit_of_measure_cd = (data.get("unitOfMeasureCd") or "Nos").strip()
+    custom_itemclscd = (data.get("itemClassCode") or "").strip()
+    custom_itemtycd = data.get("itemTypeCode") or 0
+    custom_orgnnatcd = (data.get("originNationCode") or "").strip()
+    custom_pkgunitcd = (data.get("packagingUnitCode") or "").strip()
+    custom_svcchargeyn = (data.get("svcCharge") or "").strip()
+    custom_isrcaplcbyn = (data.get("ins") or "").strip()
+    brand = (data.get("brand") or "").strip()
+    custom_selling_price = data.get("sellingPrice") or 0
+    custom_purchase_amount = data.get("purchaseAmount") or 0
+    custom_buying_price = data.get("buyingPrice") or 0
+    custom_sku = data.get("sku") or ""
+    custom_kg = data.get("weightUnit") or 0
+    custom_vendor = data.get("preferredVendor") or ""
+    custom_non_export_tax = data.get("nonExportTax") or ""
+    custom_non_export_code = data.get("nonExportCode") or ""
+    custom_non_export_name = data.get("nonExportName") or ""
+    custom_non_export_description = data.get("nonExportDescription") or ""
+    custom_non_export_tax_perct = data.get("nonExportTaxPerct") or 0
+    custom_export_tax = data.get("exportTax") or ""
+    custom_export_code = data.get("exportCode") or ""
+    custom_export_name = data.get("exportName") or ""
+    custom_export_description = data.get("exportDescription") or ""
+    custom_export_tax_perct = data.get("exportTaxPerct") or 0
+    custom_local_purchase_order_tax = data.get("localPurchaseOrderTax") or ""
+    custom_local_purchase_order_code = data.get("localPurchaseOrderCode") or ""
+    custom_local_purchase_order_name = data.get("localPurchaseOrderName") or ""
+    custom_local_purchase_order_description = data.get("localPurchaseOrderDescription") or ""
+    custom_local_purchase_order_perct = data.get("localPurchaseOrderPerct") or 0
+    custom_dimension_unit = data.get("dimensionUnit") or ""
+    custom_weight = data.get("weightUnit") or 0
+    custom_valuation = data.get("valuationMethod") or ""
+    custom_is_track_inventory = data.get("custom_is_track_inventory") or False
+    custom_tracking_method = data.get("trackingMethod") or "None"
+    custom_reorder_level = data.get("reorderLevel") or 0
+    custom_min_stock_level = data.get("minStockLevel") or 0
+    custom_max_stock_level = data.get("maxStockLevel") or 0
+    custom_sales_account = data.get("salesAccount") or ""
+    custom_purchase_account = data.get("purchaseAccount") or ""
+    custom_tax_preference = data.get("taxPreference") or ""
+
+
+
     if not custom_selling_price:
-        send_response(
+        return send_response(
             status="fail",
             message="custom_selling_price is required",
             status_code=400,
             http_status=400
         )
-    
-    provided_fields = [
-    bool(custom_non_export_code),
-    bool(custom_local_purchase_order_code),
-    bool(custom_export_code)
-    ]
 
-    if provided_fields.count(True) != 1:
+    provided_codes = [bool(custom_non_export_code), bool(custom_local_purchase_order_code), bool(custom_export_code)]
+    if provided_codes.count(True) != 1:
         return send_response(
             status="fail",
-            message="Exactly one of custom_non_export_code, custom_local_purchase_order_code, or custom_export_code must be provided per item.",
+            message="Exactly one of custom_non_export_code, custom_local_purchase_order_code, or custom_export_code must be provided.",
             status_code=400,
             http_status=400
         )
-        
-    
-    if not (custom_non_export_code or custom_local_purchase_order_code or custom_export_code):
+    if custom_non_export_code and custom_non_export_code not in ["A", "B", "C3", "D", "E"]:
         return send_response(
             status="fail",
-            message="At least one of custom_non_export_code, custom_local_purchase_order_code, or custom_export_code must be provided.",
+            message="custom_non_export_code must be one of A, B, C3, D, E",
             status_code=400,
             http_status=400
         )
-    if custom_non_export_code:
-        VALID_NON_EXPORT_CODES = ["A", "B", "C3", "D", "E"]
-        if custom_non_export_code not in VALID_NON_EXPORT_CODES:
-            return send_response(
-                status="fail",
-                message=f"custom_non_export_code must be one of {', '.join(VALID_NON_EXPORT_CODES)}",
-                status_code=400,
-                http_status=400
-            )
-            
-    
-    if custom_local_purchase_order_code:
-        VALID_LOCAL_PURCHASE_ORDER_CODES = ["C1"]
-        if custom_local_purchase_order_code not in VALID_LOCAL_PURCHASE_ORDER_CODES:
-            return send_response(
-                status="fail",
-                message=f"custom_local_purchase_order_code must be one of {', '.join(VALID_LOCAL_PURCHASE_ORDER_CODES)}",
-                status_code=400,
-                http_status=400
-            )
-            
-    if custom_export_code:
-        VALID_EXPORT_CODES = ["C2"]
-        if custom_export_code not in VALID_EXPORT_CODES:
-            return send_response(
-                status="fail",
-                message=f"custom_export_code must be one of {', '.join(VALID_EXPORT_CODES)}",
-                status_code=400,
-                http_status=400
-            )
+    if custom_local_purchase_order_code and custom_local_purchase_order_code != "C1":
+        return send_response(
+            status="fail",
+            message="custom_local_purchase_order_code must be C1",
+            status_code=400,
+            http_status=400
+        )
+    if custom_export_code and custom_export_code != "C2":
+        return send_response(
+            status="fail",
+            message="custom_export_code must be C2",
+            status_code=400,
+            http_status=400
+        )
+
 
     required_fields = {
         "item_name": item_name,
         "item_group": item_group,
-        "unitOfMeasureCd": unitOfMeasureCd,
+        "unit_of_measure_cd": unit_of_measure_cd,
         "custom_itemclscd": custom_itemclscd,
         "custom_itemtycd": custom_itemtycd,
         "custom_orgnnatcd": custom_orgnnatcd,
-        "custom_pkgunitcd,": custom_pkgunitcd,
+        "custom_pkgunitcd": custom_pkgunitcd,
         "custom_svcchargeyn": custom_svcchargeyn,
         "custom_isrcaplcbyn": custom_isrcaplcbyn,
-        "price": custom_selling_price,
+        "custom_selling_price": custom_selling_price
     }
-
     for field, value in required_fields.items():
         if not value:
             return send_response(
@@ -170,9 +152,9 @@ def create_item_api():
                 http_status=400
             )
 
-    item_code = generate_item_code_random(custom_orgnnatcd, custom_itemtycd, custom_pkgunitcd, unitOfMeasureCd)
+    item_code = generate_item_code_random(custom_orgnnatcd, custom_itemtycd, custom_pkgunitcd, unit_of_measure_cd)
+    ensure_uom_exists(unit_of_measure_cd)
 
-    ensure_uom_exists(unitOfMeasureCd)
     if frappe.db.exists("Item", {"item_name": item_name}):
         return send_response(
             status="fail",
@@ -180,51 +162,72 @@ def create_item_api():
             status_code=400,
             http_status=400
         )
-        
+
+ 
     itemGroup = check_if_group_exists(item_group)
     if not itemGroup:
-        return
+        return send_response(
+            status="fail",
+            message=f"Item group '{item_group}' does not exist",
+            status_code=400,
+            http_status=400
+        )
+
+
+    PAYLOAD = {
+        "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
+        "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
+        "itemCd": item_code,
+        "itemClsCd": custom_itemclscd,
+        "itemTyCd": custom_itemtycd,
+        "itemNm": item_name,
+        "orgnNatCd": custom_orgnnatcd,
+        "pkgUnitCd": custom_pkgunitcd,
+        "qtyUnitCd": unit_of_measure_cd,
+        "dftPrc": custom_selling_price,
+        "vatCatCd": custom_non_export_code,
+        "svcChargeYn": custom_svcchargeyn,
+        "sftyQty": 0,
+        "isrcAplcbYn": custom_isrcaplcbyn,
+        "useYn": "Y",
+        "regrNm": frappe.session.user,
+        "regrId": frappe.session.user,
+        "modrNm": frappe.session.user,
+        "modrId": frappe.session.user
+    }
 
     try:
-        PAYLOAD = {
-            "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
-            "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
-            "itemCd": item_code,
-            "itemClsCd": custom_itemclscd,
-            "itemTyCd": custom_itemtycd,
-            "itemNm": item_name,
-            "orgnNatCd": custom_orgnnatcd,
-            "pkgUnitCd": custom_pkgunitcd,
-            "qtyUnitCd": unitOfMeasureCd,
-            "dftPrc": custom_selling_price,
-            "vatCatCd": custom_non_export_code,
-            "svcChargeYn": custom_svcchargeyn,
-            "sftyQty": 0,
-            "isrcAplcbYn": custom_isrcaplcbyn,
-            "useYn": "Y",
-            "regrNm": frappe.session.user,
-            "regrId": frappe.session.user,
-            "modrNm": frappe.session.user,
-            "modrId": frappe.session.user
-        }
-
         result = ZRA_CLIENT_INSTANCE.create_item_zra_client(PAYLOAD)
-        data = result.json()
-        print(data)
-        if data.get("resultCd") != "000":
+        print(result)
+        response_data = result.json()
+        print(response_data)
+        if response_data.get("resultCd") != "000":
             return send_response(
                 status="error",
-                message=data.get("resultMsg", "Item Sync Failed"),
+                message=response_data.get("resultMsg", "Item Sync Failed"),
                 status_code=400,
                 http_status=400
             )
+
+        if brand:
+            if not frappe.db.exists("Brand", brand):
+                try:
+                    frappe.get_doc({"doctype": "Brand", "brand": brand}).insert(ignore_permissions=True)
+                except Exception as e:
+                    return send_response(
+                        status="fail",
+                        message=f"Failed to create brand '{brand}'",
+                        data={"error": str(e)},
+                        status_code=500,
+                        http_status=500
+                    )
 
         item = frappe.get_doc({
             "doctype": "Item",
             "item_name": item_name,
             "item_code": item_code,
             "item_group": item_group,
-            "stock_uom": unitOfMeasureCd,
+            "stock_uom": unit_of_measure_cd,
             "custom_itemclscd": custom_itemclscd,
             "custom_itemtycd": custom_itemtycd,
             "custom_orgnnatcd": custom_orgnnatcd,
@@ -232,10 +235,11 @@ def create_item_api():
             "custom_svcchargeyn": custom_svcchargeyn,
             "custom_isrcaplcbyn": custom_isrcaplcbyn,
             "is_stock_item": 1,
+            "brand": brand,
             "standard_rate": custom_selling_price,
             "custom_purchase_amount": custom_purchase_amount,
             "custom_buying_price": custom_buying_price,
-            "custom_suk": custom_suk,
+            "custom_suk": custom_sku,
             "custom_kg": custom_kg,
             "custom_vendor": custom_vendor,
             "custom_non_export_tax": custom_non_export_tax,
@@ -253,7 +257,7 @@ def create_item_api():
             "custom_local_purchase_order_name": custom_local_purchase_order_name,
             "custom_local_purchase_order_description": custom_local_purchase_order_description,
             "custom_local_purchase_order_perct": custom_local_purchase_order_perct,
-            "custom_dimension": custom_dimension,
+            "custom_dimension": custom_dimension_unit,
             "custom_weight": custom_weight,
             "custom_valuation": custom_valuation,
             "custom_is_track_inventory": custom_is_track_inventory,
@@ -262,7 +266,8 @@ def create_item_api():
             "custom_min_stock_level": custom_min_stock_level,
             "custom_max_stock_level": custom_max_stock_level,
             "custom_sales_account": custom_sales_account,
-            "custom_purchase_account": custom_purchase_account 
+            "custom_purchase_account": custom_purchase_account,
+            "custom_tax_preference": custom_tax_preference,
         })
         item.insert(ignore_permissions=True)
         frappe.db.commit()
@@ -283,6 +288,7 @@ def create_item_api():
             status_code=500,
             http_status=500
         )
+
 
 @frappe.whitelist(allow_guest=False)
 def get_all_items_api():
@@ -340,15 +346,12 @@ def get_all_items_api():
         all_items = frappe.get_all(
             "Item",
             fields=[
-                "name",
                 "item_code",
                 "item_name",
                 "item_group",
                 "stock_uom",
                 "standard_rate",
                 "custom_itemclscd",
-                "custom_min_stock_level",
-                "custom_max_stock_level",
                 "custom_vendor"
             ],
             filters={"disabled": 0},  
@@ -368,8 +371,13 @@ def get_all_items_api():
         items = all_items[start:end]
 
         for it in items:
-            it["unitOfMeasureCd"] = it.pop("stock_uom", None)
-            it["custom_selling_price"] = it.pop("standard_rate", None)
+            it["id"] = it.pop("item_code")
+            it["itemName"] = it.pop("item_name")
+            it["itemGroup"] = it.pop("item_group")
+            it["itemClassCode"] = it.pop("custom_itemclscd")           
+            it["unitOfMeasureCd"] = it.pop("stock_uom")
+            it["sellingPrice"] = it.pop("standard_rate")
+            it["preferredVendor"] = it.pop("custom_vendor")
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -405,10 +413,9 @@ def get_all_items_api():
             http_status=500
         )
 
-
 @frappe.whitelist(allow_guest=False)
 def get_item_by_id_api():
-    item_code = (frappe.form_dict.get("item_code") or "").strip()
+    item_code = (frappe.form_dict.get("id") or "").strip()
     if not item_code:
         return send_response(
             status="fail",
@@ -418,7 +425,7 @@ def get_item_by_id_api():
         )
 
     try:
-        item = frappe.get_all(
+        items = frappe.get_all(
             "Item",
             filters={"item_code": item_code},
             fields=[
@@ -436,6 +443,7 @@ def get_item_by_id_api():
                 "custom_isrcaplcbyn",
                 "custom_selling_price",
                 "custom_purchase_amount",
+                "standard_rate",
                 "custom_buying_price",
                 "custom_suk",
                 "custom_vendor",
@@ -463,19 +471,16 @@ def get_item_by_id_api():
                 "custom_min_stock_level",
                 "custom_max_stock_level",
                 "custom_sales_account",
-                "custom_purchase_account"
+                "custom_purchase_account",
+                "brand",
+                'custom_kg',
+                "description",
+                "custom_tax_preference",
             ],
             limit_page_length=1
         )
-        for it in item:
-            it["custom_selling_price"] = it.get("standard_rate", 0)
-            it["unitOfMeasureCd"] = it.get("stock_uom", 0)
-            
-            if "stock_uom" in it:
-                del it["stock_uom"] 
-            if "standard_rate" in it:
-                del it["standard_rate"]
-        if not item:
+
+        if not items:
             return send_response(
                 status="fail",
                 message=f"Item with code '{item_code}' not found",
@@ -483,10 +488,59 @@ def get_item_by_id_api():
                 http_status=404
             )
 
+        it = items[0]
+
+    
+        data = {
+            "id": it.pop("item_code", ""),
+            "itemName": it.pop("item_name", ""),
+            "itemGroup": it.pop("item_group", ""),
+            "itemClassCode": it.pop("custom_itemclscd", ""),
+            "itemTypeCode": it.pop("custom_itemtycd", 0),
+            "originNationCode": it.pop("custom_orgnnatcd", ""),
+            "packagingUnitCode": it.pop("custom_pkgunitcd", ""),
+            "svcCharge": it.pop("custom_svcchargeyn", "Y"),
+            "ins": it.pop("custom_isrcaplcbyn", "Y"),
+            "sellingPrice": it.pop("standard_rate", 0),
+            "buyingPrice": it.pop("custom_buying_price", 0),
+            "unitOfMeasureCd": it.pop("stock_uom", "U"),
+            "description": "",
+            "sku": it.pop("custom_suk", ""),
+            "taxPreference": it.pop("custom_tax_preference", ""),
+            "preferredVendor": it.pop("custom_vendor", ""),
+            "salesAccount": it.pop("custom_sales_account", ""),
+            "purchaseAccount": it.pop("custom_purchase_account", ""),
+            "nonExportTax": it.pop("custom_non_export_tax", ""),
+            "nonExportCode": it.pop("custom_non_export_code", ""),
+            "nonExportName": it.pop("custom_non_export_name", ""),
+            "nonExportDescription": it.pop("custom_non_export_description", ""),
+            "nonExportTaxPerct": it.pop("custom_non_export_tax_perct", ""),
+            "exportTax": it.pop("custom_export_tax", ""),
+            "exportCode": it.pop("custom_export_code", ""),
+            "exportName": it.pop("custom_export_name", ""),
+            "exportDescription": it.pop("custom_export_description", ""),
+            "exportTaxPerct": it.pop("custom_export_tax_perct", ""),
+            "localPurchaseOrderTax": it.pop("custom_local_purchase_order_tax", ""),
+            "localPurchaseOrderCode": it.pop("custom_local_purchase_order_code", ""),
+            "localPurchaseOrderName": it.pop("custom_local_purchase_order_name", ""),
+            "localPurchaseOrderDescription": it.pop("custom_local_purchase_order_description", ""),
+            "localPurchaseOrderPerct": it.pop("custom_local_purchase_order_perct", ""),
+            "dimensionUnit": it.pop("custom_dimension", ""),
+            "weight": it.pop("custom_weight", ""),
+            "valuationMethod": it.pop("custom_valuation", ""),
+            "trackingMethod": it.pop("custom_tracking_method", "None"),
+            "reorderLevel": it.pop("custom_reorder_level", 0),
+            "minStockLevel": it.pop("custom_min_stock_level", 0),
+            "maxStockLevel": it.pop("custom_max_stock_level", 0),
+            "brand": it.pop("brand", ""),
+            "description": it.pop("description", ""),
+            "weightUnit": it.pop("custom_kg", ""),
+        }
+
         return send_response(
             status="success",
             message=f"Item '{item_code}' fetched successfully",
-            data=item[0],
+            data=data,
             status_code=200,
             http_status=200
         )
@@ -503,12 +557,12 @@ def get_item_by_id_api():
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
-def delete_item_by_code_api():
-    item_code = frappe.local.request.args.get("item_code")
+def delete_item_by_id():
+    item_code = frappe.local.request.args.get("id")
     if not item_code:
         return send_response(
             status="fail",
-            message="item_code is required",
+            message="item id is required",
             status_code=400,
             http_status=400
         )
@@ -518,7 +572,7 @@ def delete_item_by_code_api():
     except frappe.DoesNotExistError:
         return send_response(
             status="fail",
-            message=f"Item with code '{item_code}' does not exist",
+            message=f"Item with id '{item_code}' does not exist",
             status_code=404,
             http_status=404
         )
@@ -544,177 +598,229 @@ def delete_item_by_code_api():
 
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
 def update_item_api():
-    item_code = frappe.local.request.args.get("item_code")
+    data = frappe.form_dict
+
+    item_code = (data.get("id") or "").strip()
     if not item_code:
         return send_response(
             status="fail",
-            message="item_code is required",
+            message="Item ID (item_code) is required",
             status_code=400,
             http_status=400
         )
 
-    try:
-        item = frappe.get_doc("Item", {"item_code": item_code})
-    except frappe.DoesNotExistError:
+    if not frappe.db.exists("Item", {"item_code": item_code}):
         return send_response(
             status="fail",
-            message=f"Item '{item_code}' does not exist",
+            message=f"Item with code '{item_code}' does not exist",
             status_code=404,
             http_status=404
         )
 
-
-    try:
-        payload = frappe.local.request.get_data(as_text=True)
-        data = json.loads(payload) if payload else {}
-    except Exception:
-        return send_response(
-            status="fail",
-            message="Invalid JSON payload",
-            status_code=400,
-            http_status=400
-        )
-
-    codes = [
-        bool(data.get("custom_non_export_code")),
-        bool(data.get("custom_export_code")),
-        bool(data.get("custom_local_purchase_order_code"))
-    ]
-
-    VALID_NON_EXPORT_CODES = ["A", "B", "C3", "D", "E"]
-    VALID_LOCAL_PURCHASE_ORDER_CODES = ["C1"]
-    VALID_EXPORT_CODES = ["C2"]
-
-    if data.get("custom_non_export_code") and data["custom_non_export_code"] not in VALID_NON_EXPORT_CODES:
-        return send_response(
-            status="fail",
-            message=f"custom_non_export_code must be one of {', '.join(VALID_NON_EXPORT_CODES)}",
-            status_code=400,
-            http_status=400
-        )
-
-    if data.get("custom_local_purchase_order_code") and data["custom_local_purchase_order_code"] not in VALID_LOCAL_PURCHASE_ORDER_CODES:
-        return send_response(
-            status="fail",
-            message=f"custom_local_purchase_order_code must be one of {', '.join(VALID_LOCAL_PURCHASE_ORDER_CODES)}",
-            status_code=400,
-            http_status=400
-        )
-
-    if data.get("custom_export_code") and data["custom_export_code"] not in VALID_EXPORT_CODES:
-        return send_response(
-            status="fail",
-            message=f"custom_export_code must be one of {', '.join(VALID_EXPORT_CODES)}",
-            status_code=400,
-            http_status=400
-        )
-
-    field_mapping = {
-        "item_name": "item_name",
-        "item_group": "item_group",
-        "custom_itemclscd": "custom_itemclscd",
-        "custom_itemtycd": "custom_itemtycd",
-        "custom_orgnnatcd": "custom_orgnnatcd",
-        "custom_pkgunitcd": "custom_pkgunitcd",
-        "custom_svcchargeyn": "custom_svcchargeyn",
-        "custom_isrcaplcbyn": "custom_isrcaplcbyn",
-        "custom_selling_price": "standard_rate",
-        "unitOfMeasureCd": "stock_uom",
-        "custom_non_export_tax": "custom_non_export_tax",
-        "custom_non_export_code": "custom_non_export_code",
-        "custom_non_export_name": "custom_non_export_name",
-        "custom_non_export_description": "custom_non_export_description",
-        "custom_non_export_tax_perct": "custom_non_export_tax_perct",
-        "custom_export_tax": "custom_export_tax",
-        "custom_export_code": "custom_export_code",
-        "custom_export_name": "custom_export_name",
-        "custom_export_description": "custom_export_description",
-        "custom_export_tax_perct": "custom_export_tax_perct",
-        "custom_local_purchase_order_tax": "custom_local_purchase_order_tax",
-        "custom_local_purchase_order_code": "custom_local_purchase_order_code",
-        "custom_local_purchase_order_name": "custom_local_purchase_order_name",
-        "custom_local_purchase_order_description": "custom_local_purchase_order_description",
-        "custom_local_purchase_order_perct": "custom_local_purchase_order_perct",
-        "custom_dimension": "custom_dimension",
-        "custom_weight": "custom_weight",
-        "custom_valuation": "custom_valuation",
-        "custom_is_track_inventory": "custom_is_track_inventory",
-        "custom_tracking_method": "custom_tracking_method",
-        "custom_reorder_level": "custom_reorder_level",
-        "custom_min_stock_level": "custom_min_stock_level",
-        "custom_max_stock_level": "custom_max_stock_level"
+    item = frappe.get_doc("Item", {"item_code": item_code})
+    item_name = (data.get("itemName") or item.item_name).strip()
+    item_group = (data.get("itemGroup") or item.item_group).strip()
+    unit_of_measure_cd = (data.get("unitOfMeasureCd") or item.stock_uom).strip()
+    description = (data.get("description") or item.description).strip()
+    brand = (data.get("brand") or item.brand or "").strip()
+    custom_itemclscd = (data.get("itemClassCode") or item.custom_itemclscd).strip()
+    custom_itemtycd = data.get("itemTypeCode") or item.custom_itemtycd
+    custom_orgnnatcd = (data.get("originNationCode") or item.custom_orgnnatcd).strip()
+    custom_pkgunitcd = (data.get("packagingUnitCode") or item.custom_pkgunitcd).strip()
+    custom_svcchargeyn = (data.get("svcCharge") or item.custom_svcchargeyn).strip()
+    custom_isrcaplcbyn = (data.get("ins") or item.custom_isrcaplcbyn).strip()
+    custom_selling_price = data.get("sellingPrice") or item.standard_rate
+    custom_buying_price = data.get("buyingPrice") or item.custom_buying_price
+    custom_sku = data.get("sku") or item.custom_suk
+    custom_dimension_unit = data.get("dimensionUnit") or item.custom_dimension
+    custom_weight = data.get("weight") or item.custom_weight
+    custom_valuation = data.get("valuationMethod") or item.custom_valuation
+    custom_vendor = data.get("preferredVendor") or item.custom_vendor
+    custom_kg = data.get("weightUnit") or item.custom_kg
+    custom_is_track_inventory = data.get("custom_is_track_inventory") or item.custom_is_track_inventory
+    custom_tracking_method = (data.get("trackingMethod") or item.custom_tracking_method).strip()
+    custom_sales_account = (data.get("salesAccount") or item.custom_sales_account).strip()
+    custom_purchase_account = (data.get("purchaseAccount") or item.custom_purchase_account).strip()
+    custom_min_stock_level = (data.get("minStockLevel") or item.custom_min_stock_level).strip()
+    custom_max_stock_level = (data.get("maxStockLevel") or item.custom_max_stock_level).strip()
+    custom_reorder_level = (data.get("reorderLevel") or item.custom_reorder_level).strip()
+    custom_tax_preference =(data.get("taxPreference") or item.custom_tax_preference).strip()
+    tax_non_export = {
+        "tax": data.get("nonExportTax"),
+        "code": data.get("nonExportCode"),
+        "name": data.get("nonExportName"),
+        "description": data.get("nonExportDescription"),
+        "percentage": data.get("nonExportTaxPerct")
     }
-
-    updated_fields = {}
-    for k, v in field_mapping.items():
-        if k in data and data[k] is not None:
-            setattr(item, v, data[k])
-            updated_fields[v] = data[k]
-
-    if not updated_fields:
+    tax_export = {
+        "tax": data.get("exportTax"),
+        "code": data.get("exportCode"),
+        "name": data.get("exportName"),
+        "description": data.get("exportDescription"),
+        "percentage": data.get("exportTaxPerct")
+    }
+    tax_local_po = {
+        "tax": data.get("localPurchaseOrderTax"),
+        "code": data.get("localPurchaseOrderCode"),
+        "name": data.get("localPurchaseOrderName"),
+        "description": data.get("localPurchaseOrderDescription"),
+        "percentage": data.get("localPurchaseOrderPerct")
+    }
+    provided_codes = [
+        bool(tax_non_export["code"]),
+        bool(tax_export["code"]),
+        bool(tax_local_po["code"])
+    ]
+    if provided_codes.count(True) > 1:
         return send_response(
             status="fail",
-            message="No valid fields provided for update.",
+            message="Exactly one of nonExportCode, localPurchaseOrderCode or exportCode must be provided.",
             status_code=400,
             http_status=400
         )
-        
-    custom_non_export_code = updated_fields.get("custom_non_export_code", item.custom_non_export_code)
-    custom_local_purchase_order_code = updated_fields.get("custom_local_purchase_order_code", item.custom_local_purchase_order_code)
-    custom_export_code = updated_fields.get("custom_export_code", item.custom_export_code)
-    
-    VAT_CODE = custom_non_export_code or custom_local_purchase_order_code or custom_export_code
 
+    if tax_non_export["code"]:
+        active_tax = tax_non_export
+        tax_export = {k: "" for k in tax_export}
+        tax_local_po = {k: "" for k in tax_local_po}
+    elif tax_export["code"]:
+        active_tax = tax_export
+        tax_non_export = {k: "" for k in tax_non_export}
+        tax_local_po = {k: "" for k in tax_local_po}
+    elif tax_local_po["code"]:
+        active_tax = tax_local_po
+        tax_non_export = {k: "" for k in tax_non_export}
+        tax_export = {k: "" for k in tax_export}
+    else:
+        # Keep existing values if nothing provided
+        tax_non_export["code"] = item.custom_non_export_code
+        tax_non_export["tax"] = item.custom_non_export_tax
+        tax_non_export["name"] = item.custom_non_export_name
+        tax_non_export["description"] = item.custom_non_export_description
+        tax_non_export["percentage"] = item.custom_non_export_tax_perct
+
+        tax_export["code"] = item.custom_export_code
+        tax_export["tax"] = item.custom_export_tax
+        tax_export["name"] = item.custom_export_name
+        tax_export["description"] = item.custom_export_description
+        tax_export["percentage"] = item.custom_export_tax_perct
+
+        tax_local_po["code"] = item.custom_local_purchase_order_code
+        tax_local_po["tax"] = item.custom_local_purchase_order_tax
+        tax_local_po["name"] = item.custom_local_purchase_order_name
+        tax_local_po["description"] = item.custom_local_purchase_order_description
+        tax_local_po["percentage"] = item.custom_local_purchase_order_perct
+
+    # Validate codes
+    if tax_non_export["code"] and tax_non_export["code"] not in ["A", "B", "C3", "D", "E"]:
+        return send_response(status="fail", message="Invalid nonExportCode (allowed A,B,C3,D,E)", status_code=400, http_status=400)
+    if tax_local_po["code"] and tax_local_po["code"] != "C1":
+        return send_response(status="fail", message="localPurchaseOrderCode must be C1", status_code=400, http_status=400)
+    if tax_export["code"] and tax_export["code"] != "C2":
+        return send_response(status="fail", message="exportCode must be C2", status_code=400, http_status=400)
+
+    # Ensure UOM and group exist
+    ensure_uom_exists(unit_of_measure_cd)
+    exists = check_if_group_exists(item_group)
+    if exists is not True:
+        return exists  
+
+    # Create brand if not exists
+    if brand and not frappe.db.exists("Brand", brand):
+        try:
+            frappe.get_doc({"doctype": "Brand", "brand": brand}).insert(ignore_permissions=True)
+        except Exception as e:
+            return send_response(status="fail", message=f"Failed to create brand '{brand}'", data={"error": str(e)}, status_code=500)
+
+    # ---------------- Update ZRA ----------------
     PAYLOAD = {
         "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
         "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
-        "itemCd": item.item_code,
-        "itemClsCd": item.custom_itemclscd,
-        "itemTyCd": item.custom_itemtycd,
-        "itemNm": item.item_name,
-        "orgnNatCd": item.custom_orgnnatcd,
-        "pkgUnitCd": item.custom_pkgunitcd,
-        "qtyUnitCd": item.stock_uom,
-        "dftPrc": float(item.standard_rate or 0),
-        "vatCatCd": VAT_CODE,
-        "svcChargeYn": getattr(item, "custom_svcchargeyn", "N"),
-        "sftyQty": 0,
-        "isrcAplcbYn": getattr(item, "custom_isrcaplcbyn", "N"),
+        "itemCd": item_code,
+        "itemClsCd": custom_itemclscd,
+        "itemTyCd": custom_itemtycd,
+        "itemNm": item_name,
+        "orgnNatCd": custom_orgnnatcd,
+        "pkgUnitCd": custom_pkgunitcd,
+        "qtyUnitCd": unit_of_measure_cd,
+        "dftPrc": custom_selling_price,
+        "vatCatCd": tax_non_export["code"] or tax_local_po["code"] or tax_export["code"],
+        "svcChargeYn": custom_svcchargeyn,
+        "isrcAplcbYn": custom_isrcaplcbyn,
         "useYn": "Y",
         "regrNm": frappe.session.user,
         "regrId": frappe.session.user,
         "modrNm": frappe.session.user,
         "modrId": frappe.session.user
     }
-    
-    print(json.dumps(PAYLOAD, indent=4))
 
+    # try:
+    #     zra_response = ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
+    #     zra_json = zra_response.json()
+    #     if zra_json.get("resultCd") != "000":
+    #         return send_response(status="fail", message=zra_json.get("resultMsg", "Item update failed on ZRA side"), status_code=400, http_status=400)
+    # except Exception as e:
+    #     frappe.log_error(message=str(e), title="Update Item ZRA Error")
+    #     return send_response(status="fail", message="Failed to sync item with ZRA", data={"error": str(e)}, status_code=500, http_status=500)
+
+    # # ---------------- Update ERPNext ----------------
     try:
-        print("ZRA Payload:", json.dumps(PAYLOAD, indent=4))
-        result = ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
-        data_resp = result.json()
-        print("ZRA Response:", data_resp)
-
-        if data_resp.get("resultCd") != "000":
-            return send_response(
-                status="error",
-                message=data_resp.get("resultMsg", "Item Update Sync Failed"),
-                status_code=400,
-                http_status=400
-            )
+        item.update({
+            "item_name": item_name,
+            "item_group": item_group,
+            "stock_uom": unit_of_measure_cd,
+            "brand": brand,
+            "description": description,
+            "custom_itemclscd": custom_itemclscd,
+            "custom_itemtycd": custom_itemtycd,
+            "custom_orgnnatcd": custom_orgnnatcd,
+            "custom_pkgunitcd": custom_pkgunitcd,
+            "custom_svcchargeyn": custom_svcchargeyn,
+            "custom_isrcaplcbyn": custom_isrcaplcbyn,
+            "standard_rate": custom_selling_price,
+            "custom_buying_price": custom_buying_price,
+            "custom_suk": custom_sku,
+            "custom_dimension": custom_dimension_unit,
+            "custom_weight": custom_weight,
+            "custom_valuation": custom_valuation,
+            "custom_vendor": custom_vendor,
+            "custom_kg": custom_kg,
+            "custom_is_track_inventory": custom_is_track_inventory,
+            "custom_tracking_method": custom_tracking_method,
+            "custom_sales_account": custom_sales_account,
+            "custom_purchase_account": custom_purchase_account,
+            "custom_reorder_level": custom_reorder_level,
+            "custom_min_stock_level": custom_min_stock_level,
+            "custom_max_stock_level": custom_max_stock_level,
+            "custom_tax_preference": custom_tax_preference,
+            "custom_non_export_code": tax_non_export["code"],
+            "custom_non_export_name": tax_non_export["name"],
+            "custom_non_export_description": tax_non_export["description"],
+            "custom_non_export_tax": tax_non_export["tax"],
+            "custom_non_export_tax_perct": tax_non_export["percentage"],
+            "custom_export_code": tax_export["code"],
+            "custom_export_name": tax_export["name"],
+            "custom_export_description": tax_export["description"],
+            "custom_export_tax": tax_export["tax"],
+            "custom_export_tax_perct": tax_export["percentage"],
+            "custom_local_purchase_order_code": tax_local_po["code"],
+            "custom_local_purchase_order_name": tax_local_po["name"],
+            "custom_local_purchase_order_description": tax_local_po["description"],
+            "custom_local_purchase_order_tax": tax_local_po["tax"],
+            "custom_local_purchase_order_perct": tax_local_po["percentage"],
+        })
 
         item.save(ignore_permissions=True)
         frappe.db.commit()
 
         return send_response(
             status="success",
-            message=f"Item '{item_code}' updated successfully",
+            message=f"Item '{item_name}' updated successfully",
             status_code=200,
             http_status=200
         )
-
     except Exception as e:
-        frappe.log_error(str(e), "ERPNext Update Item Error")
+        frappe.log_error(message=str(e), title="Update Item ERP Error")
         return send_response(
             status="fail",
             message="Failed to update item in ERPNext",
@@ -722,6 +828,7 @@ def update_item_api():
             status_code=500,
             http_status=500
         )
+
 
 @frappe.whitelist(allow_guest=False)
 def get_all_item_groups_api():
