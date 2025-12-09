@@ -13,6 +13,53 @@ import base64
 
 SITE_URL = "http://erp.izyanehub.com:8081/"
 
+def get_accounting_setup(company_name):
+    setup = {}
+
+    def get_account(account_name):
+        return frappe.db.get_value(
+            "Account", {"company": company_name, "account_name": account_name}, "account_name"
+        ) or ""
+
+    def get_cost_center(cost_center_name):
+
+        return frappe.db.get_value(
+            "Cost Center", {"company": company_name, "cost_center_name": cost_center_name}, "cost_center_name"
+        ) or ""
+
+    chart_of_accounts = frappe.db.get_value(
+        "Account", {"company": company_name, "is_group": 1, "parent_account": None}, "account_name"
+    )
+    setup["chartOfAccounts"] = chart_of_accounts or "Standard COA"
+    setup["defaultExpenseGL"] = get_account("Default Expense")
+    setup["fxGainLossAccount"] = get_account("FX Gain / Loss")
+    setup["revaluationFrequency"] = get_account("Revaluation")
+    setup["roundOffAccount"] = get_account("Round Off")
+    setup["roundOffCostCenter"] = get_cost_center("Round Off")
+    setup["depreciationAccount"] = get_account("Depreciation")
+    setup["appreciationAccount"] = get_account("Appreciation")
+    setup["defaultBankAccount"] = get_account("Default Bank Account")
+    setup["defaultCashAccount"] = get_account("Default Cash Account")
+    setup["defaultReceivableAccount"] = get_account("Debtors - ZI")
+    setup["defaultPayableAccount"] = get_account("Creditors - ZI")
+    setup["writeOffAccount"] = get_account("Write Off - ZI")
+    setup["unrealizedProfitLossAccount"] = get_account("Unrealized Profit / Loss")
+    setup["defaultIncomeAccount"] = get_account("Sales - ZI")
+    setup["defaultDiscountAccount"] = get_account("Default Payment Discount Account")
+    setup["paymentTerms"] = get_account("Default Payment Terms Template")
+    setup["defaultCostCenter"] = get_cost_center("Main - ZI")
+    setup["defaultFinanceBook"] = get_account("Default Finance Book")
+    setup["exchangeGainLossAccount"] = get_account("Exchange Gain/Loss - ZI")
+    setup["unrealizedExchangeGainLossAccount"] = get_account("Unrealized Exchange Gain/Loss")
+
+    print(f"Accounting setup for company '{company_name}':")
+    for key, value in setup.items():
+        print(f"  {key}: {value}")
+
+    return setup
+
+
+
 
 def save_file(file_input, site_name="erpnext.localhost", folder_type="logos"):
     """
@@ -105,6 +152,114 @@ def get_next_custom_company_id():
         next_num = 1
 
     return f"COMP-{next_num:05d}"
+def ensure_account_and_cost_center(
+    company_name,
+    chart_of_accounts="Standard COA",
+    default_expense_gl="Default Expense",
+    fx_gain_loss_account="FX Gain / Loss",
+    revaluation_frequency="Revaluation",
+    round_off_account="Round Off",
+    round_off_cost_center="Round Off",
+    depreciation_account="Depreciation",
+    appreciation_account="Appreciation"
+):
+    """
+    Ensures all key accounts and cost centers exist for a company.
+    Creates them if missing, sets defaults, and links parent accounts correctly.
+    """
+    messages = []
+
+    def get_or_create_account(account_name, parent_account=None, account_type="Expense", root_type="Expense", is_group=0):
+        """Fetch or create account safely"""
+        if not account_name:
+            return None
+
+        existing = frappe.db.get_value("Account", {"company": company_name, "account_name": account_name}, "name")
+        if existing:
+            messages.append(f"Account '{account_name}' already exists.")
+            return account_name
+
+        # Ensure parent account exists for non-root accounts
+        if not parent_account and account_type != "Equity":
+            parent_account = frappe.db.get_value(
+                "Account", {"company": company_name, "is_group": 1, "parent_account": None}, "account_name"
+            )
+            if not parent_account:
+                # Create a root group if missing
+                parent_account = f"Root - {company_name}"
+                root_doc = frappe.get_doc({
+                    "doctype": "Account",
+                    "account_name": parent_account,
+                    "company": company_name,
+                    "account_type": "Equity",
+                    "root_type": "Equity",
+                    "is_group": 1
+                })
+                root_doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+                messages.append(f"Root group '{parent_account}' created.")
+
+        doc = frappe.get_doc({
+            "doctype": "Account",
+            "account_name": account_name,
+            "company": company_name,
+            "parent_account": parent_account,
+            "account_type": account_type,
+            "root_type": root_type,
+            "is_group": is_group
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        messages.append(f"Account '{account_name}' created under '{parent_account}'.")
+        return account_name
+
+    def get_or_create_cost_center(cost_center_name, is_group=0):
+        """Fetch or create cost center safely"""
+        if not cost_center_name:
+            return None
+
+        existing = frappe.db.get_value("Cost Center", {"company": company_name, "cost_center_name": cost_center_name}, "name")
+        if existing:
+            messages.append(f"Cost Center '{cost_center_name}' already exists.")
+            return cost_center_name
+
+        doc = frappe.get_doc({
+            "doctype": "Cost Center",
+            "company": company_name,
+            "cost_center_name": cost_center_name,
+            "is_group": is_group
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        messages.append(f"Cost Center '{cost_center_name}' created.")
+        return cost_center_name
+
+    try:
+        # --- Step 1: Ensure chart_of_accounts exists as group ---
+        chart_of_accounts = get_or_create_account(chart_of_accounts, account_type="Equity", root_type="Equity", is_group=1)
+
+        # --- Step 2: Create key child accounts ---
+        default_expense_gl = get_or_create_account(default_expense_gl, parent_account=chart_of_accounts)
+        fx_gain_loss_account = get_or_create_account(fx_gain_loss_account, parent_account=chart_of_accounts)
+        revaluation_frequency = get_or_create_account(revaluation_frequency, parent_account=chart_of_accounts)
+        round_off_account = get_or_create_account(round_off_account, parent_account=chart_of_accounts)
+        depreciation_account = get_or_create_account(depreciation_account, parent_account=chart_of_accounts)
+        appreciation_account = get_or_create_account(appreciation_account, parent_account=chart_of_accounts, account_type="Income", root_type="Income")
+
+
+        round_off_cost_center = get_or_create_cost_center(round_off_cost_center)
+        return {
+            "status": "success",
+            "status_code": 200,
+            "message": "; ".join(messages)
+        }
+
+    except Exception as e:
+        return {
+            "status": "fail",
+            "status_code": 500,
+            "message": f"Error creating accounts or cost centers: {str(e)}"
+        }
 
 
 
@@ -505,6 +660,10 @@ def get_company_api():
             }
         except frappe.DoesNotExistError:
             buying_terms = {}
+        
+        accounting_setup = get_accounting_setup(company.company_name)
+
+        print(accounting_setup)
 
         data = {
             "registrationNumber": company.custom_company_registration_number,
@@ -554,17 +713,18 @@ def get_company_api():
                 "baseCurrency": company.custom_currency,
                 "financialYearStart": company.custom_financial_year_begins
             },
-
-            # "accountingSetup": {
-            #     # "chartOfAccounts": company.custom_chart_of_accounts or "Standard COA",
-            #     # "defaultExpenseGL": company.custom_default_expense_gl or "",
-            #     # "fxGainLossAccount": company.custom_fx_gain_loss_account or "",
-            #     # "revaluationFrequency": company.custom_revaluation_frequency or "",
-            #     # "roundOffAccount": company.custom_round_off_account or "",
-            #     # "roundOffCostCenter": company.custom_round_off_cost_center or "",
-            #     # "depreciationAccount": company.custom_depreciation_account or "",
-            #     # "appreciationAccount": company.custom_appreciation_account or ""
-            # },
+            
+            "accountingSetup": {
+                "chartOfAccounts": accounting_setup.get("chartOfAccounts", "Standard COA"),
+                "defaultExpenseGL": accounting_setup.get("defaultExpenseGL", ""),
+                "fxGainLossAccount": accounting_setup.get("fxGainLossAccount", ""),
+                "revaluationFrequency": accounting_setup.get("revaluationFrequency", ""),
+                "roundOffAccount": accounting_setup.get("roundOffAccount", ""),
+                "roundOffCostCenter": accounting_setup.get("roundOffCostCenter", ""),
+                "depreciationAccount": accounting_setup.get("depreciationAccount", ""),
+                "appreciationAccount": accounting_setup.get("appreciationAccount", ""),
+              
+            },
 
             "terms": {
                 "selling": selling_terms,
@@ -1074,7 +1234,7 @@ def create_company_api():
     baseCurrency = financial.get("baseCurrency")
     financialYearStart = financial.get("financialYearStart")
 
-    acc = data.get("accountingSetup", {})
+    acc = extract_nested("accountingSetup")
 
     chartOfAccounts = acc.get("chartOfAccounts")
     defaultExpenseGL = acc.get("defaultExpenseGL")
@@ -1190,6 +1350,7 @@ def create_company_api():
     if frappe.db.exists("Company", {"email": companyEmail}):
         return send_response(status="fail", message="Company with this email already exists", status_code=400, http_status=400)
     next_id = get_next_custom_company_id()
+
     company = frappe.get_doc({
             "doctype": "Company",
             "default_currency": currency,
@@ -1238,14 +1399,7 @@ def create_company_api():
             "custom_module_procurement": procurement,
             "custom_module_sales": sales,
             "custom_module_suppliermanagement": supplierManagement,
-            # "chart_of_accounts": chartOfAccounts,
-            # "default_expense_gl": defaultExpenseGL,
-            # "fx_gain_loss_account": fxGainLossAccount,
-            # "revaluation_frequency": revaluationFrequency,
-            # "round_off_account": roundOffAccount,
-            # "round_off_cost_center": roundOffCostCenter,
-            # "depreciation_account": depreciationAccount,
-            # "appreciation_account": appreciationAccount,
+     
         })
     terms = extract_nested_array("terms")
 
@@ -1325,12 +1479,25 @@ def create_company_api():
 
     company.insert(ignore_permissions=True)
     frappe.db.commit()
+    response = ensure_account_and_cost_center(
+        round_off_account=roundOffAccount,
+        round_off_cost_center=roundOffCostCenter,
+        company_name=companyName,
+        chart_of_accounts=chartOfAccounts,
+        default_expense_gl=defaultExpenseGL,
+        fx_gain_loss_account=fxGainLossAccount,
+        revaluation_frequency=revaluationFrequency,
+        depreciation_account=depreciationAccount,
+        appreciation_account=appreciationAccount
+    )
 
-    return {
-        "status": "received",
-        "companyName": companyName,
-        "total_fields": "all extracted successfully"
-    }
+    return send_response(
+        status="success",
+        message=f"Company '{companyName}' created and accounts/cost centers ensured successfully",
+        status_code=200
+    )
+
+
 
 
 
