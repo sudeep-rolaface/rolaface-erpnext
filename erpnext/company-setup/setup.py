@@ -969,12 +969,75 @@ def create_company_api():
     companyStatus = data.get("companyStatus")
     dateOfIncorporation = data.get("dateOfIncorporation")
     industryType = data.get("industryType")
+    
+    def extract_nested(prefix):
+        nested = {}
+        for key, value in data.items():
+            if key.startswith(prefix + "[") and key.endswith("]"):
+                inner = key[len(prefix)+1:-1]  
+                nested[inner] = value
+        return nested
+    
+    def extract_phases(prefix):
+        phases = []
+        i = 0
+        while True:
+            key_base = f"{prefix}[{i}]"
+            name = data.get(f"{key_base}[name]")
+            if not name:
+                break
+            phases.append({
+                "name": name,
+                "percentage": data.get(f"{key_base}[percentage]"),
+                "condition": data.get(f"{key_base}[condition]")
+            })
+            i += 1
+        return phases
+
+    
+    def extract_nested_array(prefix):
+        result = {}
+        for key, value in data.items():
+            if key.startswith(prefix + "[") and key.endswith("]"):
+                inner = key[len(prefix)+1:-1] 
+                parts = inner.replace("]", "").split("[")
+                d = result
+                for i, p in enumerate(parts[:-1]):
+                    if p.isdigit():
+                        p = int(p)
+                        if not isinstance(d, list):
+                            temp = []
+                            d_keys = list(d.keys())
+                            if d_keys:
+                                raise ValueError(f"Unexpected dict keys {d_keys} when numeric index found")
+                            d = temp
+                            if i == 0:
+                                result = d
+                        while len(d) <= p:
+                            d.append({})
+                        d = d[p]
+                    else:
+                        if p not in d:
+                            d[p] = {}
+                        d = d[p]
+
+                last_key = parts[-1]
+                if last_key.isdigit():
+                    last_key = int(last_key)
+                    if not isinstance(d, list):
+                        d_temp = []
+                        d = d_temp
+                    while len(d) <= last_key:
+                        d.append(None)
+                    d[last_key] = value
+                else:
+                    d[last_key] = value
+        return result
 
 
-    contactInfo = data.get("contactInfo", {})
 
-    # companyEmail = contactInfo.get("companyEmail")
-    companyEmail = "tim@gmail.com"
+    contactInfo = extract_nested("contactInfo")
+    companyEmail = contactInfo.get("companyEmail")
     companyPhone = contactInfo.get("companyPhone")
     alternatePhone = contactInfo.get("alternatePhone")
     contactPerson = contactInfo.get("contactPerson")
@@ -982,7 +1045,7 @@ def create_company_api():
     website = contactInfo.get("website")
     contactPhone = contactInfo.get("contactPhone")
 
-    address = data.get("address", {})
+    address = extract_nested("address")
 
     addressLine1 = address.get("addressLine1")
     addressLine2 = address.get("addressLine2")
@@ -994,7 +1057,7 @@ def create_company_api():
     timeZone = address.get("timeZone")
 
 
-    bank = data.get("bankAccounts", [{}])[0]
+    bank = extract_nested("bankAccounts")
 
     accountNo = bank.get("accountNo")
     accountHolderName = bank.get("accountHolderName")
@@ -1002,12 +1065,11 @@ def create_company_api():
     swiftCode = bank.get("swiftCode")
     sortCode = bank.get("sortCode")
     branchAddress = bank.get("branchAddress")
-    # currency = bank.get("currency")
-    currency = "ZMW"
+    currency = bank.get("currency")
     dateAdded = bank.get("dateAdded")
     openingBalance = bank.get("openingBalance")
 
-    financial = data.get("financialConfig", {})
+    financial = extract_nested("financialConfig")
 
     baseCurrency = financial.get("baseCurrency")
     financialYearStart = financial.get("financialYearStart")
@@ -1023,7 +1085,7 @@ def create_company_api():
     depreciationAccount = acc.get("depreciationAccount")
     appreciationAccount = acc.get("appreciationAccount")
 
-    modules = data.get("modules", {})
+    modules = extract_nested("modules")
 
     accounting = modules.get("accounting")
     crm = modules.get("crm")
@@ -1185,11 +1247,13 @@ def create_company_api():
             # "depreciation_account": depreciationAccount,
             # "appreciation_account": appreciationAccount,
         })
-    terms = frappe.form_dict.get("terms") or {}
+    terms = extract_nested_array("terms")
 
     selling = terms.get("selling") or {}
     selling_payment = selling.get("payment") or {}
-    selling_phases = selling_payment.get("phases", [])
+    selling_phases = extract_phases("terms[selling][payment][phases]")
+    
+
 
     selling_terms_doc = frappe.get_doc("Company Selling Terms", frappe.db.exists("Company Selling Terms", {"company": next_id})) \
                         if frappe.db.exists("Company Selling Terms", {"company": next_id}) \
@@ -1225,7 +1289,7 @@ def create_company_api():
 
     buying = terms.get("buying") or {}
     buying_payment = buying.get("payment") or {}
-    buying_phases = buying_payment.get("phases", [])
+    buying_phases = extract_phases("terms[buying][payment][phases]")
 
     buying_terms_doc = frappe.get_doc("Company Buying Terms", frappe.db.exists("Company Buying Terms", {"company": next_id})) \
                         if frappe.db.exists("Company Buying Terms", {"company": next_id}) \

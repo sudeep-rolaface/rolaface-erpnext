@@ -557,12 +557,12 @@ def get_item_by_id_api():
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
-def delete_item_by_code_api():
-    item_code = frappe.local.request.args.get("item_code")
+def delete_item_by_id():
+    item_code = frappe.local.request.args.get("id")
     if not item_code:
         return send_response(
             status="fail",
-            message="item_code is required",
+            message="item id is required",
             status_code=400,
             http_status=400
         )
@@ -572,7 +572,7 @@ def delete_item_by_code_api():
     except frappe.DoesNotExistError:
         return send_response(
             status="fail",
-            message=f"Item with code '{item_code}' does not exist",
+            message=f"Item with id '{item_code}' does not exist",
             status_code=404,
             http_status=404
         )
