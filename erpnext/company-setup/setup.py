@@ -1,3 +1,4 @@
+import random
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from datetime import datetime, date
 from frappe import _
@@ -587,11 +588,11 @@ def get_company_api():
             phases_docs = frappe.get_all(
                 "Company Selling Payments Phases",
                 filters={"company": custom_company_id},
-                fields=["phase_name", "percentage", "condition"]
+                fields=["id", "phase_name", "percentage", "condition"]
             )
 
             phases_list = [
-                {"phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
+                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
                 for p in phases_docs
             ]
 
@@ -630,11 +631,11 @@ def get_company_api():
             phases_docs = frappe.get_all(
                 "Company Buying Payments Phases",
                 filters={"company": custom_company_id},
-                fields=["phase_name", "percentage", "condition"]
+                fields=["id", "phase_name", "percentage", "condition"]
             )
 
             phases_list = [
-                {"phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
+                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
                 for p in phases_docs
             ]
 
@@ -1434,7 +1435,9 @@ def create_company_api():
     frappe.db.delete("Company Selling Payments Phases", {"company": next_id})
     for p in selling_phases:
         phase_doc = frappe.new_doc("Company Selling Payments Phases")
+        random_id = "{:06d}".format(random.randint(0, 999999)) 
         phase_doc.company = next_id
+        phase_doc.id = random_id
         phase_doc.phase_name = p.get("name")
         phase_doc.percentage = p.get("percentage")
         phase_doc.condition = p.get("condition")
@@ -1470,7 +1473,9 @@ def create_company_api():
 
     frappe.db.delete("Company Buying Payments Phases", {"company": next_id})
     for p in buying_phases:
+        random_id = "{:06d}".format(random.randint(0, 999999)) 
         phase_doc = frappe.new_doc("Company Buying Payments Phases")
+        phase_doc.id = random_id
         phase_doc.company = next_id
         phase_doc.phase_name = p.get("name")
         phase_doc.percentage = p.get("percentage")
