@@ -352,7 +352,9 @@ def get_all_items_api():
                 "stock_uom",
                 "standard_rate",
                 "custom_itemclscd",
-                "custom_vendor"
+                "custom_vendor",
+                "custom_min_stock_level",
+                "custom_max_stock_level",
             ],
             filters={"disabled": 0},  
             order_by="creation desc"
@@ -378,6 +380,8 @@ def get_all_items_api():
             it["unitOfMeasureCd"] = it.pop("stock_uom")
             it["sellingPrice"] = it.pop("standard_rate")
             it["preferredVendor"] = it.pop("custom_vendor")
+            it["minStockLevel"] = it.pop("custom_min_stock_level")
+            it["maxStockLevel"] = it.pop("custom_max_stock_level")
 
         total_pages = (total_items + page_size - 1) // page_size
 
