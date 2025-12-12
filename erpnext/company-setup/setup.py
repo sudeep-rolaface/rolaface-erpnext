@@ -650,7 +650,7 @@ def get_company_api():
                     "dueDates": first.get("dueDates"),
                     "lateCharges": first.get("lateCharges"),
                     "taxes": first.get("taxes"),
-                    "specialNotes": first.get("specialNotes")
+                    "notes": first.get("specialNotes")
                 }
 
             buying_terms = {
@@ -1426,7 +1426,7 @@ def create_company_api():
     sell_payment_doc.duedates = selling_payment.get("dueDates", "")
     sell_payment_doc.latecharges = selling_payment.get("lateCharges", "")
     sell_payment_doc.tax = selling_payment.get("taxes", "")
-    sell_payment_doc.notes = selling_payment.get("specialNotes", "")
+    sell_payment_doc.notes = selling_payment.get("notes", "")
     sell_payment_doc.save(ignore_permissions=True)
 
     frappe.db.delete("Company Selling Payments Phases", {"company": next_id})
@@ -1465,7 +1465,7 @@ def create_company_api():
     buy_payment_doc.duedates = buying_payment.get("dueDates", "")
     buy_payment_doc.latecharges = buying_payment.get("lateCharges", "")
     buy_payment_doc.taxes = buying_payment.get("taxes", "")
-    buy_payment_doc.specialnotes = buying_payment.get("specialNotes", "")
+    buy_payment_doc.specialnotes = buying_payment.get("notes", "")
     buy_payment_doc.save(ignore_permissions=True)
 
     frappe.db.delete("Company Buying Payments Phases", {"company": next_id})
@@ -1732,7 +1732,7 @@ def update_company_api():
         if "taxes" in selling_payment:
             sell_payment_doc.tax = selling_payment.get("taxes") or ""
         if "specialNotes" in selling_payment:
-            sell_payment_doc.notes = selling_payment.get("specialNotes") or ""
+            sell_payment_doc.notes = selling_payment.get("notes") or ""
 
         sell_payment_doc.save(ignore_permissions=True)
         if selling_phases:
@@ -1805,7 +1805,7 @@ def update_company_api():
         if "taxes" in buying_payment:
             buy_payment_doc.taxes = buying_payment.get("taxes") or ""
         if "specialNotes" in buying_payment:
-            buy_payment_doc.specialnotes = buying_payment.get("specialNotes") or ""
+            buy_payment_doc.specialnotes = buying_payment.get("notes") or ""
 
         buy_payment_doc.save(ignore_permissions=True)
 
