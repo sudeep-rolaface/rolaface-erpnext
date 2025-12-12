@@ -1731,7 +1731,7 @@ def update_company_api():
             sell_payment_doc.latecharges = selling_payment.get("lateCharges") or ""
         if "taxes" in selling_payment:
             sell_payment_doc.tax = selling_payment.get("taxes") or ""
-        if "specialNotes" in selling_payment:
+        if "notes" in selling_payment:
             sell_payment_doc.notes = selling_payment.get("notes") or ""
 
         sell_payment_doc.save(ignore_permissions=True)
@@ -1804,7 +1804,7 @@ def update_company_api():
             buy_payment_doc.latecharges = buying_payment.get("lateCharges") or ""
         if "taxes" in buying_payment:
             buy_payment_doc.taxes = buying_payment.get("taxes") or ""
-        if "specialNotes" in buying_payment:
+        if "notes" in buying_payment:
             buy_payment_doc.specialnotes = buying_payment.get("notes") or ""
 
         buy_payment_doc.save(ignore_permissions=True)
