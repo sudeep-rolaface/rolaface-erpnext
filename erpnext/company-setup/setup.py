@@ -595,7 +595,7 @@ def get_company_api():
             )
 
             phases_list = [
-                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
+                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "condition": p.get("condition")}
                 for p in phases_docs
             ]
 
@@ -628,7 +628,7 @@ def get_company_api():
             payment_docs = frappe.get_all(
                 "Company Buying Payments",
                 filters={"company": custom_company_id},
-                fields=["type", "dueDates", "lateCharges", "taxes", "specialNotes"]
+                fields=["dueDates", "lateCharges", "taxes", "specialNotes"]
             )
 
             phases_docs = frappe.get_all(
@@ -638,7 +638,7 @@ def get_company_api():
             )
 
             phases_list = [
-                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "when": p.get("condition")}
+                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "condition": p.get("condition")}
                 for p in phases_docs
             ]
 
@@ -646,7 +646,6 @@ def get_company_api():
             if payment_docs:
                 first = payment_docs[0]
                 payment_info = {
-                    "type": first.get("type"),
                     "phases": phases_list,
                     "dueDates": first.get("dueDates"),
                     "lateCharges": first.get("lateCharges"),
