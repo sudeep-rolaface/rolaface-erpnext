@@ -352,7 +352,9 @@ def get_all_items_api():
                 "stock_uom",
                 "standard_rate",
                 "custom_itemclscd",
-                "custom_vendor"
+                "custom_vendor",
+                "custom_min_stock_level",
+                "custom_max_stock_level",
             ],
             filters={"disabled": 0},  
             order_by="creation desc"
@@ -378,6 +380,8 @@ def get_all_items_api():
             it["unitOfMeasureCd"] = it.pop("stock_uom")
             it["sellingPrice"] = it.pop("standard_rate")
             it["preferredVendor"] = it.pop("custom_vendor")
+            it["minStockLevel"] = it.pop("custom_min_stock_level")
+            it["maxStockLevel"] = it.pop("custom_max_stock_level")
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -754,16 +758,14 @@ def update_item_api():
         "modrId": frappe.session.user
     }
 
-    # try:
-    #     zra_response = ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
-    #     zra_json = zra_response.json()
-    #     if zra_json.get("resultCd") != "000":
-    #         return send_response(status="fail", message=zra_json.get("resultMsg", "Item update failed on ZRA side"), status_code=400, http_status=400)
-    # except Exception as e:
-    #     frappe.log_error(message=str(e), title="Update Item ZRA Error")
-    #     return send_response(status="fail", message="Failed to sync item with ZRA", data={"error": str(e)}, status_code=500, http_status=500)
-
-    # # ---------------- Update ERPNext ----------------
+    try:
+        zra_response = ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
+        zra_json = zra_response.json()
+        if zra_json.get("resultCd") != "000":
+            return send_response(status="fail", message=zra_json.get("resultMsg", "Item update failed on ZRA side"), status_code=400, http_status=400)
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Update Item ZRA Error")
+        return send_response(status="fail", message="Failed to sync item with ZRA", data={"error": str(e)}, status_code=500, http_status=500)
     try:
         item.update({
             "item_name": item_name,
@@ -893,6 +895,13 @@ def get_all_item_groups_api():
         )
 
         total_groups = len(all_groups)
+        for group in all_groups:
+            group["id"] = group.pop("custom_id")
+            group["groupName"] = group.pop("item_group_name")
+            group["description"] = group.pop("custom_description")
+            group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
+            group["sellingPrice"] = group.pop("custom_selling_price")
+            group["salesAccount"] = group.pop("custom_sales_account")
 
         if total_groups == 0:
             return send_response(
@@ -942,50 +951,38 @@ def get_all_item_groups_api():
 def get_item_group_by_id_api():
     try:
         args = frappe.request.args
-        custom_id = args.get("custom_id")
-        name = args.get("name")
+        custom_id = (args.get("id") or "").strip()
 
-        if not custom_id and not name:
+        if not custom_id:
             return send_response(
                 status="fail",
-                message="Provide either 'custom_id' or 'name'.",
+                message="'id' is required.",
                 status_code=400,
                 http_status=400
             )
 
-        if custom_id:
-            item_group_name = frappe.db.get_value(
-                "Item Group", 
-                {"custom_id": custom_id}, 
-                "name"
-            )
-            if not item_group_name:
-                return send_response(
-                    status="fail",
-                    message=f"Item Group with custom_id '{custom_id}' not found.",
-                    status_code=404,
-                    http_status=404
-                )
-        else:
-            if not frappe.db.exists("Item Group", name):
-                return send_response(
-                    status="fail",
-                    message=f"Item Group '{name}' not found.",
-                    status_code=404,
-                    http_status=404
-                )
-            item_group_name = name
+        item_group_name = frappe.db.get_value(
+            "Item Group",
+            {"custom_id": custom_id},
+            "name"
+        )
 
+        if not item_group_name:
+            return send_response(
+                status="fail",
+                message=f"Item Group with id '{custom_id}' not found.",
+                status_code=404,
+                http_status=404
+            )
 
         doc = frappe.get_doc("Item Group", item_group_name)
         filtered_data = {
-            "name": doc.name,
-            "item_group_name": doc.item_group_name,
-            "custom_id": doc.custom_id,
-            "custom_description": doc.custom_description,
-            "custom_unit_of_measurement": doc.custom_unit_of_measurement,
-            "custom_selling_price": doc.custom_selling_price,
-            "custom_sales_account": doc.custom_sales_account
+            "id": doc.custom_id,
+            "groupName": doc.item_group_name,
+            "description": doc.custom_description,
+            "unitOfMeasurement": doc.custom_unit_of_measurement,
+            "sellingPrice": doc.custom_selling_price,
+            "salesAccount": doc.custom_sales_account,
         }
 
         return send_response(
@@ -1007,24 +1004,22 @@ def get_item_group_by_id_api():
         )
 
 
-
 @frappe.whitelist(allow_guest=False)
 def create_item_group_api():
     data = frappe.form_dict
-    item_group_name = (frappe.form_dict.get("item_group_name") or "").strip()
-    parent_item_group = (frappe.form_dict.get("parent_item_group") or "All Item Groups").strip()
+    item_group_name = (frappe.form_dict.get("groupName") or "").strip()
     is_group = frappe.form_dict.get("is_group")
-    custom_id = data.get("custom_id")
-    custom_description = data.get("custom_description")
-    custom_sales_account = data.get("custom_sales_account")
-    custom_selling_price = data.get("custom_selling_price")
-    custom_unit_of_measurement = data.get("custom_unit_of_measurement")
+    custom_id = data.get("id")
+    custom_description = data.get("description")
+    custom_sales_account = data.get("salesAccount")
+    custom_selling_price = data.get("sellingPrice")
+    custom_unit_of_measurement = data.get("unitOfMeasurement")
     
     
     if not custom_id:
         return send_response(
             status="fail",
-            message="custom_id is required",
+            message="id is required",
             status_code=400,
             http_status=400
         )
@@ -1032,28 +1027,28 @@ def create_item_group_api():
     if not custom_description:
         return send_response(
             status="fail",
-            message="custom_description is required",
+            message="description is required",
             status_code=400,
             http_status=400
         )
     if not custom_sales_account:
         return send_response(
             status="fail",
-            message="custom_sales_account is required",
+            message="salesAccount is required",
             status_code=400,
             http_status=400
         )
     if not custom_selling_price:
         return send_response(
             status="fail",
-            message="custom_selling_price is required",
+            message="sellingPrice is required",
             status_code=400,
             http_status=400
         )
     if not custom_unit_of_measurement:
         return send_response(
             status="fail",
-            message="custom_unit_of_measurement is required",
+            message="unitOfMeasurement is required",
             status_code=400,
             http_status=400
         )
@@ -1072,7 +1067,7 @@ def create_item_group_api():
     if frappe.db.exists("Item Group", {"custom_id": custom_id}):
         return send_response(
             status="fail",
-            message=f"custom_id '{custom_id}' is already used. Enter a unique ID.",
+            message=f"id '{custom_id}' is already used. Enter a unique ID.",
             status_code=409,
             http_status=409
         )
@@ -1122,53 +1117,58 @@ def create_item_group_api():
             http_status=500
         )
 
-
 @frappe.whitelist(allow_guest=False)
 def update_item_group_api():
-    current_group_name = (frappe.form_dict.get("current_group_name") or "").strip()
-    new_group_name = (frappe.form_dict.get("new_group_name") or "").strip()
+    data = frappe.form_dict
 
-    if not current_group_name:
+    custom_id = (data.get("id") or "").strip()
+
+    if not custom_id:
         return send_response(
             status="fail",
-            message="Current Item Group Name is required.",
-            status_code=400,
-            http_status=400
+            message="id is required.",
+            status_code=400
         )
 
-    if not new_group_name:
+    item_group_name = frappe.db.get_value("Item Group", {"custom_id": custom_id}, "name")
+
+    if not item_group_name:
         return send_response(
             status="fail",
-            message="New Group Name is required.",
-            status_code=400,
-            http_status=400
+            message=f"No Item Group found with id '{custom_id}'.",
+            status_code=404
         )
 
     try:
-        if not frappe.db.exists("Item Group", current_group_name):
-            return send_response(
-                status="fail",
-                message=f"Item Group '{current_group_name}' does not exist.",
-                status_code=404,
-                http_status=404
-            )
+        item_group = frappe.get_doc("Item Group", item_group_name)
+        new_group_name = (data.get("groupName") or "").strip()
+        if new_group_name and new_group_name != item_group_name:
+            frappe.rename_doc("Item Group", item_group_name, new_group_name)
+            item_group = frappe.get_doc("Item Group", new_group_name)
+        fields_to_update = {
+            "custom_description": data.get("description"),
+            "custom_sales_account": data.get("salesAccount"),
+            "custom_selling_price": data.get("sellingPrice"),
+            "custom_unit_of_measurement": data.get("unitOfMeasurement"),
+        }
 
-        frappe.rename_doc(
-            doctype="Item Group",
-            old=current_group_name,
-            new=new_group_name,
-            merge=False
-        )
+        for field, value in fields_to_update.items():
+            if value:
+                item_group.set(field, value)
 
-        item_group = frappe.get_doc("Item Group", new_group_name)
+        if data.get("is_group") is not None:
+            is_group = data.get("is_group")
+            if isinstance(is_group, str):
+                is_group = is_group.lower() in ["true", "1", "yes"]
+            item_group.is_group = is_group
 
-        data = item_group.as_dict()
-        data.pop("_server_messages", None)  
+        item_group.save(ignore_permissions=True)
+        frappe.db.commit()
 
         return send_response(
             status="success",
-            message=f"Item Group renamed to '{new_group_name}' successfully.",
-            status_code=200,
+            message=f"Item Group with id '{custom_id}' updated successfully.",
+            status_code=200
         )
 
     except Exception as e:
@@ -1177,50 +1177,53 @@ def update_item_group_api():
             message=f"Failed to update Item Group: {str(e)}",
             status_code=500
         )
-        
 
 
 
 @frappe.whitelist(allow_guest=False)
 def delete_item_group():
-    item_group_name = (frappe.form_dict.get("item_group_name") or "").strip()
+    custom_id = (frappe.form_dict.get("id") or "").strip()
 
-    if not item_group_name:
-        send_response(
-            status=400,
-            message="Item Group Name Not Found.",
+    if not custom_id:
+        return send_response(
+            status="fail",
+            message="id is required.",
             status_code=400,
             http_status=400
         )
-        return
+
+    item_group_name = frappe.db.get_value("Item Group", {"custom_id": custom_id}, "name")
+
+    if not item_group_name:
+        return send_response(
+            status="fail",
+            message=f"No Item Group found with id '{custom_id}'.",
+            status_code=404,
+            http_status=404
+        )
+
     try:
-        if not frappe.db.exists("Item Group", item_group_name):
-            return send_response(
-                status="fail",
-                message=f"Item Group '{item_group_name}' does not exist.",
-                status_code=404,
-                http_status=404
-            )
         frappe.delete_doc("Item Group", item_group_name, force=True)
         frappe.db.commit()
 
         return send_response(
             status="success",
-            message=f"Item Group '{item_group_name}' deleted successfully.",
+            message=f"Item Group with id '{custom_id}' deleted successfully.",
             status_code=200
         )
+
     except frappe.LinkExistsError:
         return send_response(
             status="fail",
-            message=f"Cannot delete Item Group '{item_group_name}' because it is linked to other documents.",
+            message=f"Cannot delete Item Group (id: '{custom_id}') because it is linked to other documents.",
             status_code=409
         )
+
     except Exception as e:
         return send_response(
             status="error",
             message=f"Failed to delete Item Group: {str(e)}",
             status_code=500
         )
-        
-        
+
         
