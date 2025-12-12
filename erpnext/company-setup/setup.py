@@ -1598,7 +1598,7 @@ def update_company_api():
     set_if_present(company, "custom_company_status", data.get("companyStatus"))
     set_if_present(company, "custom_company_industry_type", data.get("industryType"))
     set_if_present(company, "custom_date_of_incoporation", data.get("dateOfIncorporation"))
-    
+    set_if_present(company, "custom_company_type", data.get("companyType"))
     contactInfo = extract_nested("contactInfo")
     set_if_present(company, "email", contactInfo.get("companyEmail"))
     set_if_present(company, "phone_no", contactInfo.get("companyPhone"))

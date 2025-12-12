@@ -1,9 +1,8 @@
 from erpnext.zra_client.generic_api import send_response
 import frappe
 
-# ---------------- CREATE FEATURE ----------------
 @frappe.whitelist(allow_guest=False, methods=["POST"])
-def create_feature_api():
+def create_module_api():
     data = frappe._dict(frappe.local.form_dict)
     required_fields = ["key", "name", "tier", "category", "description"]
 
@@ -48,7 +47,7 @@ def create_feature_api():
 
 # ---------------- LIST FEATURES ----------------
 @frappe.whitelist()
-def list_features_api():
+def list_module_api():
     features = frappe.get_all(
         "ModuleFeature",
         fields=["key", "title", "description", "category", "tier"],
@@ -70,7 +69,7 @@ def list_features_api():
 
 # ---------------- GET SINGLE FEATURE ----------------
 @frappe.whitelist()
-def get_feature_api():
+def get_module_api():
     key = (frappe.form_dict.get("key") or "").strip()
     if not key:
         return send_response(
@@ -110,7 +109,7 @@ def get_feature_api():
 
 # ---------------- UPDATE FEATURE ----------------
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
-def update_feature_api():
+def update_module_api():
     data = frappe._dict(frappe.local.form_dict)
 
     if not data.get("key"):
@@ -158,7 +157,7 @@ def update_feature_api():
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
-def delete_feature_api():
+def delete_module_api():
     data = frappe._dict(frappe.local.form_dict)
     key = data.get("key")
 
