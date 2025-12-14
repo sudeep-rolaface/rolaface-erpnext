@@ -893,6 +893,7 @@ def delete_company_api():
                 http_status=404
             )
 
+        frappe.db.sql("DELETE FROM `tabCompany Accounts` WHERE company_id=%s", custom_company_id)
         frappe.db.sql("DELETE FROM `tabCompany Selling Payments Phases` WHERE company=%s", company)
         frappe.db.sql("DELETE FROM `tabCompany Selling Payments` WHERE company=%s", company)
         frappe.db.sql("DELETE FROM `tabCompany Selling Terms` WHERE company=%s", company)
