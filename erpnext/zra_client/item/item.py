@@ -78,7 +78,6 @@ def create_item_api():
     custom_local_purchase_order_name = data.get("localPurchaseOrderName") or ""
     custom_local_purchase_order_description = data.get("localPurchaseOrderDescription") or ""
     custom_local_purchase_order_perct = data.get("localPurchaseOrderPerct") or 0
-    custom_dimension_unit = data.get("dimensionUnit") or ""
     custom_weight = data.get("weightUnit") or 0
     custom_valuation = data.get("valuationMethod") or ""
     custom_is_track_inventory = data.get("custom_is_track_inventory") or False
@@ -89,8 +88,9 @@ def create_item_api():
     custom_sales_account = data.get("salesAccount") or ""
     custom_purchase_account = data.get("purchaseAccount") or ""
     custom_tax_preference = data.get("taxPreference") or ""
-
-
+    custom_dimensionlength = data.get("dimensionLength") or ""
+    custom_dimensionwidth = data.get("dimensionWidth") or ""
+    custom_dimensionheight = data.get("dimensionHeight") or ""
 
     if not custom_selling_price:
         return send_response(
@@ -257,7 +257,6 @@ def create_item_api():
             "custom_local_purchase_order_name": custom_local_purchase_order_name,
             "custom_local_purchase_order_description": custom_local_purchase_order_description,
             "custom_local_purchase_order_perct": custom_local_purchase_order_perct,
-            "custom_dimension": custom_dimension_unit,
             "custom_weight": custom_weight,
             "custom_valuation": custom_valuation,
             "custom_is_track_inventory": custom_is_track_inventory,
@@ -268,6 +267,9 @@ def create_item_api():
             "custom_sales_account": custom_sales_account,
             "custom_purchase_account": custom_purchase_account,
             "custom_tax_preference": custom_tax_preference,
+            "custom_dimensionlength":custom_dimensionlength,
+            "custom_dimensionwidth": custom_dimensionwidth,
+            "custom_dimensionheight":custom_dimensionheight
         })
         item.insert(ignore_permissions=True)
         frappe.db.commit()
@@ -480,6 +482,9 @@ def get_item_by_id_api():
                 'custom_kg',
                 "description",
                 "custom_tax_preference",
+                "custom_dimensionlength",
+                "custom_dimensionwidth",
+                "custom_dimensionheight",
             ],
             limit_page_length=1
         )
@@ -539,6 +544,9 @@ def get_item_by_id_api():
             "brand": it.pop("brand", ""),
             "description": it.pop("description", ""),
             "weightUnit": it.pop("custom_kg", ""),
+            "dimensionLength": it.pop("custom_dimensionlength", ""),
+            "dimensionWidth":it.pop("custom_dimensionwidth", ""),
+            "dimensionHeight":it.pop("custom_dimensionheight", ""),
         }
 
         return send_response(
@@ -649,6 +657,10 @@ def update_item_api():
     custom_max_stock_level = (data.get("maxStockLevel") or item.custom_max_stock_level).strip()
     custom_reorder_level = (data.get("reorderLevel") or item.custom_reorder_level).strip()
     custom_tax_preference =(data.get("taxPreference") or item.custom_tax_preference).strip()
+    custom_dimensionlength = data.get("dimensionLength") or item.custom_dimensionlength 
+    custom_dimensionwidth = data.get("dimensionWidth") or item.custom_dimensionwidth 
+    custom_dimensionheight = data.get("dimensionHeight") or item.custom_dimensionheight 
+
     tax_non_export = {
         "tax": data.get("nonExportTax"),
         "code": data.get("nonExportCode"),
@@ -696,7 +708,6 @@ def update_item_api():
         tax_non_export = {k: "" for k in tax_non_export}
         tax_export = {k: "" for k in tax_export}
     else:
-        # Keep existing values if nothing provided
         tax_non_export["code"] = item.custom_non_export_code
         tax_non_export["tax"] = item.custom_non_export_tax
         tax_non_export["name"] = item.custom_non_export_name
@@ -715,7 +726,6 @@ def update_item_api():
         tax_local_po["description"] = item.custom_local_purchase_order_description
         tax_local_po["percentage"] = item.custom_local_purchase_order_perct
 
-    # Validate codes
     if tax_non_export["code"] and tax_non_export["code"] not in ["A", "B", "C3", "D", "E"]:
         return send_response(status="fail", message="Invalid nonExportCode (allowed A,B,C3,D,E)", status_code=400, http_status=400)
     if tax_local_po["code"] and tax_local_po["code"] != "C1":
@@ -723,13 +733,11 @@ def update_item_api():
     if tax_export["code"] and tax_export["code"] != "C2":
         return send_response(status="fail", message="exportCode must be C2", status_code=400, http_status=400)
 
-    # Ensure UOM and group exist
     ensure_uom_exists(unit_of_measure_cd)
     exists = check_if_group_exists(item_group)
     if exists is not True:
         return exists  
 
-    # Create brand if not exists
     if brand and not frappe.db.exists("Brand", brand):
         try:
             frappe.get_doc({"doctype": "Brand", "brand": brand}).insert(ignore_permissions=True)
@@ -810,6 +818,9 @@ def update_item_api():
             "custom_local_purchase_order_description": tax_local_po["description"],
             "custom_local_purchase_order_tax": tax_local_po["tax"],
             "custom_local_purchase_order_perct": tax_local_po["percentage"],
+            "custom_dimensionlength":custom_dimensionlength,
+            "custom_dimensionwidth": custom_dimensionwidth,
+            "custom_dimensionheight":custom_dimensionheight
         })
 
         item.save(ignore_permissions=True)
