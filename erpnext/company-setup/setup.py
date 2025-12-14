@@ -1608,3 +1608,38 @@ def update_company_api():
         http_status=200
     )
 
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_company_files():
+    data = frappe.form_dict
+    custom_company_id = data.get("id")
+
+    if not custom_company_id:
+        return send_response(status="fail", message="Company ID is required", status_code=400, http_status=400)
+
+    if not frappe.db.exists("Company", {"custom_company_id": custom_company_id}):
+        return send_response(status="fail", message=f"Company with ID {custom_company_id} not found", status_code=404, http_status=404)
+
+    company = frappe.get_doc("Company", {"custom_company_id": custom_company_id})
+
+
+    companyLogoFile = frappe.local.request.files.get("documents[companyLogoUrl]")
+    authorizedSignatureFile = frappe.local.request.files.get("documents[authorizedSignatureUrl]")
+    invoiceTemplateFile = frappe.local.request.files.get("templates[invoiceTemplate]")
+    quotationTemplateFile = frappe.local.request.files.get("templates[quotationTemplate]")
+    rfqTemplateFile = frappe.local.request.files.get("templates[rfqTemplate]")
+
+    if companyLogoFile:
+        company.company_logo = save_file(companyLogoFile, site_name="erpnext.localhost", folder_type="logos")
+    if authorizedSignatureFile:
+        company.custom_signature = save_file(authorizedSignatureFile, site_name="erpnext.localhost", folder_type="signatures")
+    if invoiceTemplateFile:
+        company.custom_invoicetemplate = save_file(invoiceTemplateFile, folder_type="pdfs")
+    if quotationTemplateFile:
+        company.custom_quotationtemplate = save_file(quotationTemplateFile, folder_type="pdfs")
+    if rfqTemplateFile:
+        company.custom_rfqtemplate = save_file(rfqTemplateFile, folder_type="pdfs")
+
+    company.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return send_response(status="success", message=f"Files for company '{company.company_name}' updated successfully", status_code=200)
