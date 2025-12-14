@@ -12,6 +12,7 @@ import uuid
 import frappe
 import requests
 import base64
+from collections import defaultdict
 
 SITE_URL = "http://erp.izyanehub.com:8081/"
 def generate_random_id(length=8):
@@ -1219,18 +1220,41 @@ def create_company_api():
     country = address.get("country")
     timeZone = address.get("timeZone")
 
+    accounts_map = defaultdict(dict)
 
-    bank = extract_nested("bankAccounts")
+    for key, value in frappe.form_dict.items():
+        if key.startswith("bankAccounts["):
+            idx = key.split("[")[1].split("]")[0]
+            field = key.split("[")[2].replace("]", "")
+            accounts_map[idx][field] = value
 
-    accountNo = bank.get("accountNo")
-    accountHolderName = bank.get("accountHolderName")
-    bankName = bank.get("bankName")
-    swiftCode = bank.get("swiftCode")
-    sortCode = bank.get("sortCode")
-    branchAddress = bank.get("branchAddress")
-    currency = bank.get("currency")
-    dateAdded = bank.get("dateAdded")
-    openingBalance = bank.get("openingBalance")
+    bank_accounts = []
+
+
+    for bank in accounts_map.values():
+        accountNo = bank.get("accountNo")
+        accountHolderName = bank.get("accountHolderName")
+        bankName = bank.get("bankName")
+        swiftCode = bank.get("swiftCode")
+        sortCode = bank.get("sortCode")
+        branchAddress = bank.get("branchAddress")
+        currency = bank.get("currency")
+        dateAdded = bank.get("dateAdded")
+        openingBalance = bank.get("openingBalance")
+        bank_accounts.append({
+            "accountNo": accountNo,
+            "accountHolderName": accountHolderName,
+            "bankName": bankName,
+            "swiftCode": swiftCode,
+            "sortCode": sortCode,
+            "branchAddress": branchAddress,
+            "currency": currency,
+            "dateAdded": dateAdded,
+            "openingBalance": openingBalance,
+        })
+    
+
+
 
     financial = extract_nested("financialConfig")
 
@@ -1376,15 +1400,6 @@ def create_company_api():
             "custom_alternate_number": alternatePhone,
             "custom_company_industry_type": industryType,
             "custom_date_of_incoporation": dateOfIncorporation,
-            "custom_account_number": accountNo,
-            "custom_account_holder_name": accountHolderName,
-            "custom_bank_name": bankName,
-            "custom_sort_code": sortCode,
-            "custom_swift_code_": swiftCode,
-            "custom_currency": baseCurrency,
-            "custom_branch_address": branchAddress,
-            "custom_date_of_addition": dateAdded,
-            "custom_opening_balance": openingBalance,
             "company_logo": companyLogoFile,
             "custom_signature": authorizedSignatureFile,
             "custom_invoicetemplate": invoicePdfPath,
@@ -1492,6 +1507,25 @@ def create_company_api():
         depreciation_account=depreciationAccount,
         appreciation_account=appreciationAccount
     )
+    for bank in bank_accounts:
+        print("Bank data: ", bank)
+        account_doc = frappe.get_doc({
+            "doctype": "Company Accounts",
+            "company_id": next_id,
+            "id": "{:08d}".format(random.randint(0, 99999999)),
+            "accountno": bank.get("accountNo"),
+            "accountholdername": bank.get("accountHolderName"),
+            "bankname": bank.get("bankName"),
+            "swiftcode": bank.get("swiftCode"),
+            "sortcode": bank.get("sortCode"),
+            "branchaddress": bank.get("branchAddress"),
+            "currency": bank.get("currency"),
+            "dateadded": bank.get("dateAdded"),
+            "openingbalance": bank.get("openingBalance"),
+        })
+        account_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+
 
     return send_response(
         status="success",
@@ -1619,20 +1653,28 @@ def update_company_api():
     set_if_present(company, "country", address.get("country"))
 
 
-    bank = None
+    bank_accounts = []
+
     try:
-        bank = extract_nested("bankAccounts")
+        bank_accounts = extract_nested("bankAccounts") or []
     except Exception:
-        bank = {}
-    set_if_present(company, "custom_account_number", bank.get("accountNo"))
-    set_if_present(company, "custom_account_holder_name", bank.get("accountHolderName"))
-    set_if_present(company, "custom_bank_name", bank.get("bankName"))
-    set_if_present(company, "custom_swift_code_", bank.get("swiftCode"))
-    set_if_present(company, "custom_sort_code", bank.get("sortCode"))
-    set_if_present(company, "custom_branch_address", bank.get("branchAddress"))
-    set_if_present(company, "custom_currency", bank.get("currency"))
-    set_if_present(company, "custom_date_of_addition", bank.get("dateAdded"))
-    set_if_present(company, "custom_opening_balance", bank.get("openingBalance"))
+        bank_accounts = []
+
+    company.set("Company Accounts", [])
+
+    for bank in bank_accounts:
+        company.append("Company Accounts", {
+            "account_no": bank.get("accountNo"),
+            "account_holder_name": bank.get("accountHolderName"),
+            "bank_name": bank.get("bankName"),
+            "swift_code": bank.get("swiftCode"),
+            "sort_code": bank.get("sortCode"),
+            "branch_address": bank.get("branchAddress"),
+            "currency": bank.get("currency"),
+            "date_added": bank.get("dateAdded"),
+            "opening_balance": bank.get("openingBalance"),
+        })
+
 
     financial = extract_nested("financialConfig")
     set_if_present(company, "custom_currency", financial.get("baseCurrency"))
