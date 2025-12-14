@@ -313,109 +313,6 @@ def validate_date(custom_date_of_incoporation):
 
     return True
 
-# @frappe.whitelist(allow_guest=False, methods=["POST"])
-# def create_company_api():
-#     try:
-#         data = frappe.form_dict
-#         company_name = data.get("companyName")
-#         currency = data.get("currency")
-#         country = data.get("country")
-#         domain = data.get("domain")
-#         tax_id = data.get("tpin")
-#         phone_no = data.get("phone_no")
-#         email = data.get("email")
-#         custom_company_status = data.get("companyStatus")
-#         custom_company_registration_number = data.get("companyRegistrationNumber")
-#         custom_date_of_incoporation = data.get("custom_date_of_incoporation")
-#         custom_company_type = data.get("companyType")
-#         custom_company_industry_type = data.get("custom_company_industry_type")
-#         custom_financial_year_begins = data.get("custom_financial_year_begins")
-#         custom_alternate_number = data.get("custom_alternate_number")
-#         custom_company_phone_number = data.get("custom_company_phone_number")
-#         custom_address_line_1 = data.get("custom_address_line_1")
-#         custom_address_line_2 = data.get("custom_address_line_2")
-#         custom_district = data.get("custom_district")
-#         custom_city = data.get("custom_city")
-#         custom_province = data.get("custom_province")
-#         custom_postal_code = data.get("custom_postal_code")
-#         custom_time_zone = data.get("custom_time_zone")
-#         custom_swift_code = data.get("custom_swift_code")
-        
-#         contactInfo = data.get("contactInfo")
-        
-        
-
-#         if not company_name:
-#             return send_response(status="fail", message="Company name is required", status_code=400, http_status=400)
-
-#         if frappe.db.exists("Company", {"company_name": company_name}):
-#             return send_response(status="fail", message="Company already exists", status_code=400, http_status=400)
-        
-#         if not tax_id:
-#             return send_response(status="fail", message="Company TPIN is required", status_code=400, http_status=400)
-        
-#         if frappe.db.exists("Company", {"tax_id": tax_id}):
-#             return send_response(status="fail", message="Company with this TPIN already exists", status_code=400, http_status=400)
-        
-#         if not email:
-#             return send_response(status="fail", message="Email is required", status_code=400, http_status=400)
-        
-#         if not email.count("@") == 1 or not email.count(".") >= 1:
-#             return send_response(status="fail", message="Invalid email format", status_code=400, http_status=400)
-        
-#         if frappe.db.exists("Company", {"email": email}):
-#             return send_response(status="fail", message="Company with this email already exists", status_code=400, http_status=400)
-        
-
-#         next_id = get_next_custom_company_id()
-
-#         company = frappe.get_doc({
-#             "doctype": "Company",
-#             "default_currency": currency,
-#             "company_name": company_name,
-#             "country": country,
-#             "domain": domain,
-#             "tax_id": tax_id,
-#             "email": email,
-#             "custom_company_status": custom_company_status,
-#             "phone_no": phone_no,
-#             "custom_company_id": next_id,
-#             "custom_company_registration_number": custom_company_registration_number,
-#             "custom_financial_year_begins": custom_financial_year_begins,
-#             "custom_company_phone_number": custom_company_phone_number,
-#             "custom_address_line_1": custom_address_line_1,
-#             "custom_address_line_2": custom_address_line_2,
-#             "custom_company_type": custom_company_type,
-#             "custom_province": custom_province,
-#             "custom_district": custom_district,
-#             "custom_postal_code": custom_postal_code,
-#             "custom_time_zone": custom_time_zone,
-#             "custom_city": custom_city,
-#             "custom_alternate_number": custom_alternate_number,
-#             "custom_company_industry_type": custom_company_industry_type,
-#             "custom_date_of_incoporation": custom_date_of_incoporation
-#         })
-
-#         company.insert(ignore_permissions=True)
-#         frappe.db.commit()
-
-#         return send_response(
-#             status="success",
-#             message="Company created successfully",
-#             data={
-#                 "custom_company_id": company.custom_company_id
-#             },
-#             status_code=201,
-#             http_status=201
-#         )
-
-#     except Exception as e:
-#         return send_response(
-#             status="fail",
-#             message=str(e),
-#             status_code=500,
-#             http_status=500
-#         )
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_companies_api():
@@ -833,40 +730,6 @@ def update_accounts_company_info():
         },
         status_code=200
     )
-
-    
-    
-
-    
-# @frappe.whitelist(allow_guest=False, methods=["PUT"])
-# def update_company_api():
-#     try:
-#         data = frappe.form_dict
-#         name = data.get("name")
-
-#         if not name:
-#             return send_response(status="fail", message=_("Company name is required for update"), status_code=400)
-
-#         company = frappe.get_doc("Company", name)
-
-#         if data.get("company_name"):
-#             company.company_name = data.get("company_name")
-#         if data.get("country"):
-#             company.country = data.get("country")
-#         if data.get("domain"):
-#             company.domain = data.get("domain")
-
-#         company.save(ignore_permissions=True)
-#         frappe.db.commit()
-
-#         return send_response(status="success", message=_("Company updated successfully"), data=company.as_dict())
-
-#     except frappe.DoesNotExistError:
-#         return send_response(status="fail", message=_("Company not found"), status_code=404)
-#     except Exception as e:
-#         frappe.log_error(message=str(e), title="Update Company API Error")
-#         return send_response(status="fail", message=str(e), status_code=500)
-    
     
     
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
@@ -1634,7 +1497,7 @@ def update_company_api():
     set_if_present(company, "custom_company_industry_type", data.get("industryType"))
     set_if_present(company, "custom_date_of_incoporation", data.get("dateOfIncorporation"))
     set_if_present(company, "custom_company_type", data.get("companyType"))
-    contactInfo = extract_nested("contactInfo")
+    contactInfo = data.get("contactInfo")
     set_if_present(company, "email", contactInfo.get("companyEmail"))
     set_if_present(company, "phone_no", contactInfo.get("companyPhone"))
     set_if_present(company, "custom_alternate_number", contactInfo.get("alternatePhone"))
@@ -1643,7 +1506,7 @@ def update_company_api():
     set_if_present(company, "website", contactInfo.get("website"))
     set_if_present(company, "custom_contactphone", contactInfo.get("contactPhone"))
 
-    address = extract_nested("address")
+    address = data.get("address")
     set_if_present(company, "custom_address_line_1", address.get("addressLine1"))
     set_if_present(company, "custom_address_line_2", address.get("addressLine2"))
     set_if_present(company, "custom_city", address.get("city"))
@@ -1677,12 +1540,12 @@ def update_company_api():
         })
 
 
-    financial = extract_nested("financialConfig")
+    financial = data.get("financialConfig")
     set_if_present(company, "custom_currency", financial.get("baseCurrency"))
     set_if_present(company, "custom_financial_year_begins", financial.get("financialYearStart"))
 
   
-    modules = extract_nested("modules")
+    modules = data.get("modules")
     if modules is not None:
         if "accounting" in modules:
             company.custom_modules_accounting_ = modules.get("accounting")
@@ -1733,12 +1596,12 @@ def update_company_api():
         rfqPdfPath = save_file(rfqTemplateFile, folder_type="pdfs") if rfqTemplateFile else None
         company.custom_rfqtemplate = rfqPdfPath
         
-    terms = extract_nested_array("terms")
+    terms = data.get("terms")
     random_id = "{:06d}".format(random.randint(0, 999999)) 
     selling = terms.get("selling")
     if selling is not None:
-        selling_payment = selling.get("payment") or {}
-        selling_phases = extract_phases("terms[selling][payment][phases]")
+        selling_payment = selling.get("payment", {})
+        selling_phases = selling_payment.get("phases", [])
 
      
         if frappe.db.exists("Company Selling Terms", {"company": custom_company_id}):
@@ -1810,8 +1673,8 @@ def update_company_api():
 
     buying = terms.get("buying")
     if buying is not None:
-        buying_payment = buying.get("payment") or {}
-        buying_phases = extract_phases("terms[buying][payment][phases]")
+        buying_payment = buying.get("payment", {})
+        buying_phases = buying_payment.get("phases", [])
 
     
         if frappe.db.exists("Company Buying Terms", {"company": custom_company_id}):
