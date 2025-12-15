@@ -1,10 +1,12 @@
-import random
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.main import ZRAClient
 from frappe.utils import random_string
 from frappe import _
+import random
 import frappe
 import re
+
+
 
 ZRA_CLIENT_INSTANCE = ZRAClient()
 
@@ -187,7 +189,7 @@ def create_customer_api():
     payment_terms_data = selling.get("payment") or {}
     dueDates = payment_terms_data.get("dueDates", "")
     lateCharges = payment_terms_data.get("lateCharges", "")
-    tax = payment_terms_data.get("tax", "")
+    tax = payment_terms_data.get("taxes", "")
     notes = payment_terms_data.get("notes", "")
     phases = payment_terms_data.get("phases", [])
 
@@ -570,7 +572,7 @@ def get_customer_by_id(custom_id):
                     "phases": phases_list,
                     "dueDates": first.get("dueDates"),
                     "lateCharges": first.get("lateCharges"),
-                    "tax": first.get("tax"),
+                    "taxes": first.get("tax"),
                     "notes": first.get("notes")
                 }
 
@@ -725,7 +727,7 @@ def update_customer_by_id():
 
             payment_doc.duedates = payment.get("dueDates", "")
             payment_doc.latecharges = payment.get("lateCharges", "")
-            payment_doc.tax = payment.get("tax", "")
+            payment_doc.tax = payment.get("taxes", "")
             payment_doc.notes = payment.get("notes", "")
             payment_doc.save(ignore_permissions=True)
 
