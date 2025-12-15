@@ -926,7 +926,7 @@ def create_company_api():
 
 
 
-    contactInfo = extract_nested("contactInfo")
+    contactInfo = data.get("contactInfo")
     companyEmail = contactInfo.get("companyEmail")
     companyPhone = contactInfo.get("companyPhone")
     alternatePhone = contactInfo.get("alternatePhone")
@@ -935,7 +935,7 @@ def create_company_api():
     website = contactInfo.get("website")
     contactPhone = contactInfo.get("contactPhone")
 
-    address = extract_nested("address")
+    address = data.get("address")
 
     addressLine1 = address.get("addressLine1")
     addressLine2 = address.get("addressLine2")
@@ -945,28 +945,30 @@ def create_company_api():
     postalCode = address.get("postalCode")
     country = address.get("country")
     timeZone = address.get("timeZone")
-
-    accounts_map = defaultdict(dict)
-
-    for key, value in frappe.form_dict.items():
-        if key.startswith("bankAccounts["):
-            idx = key.split("[")[1].split("]")[0]
-            field = key.split("[")[2].replace("]", "")
-            accounts_map[idx][field] = value
+    accounts_map = data.get("bankAccounts")
 
     bank_accounts = []
+    if not accounts_map:
+        return send_response(status="fail", message="No bankAccounts provided.", status_code=400, http_status=400)
+    elif not isinstance(accounts_map, list):
+        return send_response(status="fail", message="bankAccounts should be a list.", status_code=400, http_status=400)
 
+    for bank in accounts_map:
+        if not isinstance(bank, dict):
+            return send_response(status="fail", message=f"Invalid bank entry: {bank}", status_code=400, http_status=400)
 
-    for bank in accounts_map.values():
         accountNo = bank.get("accountNo")
-        accountHolderName = bank.get("accountHolderName")
-        bankName = bank.get("bankName")
-        swiftCode = bank.get("swiftCode")
-        sortCode = bank.get("sortCode")
-        branchAddress = bank.get("branchAddress")
-        currency = bank.get("currency")
-        dateAdded = bank.get("dateAdded")
-        openingBalance = bank.get("openingBalance")
+        if not accountNo:
+            return send_response(status="fail", message=f"Bank entry missing accountNo: {bank}", status_code=400, http_status=400)
+        accountHolderName = bank.get("accountHolderName", "")
+        bankName = bank.get("bankName", "")
+        swiftCode = bank.get("swiftCode", "")
+        sortCode = bank.get("sortCode", "")
+        branchAddress = bank.get("branchAddress", "")
+        currency = bank.get("currency", "")
+        dateAdded = bank.get("dateAdded", "")
+        openingBalance = bank.get("openingBalance", 0.0)
+
         bank_accounts.append({
             "accountNo": accountNo,
             "accountHolderName": accountHolderName,
@@ -978,16 +980,16 @@ def create_company_api():
             "dateAdded": dateAdded,
             "openingBalance": openingBalance,
         })
-    
 
 
 
-    financial = extract_nested("financialConfig")
+
+    financial = data.get("financialConfig")
 
     baseCurrency = financial.get("baseCurrency")
     financialYearStart = financial.get("financialYearStart")
 
-    acc = extract_nested("accountingSetup")
+    acc = data.get("accountingSetup")
 
     chartOfAccounts = acc.get("chartOfAccounts")
     defaultExpenseGL = acc.get("defaultExpenseGL")
@@ -998,7 +1000,7 @@ def create_company_api():
     depreciationAccount = acc.get("depreciationAccount")
     appreciationAccount = acc.get("appreciationAccount")
 
-    modules = extract_nested("modules")
+    modules = data.get("modules")
 
     accounting = modules.get("accounting")
     crm = modules.get("crm")
@@ -1007,71 +1009,6 @@ def create_company_api():
     procurement = modules.get("procurement")
     sales = modules.get("sales")
     supplierManagement = modules.get("supplierManagement")
-
-    docs = data.get("documents", {})
-
-    companyLogoFile = frappe.local.request.files.get("documents[companyLogoUrl]")
-    authorizedSignatureFile = frappe.local.request.files.get("documents[authorizedSignatureUrl]")
-
-    print("Company Logo file:", companyLogoFile)
-    print("Authorized Signature file:", authorizedSignatureFile)
-
-    if not companyLogoFile:
-        return send_response(
-            status="fail",
-            message="companyLogoUrl is required",
-            status_code=400,
-            http_status=400
-        )
-
-    if not authorizedSignatureFile:
-        return send_response(
-            status="fail",
-            message="authorizedSignatureUrl is required",
-            status_code=400,
-            http_status=400
-        )
-
-
-    if companyLogoFile:
-        companyLogoFile = save_file(
-            companyLogoFile,
-            site_name="erpnext.localhost",
-            folder_type="logos"
-        )
-
-    if authorizedSignatureFile:
-        authorizedSignatureFile = save_file(
-            authorizedSignatureFile,
-            site_name="erpnext.localhost",
-            folder_type="signatures"
-        )
-
-    print("Company Logo saved at:", companyLogoFile)
-    print("Authorized Signature saved at:", authorizedSignatureFile)
-
-    invoiceTemplateFile = frappe.local.request.files.get("templates[invoiceTemplate]")
-    quotationTemplateFile = frappe.local.request.files.get("templates[quotationTemplate]")
-    rfqTemplateFile = frappe.local.request.files.get("templates[rfqTemplate]")
-    
-    invoicePdfPath = save_file(invoiceTemplateFile, folder_type="pdfs") if invoiceTemplateFile else None
-    quotationPdfPath = save_file(quotationTemplateFile, folder_type="pdfs") if quotationTemplateFile else None
-    rfqPdfPath = save_file(rfqTemplateFile, folder_type="pdfs") if rfqTemplateFile else None
-    if not invoiceTemplateFile:
-        return send_response(status="fail", message="invoiceTemplate file is required", status_code=400, http_status=400)
-
-    if not quotationTemplateFile:
-        return send_response(status="fail", message="quotationTemplate file is required", status_code=400, http_status=400)
-
-    if not rfqTemplateFile:
-        return send_response(status="fail", message="rfqTemplate file is required", status_code=400, http_status=400)
-
-
-
-    print("Invoice PDF saved at:", invoicePdfPath)
-    print("Quotation PDF saved at:", quotationPdfPath)
-    print("RFQ PDF saved at:", rfqPdfPath)
-        
     
     if not companyName:
         return send_response(status="fail", message="Company name is required", status_code=400, http_status=400)
@@ -1126,11 +1063,6 @@ def create_company_api():
             "custom_alternate_number": alternatePhone,
             "custom_company_industry_type": industryType,
             "custom_date_of_incoporation": dateOfIncorporation,
-            "company_logo": companyLogoFile,
-            "custom_signature": authorizedSignatureFile,
-            "custom_invoicetemplate": invoicePdfPath,
-            "custom_quotationtemplate": quotationPdfPath,
-            "custom_rfqtemplate": rfqPdfPath,
             "custom_modules_accounting_": accounting,
             "custom_module_crm": crm,
             "custom_module_hr": hr,
@@ -1140,11 +1072,11 @@ def create_company_api():
             "custom_module_suppliermanagement": supplierManagement,
      
         })
-    terms = extract_nested_array("terms")
+    terms = data.get("terms")
 
     selling = terms.get("selling") or {}
-    selling_payment = selling.get("payment") or {}
-    selling_phases = extract_phases("terms[selling][payment][phases]")
+    selling_payment = selling.get("payment", {})
+    selling_phases = selling_payment.get("phases", [])
     
 
 
@@ -1183,8 +1115,8 @@ def create_company_api():
 
 
     buying = terms.get("buying") or {}
-    buying_payment = buying.get("payment") or {}
-    buying_phases = extract_phases("terms[buying][payment][phases]")
+    buying_payment = buying.get("payment", {})
+    buying_phases = buying_payment.get("phases", [])
 
     buying_terms_doc = frappe.get_doc("Company Buying Terms", frappe.db.exists("Company Buying Terms", {"company": next_id})) \
                         if frappe.db.exists("Company Buying Terms", {"company": next_id}) \
@@ -1288,69 +1220,6 @@ def update_company_api():
         val = transform(value) if transform else value
         setattr(doc, field, val)
         
-    def extract_nested(prefix):
-        nested = {}
-        for key, value in data.items():
-            if key.startswith(prefix + "[") and key.endswith("]"):
-                inner = key[len(prefix)+1:-1]  
-                nested[inner] = value
-        return nested
-    
-    def extract_phases(prefix):
-        phases = []
-        i = 0
-        while True:
-            key_base = f"{prefix}[{i}]"
-            name = data.get(f"{key_base}[name]")
-            if not name:
-                break
-            phases.append({
-                "name": name,
-                "percentage": data.get(f"{key_base}[percentage]"),
-                "condition": data.get(f"{key_base}[condition]")
-            })
-            i += 1
-        return phases
-
-    
-    def extract_nested_array(prefix):
-        result = {}
-        for key, value in data.items():
-            if key.startswith(prefix + "[") and key.endswith("]"):
-                inner = key[len(prefix)+1:-1] 
-                parts = inner.replace("]", "").split("[")
-                d = result
-                for i, p in enumerate(parts[:-1]):
-                    if p.isdigit():
-                        p = int(p)
-                        if not isinstance(d, list):
-                            temp = []
-                            d_keys = list(d.keys())
-                            if d_keys:
-                                raise ValueError(f"Unexpected dict keys {d_keys} when numeric index found")
-                            d = temp
-                            if i == 0:
-                                result = d
-                        while len(d) <= p:
-                            d.append({})
-                        d = d[p]
-                    else:
-                        if p not in d:
-                            d[p] = {}
-                        d = d[p]
-
-                last_key = parts[-1]
-                if last_key.isdigit():
-                    last_key = int(last_key)
-                    if not isinstance(d, list):
-                        d_temp = []
-                        d = d_temp
-                    while len(d) <= last_key:
-                        d.append(None)
-                    d[last_key] = value
-                else:
-                    d[last_key] = value
-        return result
 
     set_if_present(company, "company_name", data.get("companyName"))
     set_if_present(company, "tax_id", data.get("tpin"))
@@ -1359,7 +1228,7 @@ def update_company_api():
     set_if_present(company, "custom_company_industry_type", data.get("industryType"))
     set_if_present(company, "custom_date_of_incoporation", data.get("dateOfIncorporation"))
     set_if_present(company, "custom_company_type", data.get("companyType"))
-    contactInfo = data.get("contactInfo")
+    contactInfo = data.get("contactInfo") or {}
     set_if_present(company, "email", contactInfo.get("companyEmail"))
     set_if_present(company, "phone_no", contactInfo.get("companyPhone"))
     set_if_present(company, "custom_alternate_number", contactInfo.get("alternatePhone"))
@@ -1368,7 +1237,7 @@ def update_company_api():
     set_if_present(company, "website", contactInfo.get("website"))
     set_if_present(company, "custom_contactphone", contactInfo.get("contactPhone"))
 
-    address = data.get("address")
+    address = data.get("address") or {}
     set_if_present(company, "custom_address_line_1", address.get("addressLine1"))
     set_if_present(company, "custom_address_line_2", address.get("addressLine2"))
     set_if_present(company, "custom_city", address.get("city"))
@@ -1385,7 +1254,6 @@ def update_company_api():
         fields=["name", "id"]
     )
     existing_ids = {acc['id']: acc['name'] for acc in existing_accounts}
-
     incoming_ids = set()
 
     for account in bank_accounts:
@@ -1396,45 +1264,38 @@ def update_company_api():
                 frappe.delete_doc("Company Accounts", existing_ids[account_id], ignore_permissions=True)
             continue
 
-
         if account_id and account_id in existing_ids:
             acc_doc = frappe.get_doc("Company Accounts", existing_ids[account_id])
-            acc_doc.accountno = account.get("accountNo")
-            acc_doc.accountholdername = account.get("accountHolderName")
-            acc_doc.bankname = account.get("bankName")
-            acc_doc.swiftcode = account.get("swiftCode")
-            acc_doc.sortcode = account.get("sortCode")
-            acc_doc.branchaddress = account.get("branchAddress")
-            acc_doc.currency = account.get("currency")
-            acc_doc.dateadded = account.get("dateAdded")
-            acc_doc.openingbalance = account.get("openingBalance")
-            acc_doc.save(ignore_permissions=True)
-            incoming_ids.add(account_id)
-
         else:
             acc_doc = frappe.get_doc({
                 "doctype": "Company Accounts",
                 "company_id": custom_company_id,
                 "id": "{:08d}".format(random.randint(0, 99999999)),
-                "accountno": account.get("accountNo"),
-                "accountholdername": account.get("accountHolderName"),
-                "bankname": account.get("bankName"),
-                "swiftcode": account.get("swiftCode"),
-                "sortcode": account.get("sortCode"),
-                "branchaddress": account.get("branchAddress"),
-                "currency": account.get("currency"),
-                "dateadded": account.get("dateAdded"),
-                "openingbalance": account.get("openingBalance"),
             })
+
+        set_if_present(acc_doc, "accountno", account.get("accountNo"))
+        set_if_present(acc_doc, "accountholdername", account.get("accountHolderName"))
+        set_if_present(acc_doc, "bankname", account.get("bankName"))
+        set_if_present(acc_doc, "swiftcode", account.get("swiftCode"))
+        set_if_present(acc_doc, "sortcode", account.get("sortCode"))
+        set_if_present(acc_doc, "branchaddress", account.get("branchAddress"))
+        set_if_present(acc_doc, "currency", account.get("currency"))
+        set_if_present(acc_doc, "dateadded", account.get("dateAdded"))
+        set_if_present(acc_doc, "openingbalance", account.get("openingBalance"))
+
+        if account_id and account_id in existing_ids:
+            acc_doc.save(ignore_permissions=True)
+            incoming_ids.add(account_id)
+        else:
             acc_doc.insert(ignore_permissions=True)
             incoming_ids.add(acc_doc.id)
 
-    financial = data.get("financialConfig")
+    financial = data.get("financialConfig") or {}
     set_if_present(company, "custom_currency", financial.get("baseCurrency"))
     set_if_present(company, "custom_financial_year_begins", financial.get("financialYearStart"))
 
   
-    modules = data.get("modules")
+    modules = data.get("modules") or {}
     if modules is not None:
         if "accounting" in modules:
             company.custom_modules_accounting_ = modules.get("accounting")
@@ -1451,9 +1312,9 @@ def update_company_api():
         if "supplierManagement" in modules:
             company.custom_module_suppliermanagement = modules.get("supplierManagement")
 
-    terms = data.get("terms")
+    terms = data.get("terms") or {}
     random_id = "{:06d}".format(random.randint(0, 999999)) 
-    selling = terms.get("selling")
+    selling = terms.get("selling") or {}
     if selling is not None:
         selling_payment = selling.get("payment", {})
         selling_phases = selling_payment.get("phases", [])
@@ -1526,7 +1387,7 @@ def update_company_api():
                     updated_ids.add(phase_doc.name)
 
 
-    buying = terms.get("buying")
+    buying = terms.get("buying") or {}
     if buying is not None:
         buying_payment = buying.get("payment", {})
         buying_phases = buying_payment.get("phases", [])
