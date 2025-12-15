@@ -313,109 +313,6 @@ def validate_date(custom_date_of_incoporation):
 
     return True
 
-# @frappe.whitelist(allow_guest=False, methods=["POST"])
-# def create_company_api():
-#     try:
-#         data = frappe.form_dict
-#         company_name = data.get("companyName")
-#         currency = data.get("currency")
-#         country = data.get("country")
-#         domain = data.get("domain")
-#         tax_id = data.get("tpin")
-#         phone_no = data.get("phone_no")
-#         email = data.get("email")
-#         custom_company_status = data.get("companyStatus")
-#         custom_company_registration_number = data.get("companyRegistrationNumber")
-#         custom_date_of_incoporation = data.get("custom_date_of_incoporation")
-#         custom_company_type = data.get("companyType")
-#         custom_company_industry_type = data.get("custom_company_industry_type")
-#         custom_financial_year_begins = data.get("custom_financial_year_begins")
-#         custom_alternate_number = data.get("custom_alternate_number")
-#         custom_company_phone_number = data.get("custom_company_phone_number")
-#         custom_address_line_1 = data.get("custom_address_line_1")
-#         custom_address_line_2 = data.get("custom_address_line_2")
-#         custom_district = data.get("custom_district")
-#         custom_city = data.get("custom_city")
-#         custom_province = data.get("custom_province")
-#         custom_postal_code = data.get("custom_postal_code")
-#         custom_time_zone = data.get("custom_time_zone")
-#         custom_swift_code = data.get("custom_swift_code")
-        
-#         contactInfo = data.get("contactInfo")
-        
-        
-
-#         if not company_name:
-#             return send_response(status="fail", message="Company name is required", status_code=400, http_status=400)
-
-#         if frappe.db.exists("Company", {"company_name": company_name}):
-#             return send_response(status="fail", message="Company already exists", status_code=400, http_status=400)
-        
-#         if not tax_id:
-#             return send_response(status="fail", message="Company TPIN is required", status_code=400, http_status=400)
-        
-#         if frappe.db.exists("Company", {"tax_id": tax_id}):
-#             return send_response(status="fail", message="Company with this TPIN already exists", status_code=400, http_status=400)
-        
-#         if not email:
-#             return send_response(status="fail", message="Email is required", status_code=400, http_status=400)
-        
-#         if not email.count("@") == 1 or not email.count(".") >= 1:
-#             return send_response(status="fail", message="Invalid email format", status_code=400, http_status=400)
-        
-#         if frappe.db.exists("Company", {"email": email}):
-#             return send_response(status="fail", message="Company with this email already exists", status_code=400, http_status=400)
-        
-
-#         next_id = get_next_custom_company_id()
-
-#         company = frappe.get_doc({
-#             "doctype": "Company",
-#             "default_currency": currency,
-#             "company_name": company_name,
-#             "country": country,
-#             "domain": domain,
-#             "tax_id": tax_id,
-#             "email": email,
-#             "custom_company_status": custom_company_status,
-#             "phone_no": phone_no,
-#             "custom_company_id": next_id,
-#             "custom_company_registration_number": custom_company_registration_number,
-#             "custom_financial_year_begins": custom_financial_year_begins,
-#             "custom_company_phone_number": custom_company_phone_number,
-#             "custom_address_line_1": custom_address_line_1,
-#             "custom_address_line_2": custom_address_line_2,
-#             "custom_company_type": custom_company_type,
-#             "custom_province": custom_province,
-#             "custom_district": custom_district,
-#             "custom_postal_code": custom_postal_code,
-#             "custom_time_zone": custom_time_zone,
-#             "custom_city": custom_city,
-#             "custom_alternate_number": custom_alternate_number,
-#             "custom_company_industry_type": custom_company_industry_type,
-#             "custom_date_of_incoporation": custom_date_of_incoporation
-#         })
-
-#         company.insert(ignore_permissions=True)
-#         frappe.db.commit()
-
-#         return send_response(
-#             status="success",
-#             message="Company created successfully",
-#             data={
-#                 "custom_company_id": company.custom_company_id
-#             },
-#             status_code=201,
-#             http_status=201
-#         )
-
-#     except Exception as e:
-#         return send_response(
-#             status="fail",
-#             message=str(e),
-#             status_code=500,
-#             http_status=500
-#         )
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_companies_api():
@@ -561,7 +458,22 @@ def get_company_api():
                 status_code=400,
                 http_status=400
             )
-
+        bank_accounts_docs = frappe.get_all(
+            "Company Accounts",
+            filters={"company_id": custom_company_id},
+            fields=[
+                "id",
+                "accountno",
+                "accountholdername",
+                "bankname",
+                "swiftcode",
+                "sortcode",
+                "branchaddress",
+                "currency",
+                "dateadded",
+                "openingbalance"
+            ]
+        )
         company_list = frappe.get_list(
             "Company",
             filters={"custom_company_id": custom_company_id},
@@ -574,7 +486,21 @@ def get_company_api():
                 status_code=404,
                 http_status=404
             )
-
+        bank_accounts = [
+            {
+                "id": b.get("id"),
+                "accountNo": b.get("accountno"),
+                "accountHolderName": b.get("accountholdername"),
+                "bankName": b.get("bankname"),
+                "swiftCode": b.get("swiftcode"),
+                "sortCode": b.get("sortcode"),
+                "branchAddress": b.get("branchaddress"),
+                "currency": b.get("currency"),
+                "dateAdded": str(b.get("dateadded")) if b.get("dateadded") else None,
+                "openingBalance": b.get("openingbalance") or 0.0
+            }
+            for b in bank_accounts_docs
+        ]
         company = frappe.get_doc("Company", company_list[0].name)
         def safe_attr(obj, attr):
             return getattr(obj, attr, "") or ""
@@ -699,19 +625,8 @@ def get_company_api():
                 "timeZone": company.custom_time_zone
             },
 
-            "bankAccounts": [
-                {
-                    "accountNo": company.custom_account_number,
-                    "accountHolderName": company.custom_account_holder_name,
-                    "bankName": company.custom_bank_name,
-                    "swiftCode": company.custom_swift_code_,
-                    "sortCode": company.custom_sort_code,
-                    "branchAddress": company.custom_branch_address,
-                    "currency": company.custom_currency,
-                    "dateAdded": str(company.custom_date_of_addition),
-                    "openingBalance": company.custom_opening_balance or 0.0
-                }
-            ],
+            "bankAccounts": bank_accounts,
+
 
             "financialConfig": {
                 "baseCurrency": company.custom_currency,
@@ -782,93 +697,6 @@ def get_company_api():
             http_status=500
         )
 
-
-@frappe.whitelist(allow_guest=False, methods=["PUT"])
-def update_accounts_company_info():
-    data = frappe.form_dict
-    custom_company_id = data.get("custom_company_id")
-    
-    if not custom_company_id:
-        return send_response(
-            status="fail",
-            message="custom_company_id is required",
-            status_code=400,
-            http_status=400
-        )
-    
-    result = frappe.get_list("Company", filters={"custom_company_id": custom_company_id}, fields=["name"])
-    if not result:
-        return send_response(
-            status="fail",
-            message="Company not found",
-            status_code=404,
-            http_status=404
-        )
-    
-    company = frappe.get_doc("Company", result[0].name)
-    fields_to_update = {
-        "custom_account_number": data.get("custom_account_number"),
-        "custom_account_holder_name": data.get("custom_account_holder_name"),
-        "custom_bank_name": data.get("custom_bank_name"),
-        "custom_sort_code": data.get("custom_sort_code"),
-        "custom_swift_code_": data.get("custom_swift_code"),
-        "custom_currency": data.get("custom_currency"),
-        "custom_branch_address": data.get("custom_branch_address"),
-        "custom_date_of_addition": data.get("custom_date_of_addition"),
-        "custom_opening_balance": data.get("custom_opening_balance"),
-    }
-    
-    for field, value in fields_to_update.items():
-        if value is not None:
-            company.set(field, value)
-    
-    company.save()
-    
-    return send_response(
-        status="success",
-        message="Company account info updated successfully",
-        data={
-            "company_name": company.company_name,
-            "custom_company_id": company.custom_company_id
-        },
-        status_code=200
-    )
-
-    
-    
-
-    
-# @frappe.whitelist(allow_guest=False, methods=["PUT"])
-# def update_company_api():
-#     try:
-#         data = frappe.form_dict
-#         name = data.get("name")
-
-#         if not name:
-#             return send_response(status="fail", message=_("Company name is required for update"), status_code=400)
-
-#         company = frappe.get_doc("Company", name)
-
-#         if data.get("company_name"):
-#             company.company_name = data.get("company_name")
-#         if data.get("country"):
-#             company.country = data.get("country")
-#         if data.get("domain"):
-#             company.domain = data.get("domain")
-
-#         company.save(ignore_permissions=True)
-#         frappe.db.commit()
-
-#         return send_response(status="success", message=_("Company updated successfully"), data=company.as_dict())
-
-#     except frappe.DoesNotExistError:
-#         return send_response(status="fail", message=_("Company not found"), status_code=404)
-#     except Exception as e:
-#         frappe.log_error(message=str(e), title="Update Company API Error")
-#         return send_response(status="fail", message=str(e), status_code=500)
-    
-    
-    
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
 def delete_company_api():
     try:
@@ -1020,109 +848,6 @@ def ensure_cost_center(cost_center_name, company):
         }).insert(ignore_permissions=True)
     return cost_center_name
 
-@frappe.whitelist(allow_guest=False, methods=["PUT"])
-def update_company_terms_and_conditions():
-    custom_company_id = (frappe.form_dict.get("custom_company_id") or "").strip()
-
-    if not custom_company_id:
-        return send_response(
-            status="fail",
-            message="custom_company_id is required",
-            status_code=400,
-            http_status=400
-        )
-
-    company = frappe.get_list("Company", filters={"custom_company_id": custom_company_id}, fields=["name"])
-    if not company:
-        return send_response(
-            status="fail",
-            message="Company not found",
-            status_code=404,
-            http_status=404
-        )
-
-    terms = frappe.form_dict.get("terms") or {}
-
-    selling = terms.get("selling") or {}
-    selling_payment = selling.get("payment") or {}
-    selling_phases = selling_payment.get("phases", [])
-
-    selling_terms_doc = frappe.get_doc("Company Selling Terms", frappe.db.exists("Company Selling Terms", {"company": custom_company_id})) \
-                        if frappe.db.exists("Company Selling Terms", {"company": custom_company_id}) \
-                        else frappe.new_doc("Company Selling Terms")
-    selling_terms_doc.company = custom_company_id
-    selling_terms_doc.general = (selling.get("general") or "").strip()
-    selling_terms_doc.delivery = (selling.get("delivery") or "").strip()
-    selling_terms_doc.cancellation = (selling.get("cancellation") or "").strip()
-    selling_terms_doc.warranty = (selling.get("warranty") or "").strip()
-    selling_terms_doc.liability = (selling.get("liability") or "").strip()
-    selling_terms_doc.save(ignore_permissions=True)
-
-    sell_payment_doc = frappe.get_doc("Company Selling Payments", frappe.db.exists("Company Selling Payments", {"company": custom_company_id})) \
-                        if frappe.db.exists("Company Selling Payments", {"company": custom_company_id}) \
-                        else frappe.new_doc("Company Selling Payments")
-    sell_payment_doc.company = custom_company_id
-    sell_payment_doc.type = selling_payment.get("type")
-    sell_payment_doc.duedates = selling_payment.get("dueDates", "")
-    sell_payment_doc.latecharges = selling_payment.get("lateCharges", "")
-    sell_payment_doc.tax = selling_payment.get("taxes", "")
-    sell_payment_doc.notes = selling_payment.get("specialNotes", "")
-    sell_payment_doc.save(ignore_permissions=True)
-
-    frappe.db.delete("Company Selling Payments Phases", {"company": custom_company_id})
-    for p in selling_phases:
-        phase_doc = frappe.new_doc("Company Selling Payments Phases")
-        phase_doc.company = custom_company_id
-        phase_doc.phase_name = p.get("phase")
-        phase_doc.percentage = p.get("percentage")
-        phase_doc.condition = p.get("when")
-        phase_doc.insert(ignore_permissions=True)
-
-
-    buying = terms.get("buying") or {}
-    buying_payment = buying.get("payment") or {}
-    buying_phases = buying_payment.get("phases", [])
-
-    buying_terms_doc = frappe.get_doc("Company Buying Terms", frappe.db.exists("Company Buying Terms", {"company": custom_company_id})) \
-                        if frappe.db.exists("Company Buying Terms", {"company": custom_company_id}) \
-                        else frappe.new_doc("Company Buying Terms")
-    buying_terms_doc.company = custom_company_id
-    buying_terms_doc.general = (buying.get("general") or "").strip()
-    buying_terms_doc.delivery = (buying.get("delivery") or "").strip()
-    buying_terms_doc.cancellation = (buying.get("cancellation") or "").strip()
-    buying_terms_doc.warranty = (buying.get("warranty") or "").strip()
-    buying_terms_doc.liability = (buying.get("liability") or "").strip()
-    buying_terms_doc.save(ignore_permissions=True)
-
-    buy_payment_doc = frappe.get_doc("Company Buying Payments", frappe.db.exists("Company Buying Payments", {"company": custom_company_id})) \
-                        if frappe.db.exists("Company Buying Payments", {"company": custom_company_id}) \
-                        else frappe.new_doc("Company Buying Payments")
-    
-    buy_payment_doc.company = custom_company_id
-    buy_payment_doc.type = buying_payment.get("type")
-    buy_payment_doc.duedates = buying_payment.get("dueDates", "")
-    buy_payment_doc.latecharges = buying_payment.get("lateCharges", "")
-    buy_payment_doc.taxes = buying_payment.get("taxes", "")
-    buy_payment_doc.specialnotes = buying_payment.get("specialNotes", "")
-    buy_payment_doc.save(ignore_permissions=True)
-
-    frappe.db.delete("Company Buying Payments Phases", {"company": custom_company_id})
-    for p in buying_phases:
-        phase_doc = frappe.new_doc("Company Buying Payments Phases")
-        phase_doc.company = custom_company_id
-        phase_doc.phase_name = p.get("phase")
-        phase_doc.percentage = p.get("percentage")
-        phase_doc.condition = p.get("when")
-        phase_doc.insert(ignore_permissions=True)
-
-    frappe.db.commit()
-
-    return send_response(
-        status="success",
-        message="Company terms and conditions updated successfully",
-        status_code=200
-    )
-
 @frappe.whitelist(allow_guest=True)
 def create_company_api():
     data = frappe.form_dict
@@ -1201,7 +926,7 @@ def create_company_api():
 
 
 
-    contactInfo = extract_nested("contactInfo")
+    contactInfo = data.get("contactInfo")
     companyEmail = contactInfo.get("companyEmail")
     companyPhone = contactInfo.get("companyPhone")
     alternatePhone = contactInfo.get("alternatePhone")
@@ -1210,7 +935,7 @@ def create_company_api():
     website = contactInfo.get("website")
     contactPhone = contactInfo.get("contactPhone")
 
-    address = extract_nested("address")
+    address = data.get("address")
 
     addressLine1 = address.get("addressLine1")
     addressLine2 = address.get("addressLine2")
@@ -1220,28 +945,30 @@ def create_company_api():
     postalCode = address.get("postalCode")
     country = address.get("country")
     timeZone = address.get("timeZone")
-
-    accounts_map = defaultdict(dict)
-
-    for key, value in frappe.form_dict.items():
-        if key.startswith("bankAccounts["):
-            idx = key.split("[")[1].split("]")[0]
-            field = key.split("[")[2].replace("]", "")
-            accounts_map[idx][field] = value
+    accounts_map = data.get("bankAccounts")
 
     bank_accounts = []
+    if not accounts_map:
+        return send_response(status="fail", message="No bankAccounts provided.", status_code=400, http_status=400)
+    elif not isinstance(accounts_map, list):
+        return send_response(status="fail", message="bankAccounts should be a list.", status_code=400, http_status=400)
 
+    for bank in accounts_map:
+        if not isinstance(bank, dict):
+            return send_response(status="fail", message=f"Invalid bank entry: {bank}", status_code=400, http_status=400)
 
-    for bank in accounts_map.values():
         accountNo = bank.get("accountNo")
-        accountHolderName = bank.get("accountHolderName")
-        bankName = bank.get("bankName")
-        swiftCode = bank.get("swiftCode")
-        sortCode = bank.get("sortCode")
-        branchAddress = bank.get("branchAddress")
-        currency = bank.get("currency")
-        dateAdded = bank.get("dateAdded")
-        openingBalance = bank.get("openingBalance")
+        if not accountNo:
+            return send_response(status="fail", message=f"Bank entry missing accountNo: {bank}", status_code=400, http_status=400)
+        accountHolderName = bank.get("accountHolderName", "")
+        bankName = bank.get("bankName", "")
+        swiftCode = bank.get("swiftCode", "")
+        sortCode = bank.get("sortCode", "")
+        branchAddress = bank.get("branchAddress", "")
+        currency = bank.get("currency", "")
+        dateAdded = bank.get("dateAdded", "")
+        openingBalance = bank.get("openingBalance", 0.0)
+
         bank_accounts.append({
             "accountNo": accountNo,
             "accountHolderName": accountHolderName,
@@ -1253,16 +980,16 @@ def create_company_api():
             "dateAdded": dateAdded,
             "openingBalance": openingBalance,
         })
-    
 
 
 
-    financial = extract_nested("financialConfig")
+
+    financial = data.get("financialConfig")
 
     baseCurrency = financial.get("baseCurrency")
     financialYearStart = financial.get("financialYearStart")
 
-    acc = extract_nested("accountingSetup")
+    acc = data.get("accountingSetup")
 
     chartOfAccounts = acc.get("chartOfAccounts")
     defaultExpenseGL = acc.get("defaultExpenseGL")
@@ -1273,7 +1000,7 @@ def create_company_api():
     depreciationAccount = acc.get("depreciationAccount")
     appreciationAccount = acc.get("appreciationAccount")
 
-    modules = extract_nested("modules")
+    modules = data.get("modules")
 
     accounting = modules.get("accounting")
     crm = modules.get("crm")
@@ -1282,71 +1009,6 @@ def create_company_api():
     procurement = modules.get("procurement")
     sales = modules.get("sales")
     supplierManagement = modules.get("supplierManagement")
-
-    docs = data.get("documents", {})
-
-    companyLogoFile = frappe.local.request.files.get("documents[companyLogoUrl]")
-    authorizedSignatureFile = frappe.local.request.files.get("documents[authorizedSignatureUrl]")
-
-    print("Company Logo file:", companyLogoFile)
-    print("Authorized Signature file:", authorizedSignatureFile)
-
-    if not companyLogoFile:
-        return send_response(
-            status="fail",
-            message="companyLogoUrl is required",
-            status_code=400,
-            http_status=400
-        )
-
-    if not authorizedSignatureFile:
-        return send_response(
-            status="fail",
-            message="authorizedSignatureUrl is required",
-            status_code=400,
-            http_status=400
-        )
-
-
-    if companyLogoFile:
-        companyLogoFile = save_file(
-            companyLogoFile,
-            site_name="erpnext.localhost",
-            folder_type="logos"
-        )
-
-    if authorizedSignatureFile:
-        authorizedSignatureFile = save_file(
-            authorizedSignatureFile,
-            site_name="erpnext.localhost",
-            folder_type="signatures"
-        )
-
-    print("Company Logo saved at:", companyLogoFile)
-    print("Authorized Signature saved at:", authorizedSignatureFile)
-
-    invoiceTemplateFile = frappe.local.request.files.get("templates[invoiceTemplate]")
-    quotationTemplateFile = frappe.local.request.files.get("templates[quotationTemplate]")
-    rfqTemplateFile = frappe.local.request.files.get("templates[rfqTemplate]")
-    
-    invoicePdfPath = save_file(invoiceTemplateFile, folder_type="pdfs") if invoiceTemplateFile else None
-    quotationPdfPath = save_file(quotationTemplateFile, folder_type="pdfs") if quotationTemplateFile else None
-    rfqPdfPath = save_file(rfqTemplateFile, folder_type="pdfs") if rfqTemplateFile else None
-    if not invoiceTemplateFile:
-        return send_response(status="fail", message="invoiceTemplate file is required", status_code=400, http_status=400)
-
-    if not quotationTemplateFile:
-        return send_response(status="fail", message="quotationTemplate file is required", status_code=400, http_status=400)
-
-    if not rfqTemplateFile:
-        return send_response(status="fail", message="rfqTemplate file is required", status_code=400, http_status=400)
-
-
-
-    print("Invoice PDF saved at:", invoicePdfPath)
-    print("Quotation PDF saved at:", quotationPdfPath)
-    print("RFQ PDF saved at:", rfqPdfPath)
-        
     
     if not companyName:
         return send_response(status="fail", message="Company name is required", status_code=400, http_status=400)
@@ -1401,11 +1063,6 @@ def create_company_api():
             "custom_alternate_number": alternatePhone,
             "custom_company_industry_type": industryType,
             "custom_date_of_incoporation": dateOfIncorporation,
-            "company_logo": companyLogoFile,
-            "custom_signature": authorizedSignatureFile,
-            "custom_invoicetemplate": invoicePdfPath,
-            "custom_quotationtemplate": quotationPdfPath,
-            "custom_rfqtemplate": rfqPdfPath,
             "custom_modules_accounting_": accounting,
             "custom_module_crm": crm,
             "custom_module_hr": hr,
@@ -1415,11 +1072,11 @@ def create_company_api():
             "custom_module_suppliermanagement": supplierManagement,
      
         })
-    terms = extract_nested_array("terms")
+    terms = data.get("terms")
 
     selling = terms.get("selling") or {}
-    selling_payment = selling.get("payment") or {}
-    selling_phases = extract_phases("terms[selling][payment][phases]")
+    selling_payment = selling.get("payment", {})
+    selling_phases = selling_payment.get("phases", [])
     
 
 
@@ -1458,8 +1115,8 @@ def create_company_api():
 
 
     buying = terms.get("buying") or {}
-    buying_payment = buying.get("payment") or {}
-    buying_phases = extract_phases("terms[buying][payment][phases]")
+    buying_payment = buying.get("payment", {})
+    buying_phases = buying_payment.get("phases", [])
 
     buying_terms_doc = frappe.get_doc("Company Buying Terms", frappe.db.exists("Company Buying Terms", {"company": next_id})) \
                         if frappe.db.exists("Company Buying Terms", {"company": next_id}) \
@@ -1563,69 +1220,6 @@ def update_company_api():
         val = transform(value) if transform else value
         setattr(doc, field, val)
         
-    def extract_nested(prefix):
-        nested = {}
-        for key, value in data.items():
-            if key.startswith(prefix + "[") and key.endswith("]"):
-                inner = key[len(prefix)+1:-1]  
-                nested[inner] = value
-        return nested
-    
-    def extract_phases(prefix):
-        phases = []
-        i = 0
-        while True:
-            key_base = f"{prefix}[{i}]"
-            name = data.get(f"{key_base}[name]")
-            if not name:
-                break
-            phases.append({
-                "name": name,
-                "percentage": data.get(f"{key_base}[percentage]"),
-                "condition": data.get(f"{key_base}[condition]")
-            })
-            i += 1
-        return phases
-
-    
-    def extract_nested_array(prefix):
-        result = {}
-        for key, value in data.items():
-            if key.startswith(prefix + "[") and key.endswith("]"):
-                inner = key[len(prefix)+1:-1] 
-                parts = inner.replace("]", "").split("[")
-                d = result
-                for i, p in enumerate(parts[:-1]):
-                    if p.isdigit():
-                        p = int(p)
-                        if not isinstance(d, list):
-                            temp = []
-                            d_keys = list(d.keys())
-                            if d_keys:
-                                raise ValueError(f"Unexpected dict keys {d_keys} when numeric index found")
-                            d = temp
-                            if i == 0:
-                                result = d
-                        while len(d) <= p:
-                            d.append({})
-                        d = d[p]
-                    else:
-                        if p not in d:
-                            d[p] = {}
-                        d = d[p]
-
-                last_key = parts[-1]
-                if last_key.isdigit():
-                    last_key = int(last_key)
-                    if not isinstance(d, list):
-                        d_temp = []
-                        d = d_temp
-                    while len(d) <= last_key:
-                        d.append(None)
-                    d[last_key] = value
-                else:
-                    d[last_key] = value
-        return result
 
     set_if_present(company, "company_name", data.get("companyName"))
     set_if_present(company, "tax_id", data.get("tpin"))
@@ -1634,7 +1228,7 @@ def update_company_api():
     set_if_present(company, "custom_company_industry_type", data.get("industryType"))
     set_if_present(company, "custom_date_of_incoporation", data.get("dateOfIncorporation"))
     set_if_present(company, "custom_company_type", data.get("companyType"))
-    contactInfo = extract_nested("contactInfo")
+    contactInfo = data.get("contactInfo") or {}
     set_if_present(company, "email", contactInfo.get("companyEmail"))
     set_if_present(company, "phone_no", contactInfo.get("companyPhone"))
     set_if_present(company, "custom_alternate_number", contactInfo.get("alternatePhone"))
@@ -1643,7 +1237,7 @@ def update_company_api():
     set_if_present(company, "website", contactInfo.get("website"))
     set_if_present(company, "custom_contactphone", contactInfo.get("contactPhone"))
 
-    address = extract_nested("address")
+    address = data.get("address") or {}
     set_if_present(company, "custom_address_line_1", address.get("addressLine1"))
     set_if_present(company, "custom_address_line_2", address.get("addressLine2"))
     set_if_present(company, "custom_city", address.get("city"))
@@ -1653,36 +1247,55 @@ def update_company_api():
     set_if_present(company, "custom_time_zone", address.get("timeZone"))
     set_if_present(company, "country", address.get("country"))
 
+    bank_accounts = data.get("bankAccounts") or []
+    existing_accounts = frappe.get_all(
+        "Company Accounts",
+        filters={"company_id": custom_company_id},
+        fields=["name", "id"]
+    )
+    existing_ids = {acc['id']: acc['name'] for acc in existing_accounts}
+    incoming_ids = set()
 
-    bank_accounts = []
+    for account in bank_accounts:
+        account_id = account.get("id")
+        is_delete = account.get("isDelete", 0)
+        if account_id and is_delete == 1:
+            if account_id in existing_ids:
+                frappe.delete_doc("Company Accounts", existing_ids[account_id], ignore_permissions=True)
+            continue
 
-    try:
-        bank_accounts = extract_nested("bankAccounts") or []
-    except Exception:
-        bank_accounts = []
+        if account_id and account_id in existing_ids:
+            acc_doc = frappe.get_doc("Company Accounts", existing_ids[account_id])
+        else:
+            acc_doc = frappe.get_doc({
+                "doctype": "Company Accounts",
+                "company_id": custom_company_id,
+                "id": "{:08d}".format(random.randint(0, 99999999)),
+            })
 
-    company.set("Company Accounts", [])
+        set_if_present(acc_doc, "accountno", account.get("accountNo"))
+        set_if_present(acc_doc, "accountholdername", account.get("accountHolderName"))
+        set_if_present(acc_doc, "bankname", account.get("bankName"))
+        set_if_present(acc_doc, "swiftcode", account.get("swiftCode"))
+        set_if_present(acc_doc, "sortcode", account.get("sortCode"))
+        set_if_present(acc_doc, "branchaddress", account.get("branchAddress"))
+        set_if_present(acc_doc, "currency", account.get("currency"))
+        set_if_present(acc_doc, "dateadded", account.get("dateAdded"))
+        set_if_present(acc_doc, "openingbalance", account.get("openingBalance"))
 
-    for bank in bank_accounts:
-        company.append("Company Accounts", {
-            "account_no": bank.get("accountNo"),
-            "account_holder_name": bank.get("accountHolderName"),
-            "bank_name": bank.get("bankName"),
-            "swift_code": bank.get("swiftCode"),
-            "sort_code": bank.get("sortCode"),
-            "branch_address": bank.get("branchAddress"),
-            "currency": bank.get("currency"),
-            "date_added": bank.get("dateAdded"),
-            "opening_balance": bank.get("openingBalance"),
-        })
+        if account_id and account_id in existing_ids:
+            acc_doc.save(ignore_permissions=True)
+            incoming_ids.add(account_id)
+        else:
+            acc_doc.insert(ignore_permissions=True)
+            incoming_ids.add(acc_doc.id)
 
-
-    financial = extract_nested("financialConfig")
+    financial = data.get("financialConfig") or {}
     set_if_present(company, "custom_currency", financial.get("baseCurrency"))
     set_if_present(company, "custom_financial_year_begins", financial.get("financialYearStart"))
 
   
-    modules = extract_nested("modules")
+    modules = data.get("modules") or {}
     if modules is not None:
         if "accounting" in modules:
             company.custom_modules_accounting_ = modules.get("accounting")
@@ -1699,46 +1312,12 @@ def update_company_api():
         if "supplierManagement" in modules:
             company.custom_module_suppliermanagement = modules.get("supplierManagement")
 
-        companyLogoFile = frappe.local.request.files.get("documents[companyLogoUrl]")
-        authorizedSignatureFile = frappe.local.request.files.get("documents[authorizedSignatureUrl]")
-
-        if companyLogoFile:
-            file_doc = save_file(
-                companyLogoFile,
-                site_name="erpnext.localhost",
-                folder_type="logos"
-            )
-            company.company_logo = file_doc
-
-        if authorizedSignatureFile:
-            file_doc = authorizedSignatureFile = save_file(
-                authorizedSignatureFile,
-                site_name="erpnext.localhost",
-                folder_type="signatures"
-            )
-            company.custom_signature = file_doc
-
-    invoiceTemplateFile = frappe.local.request.files.get("templates[invoiceTemplate]")
-    quotationTemplateFile = frappe.local.request.files.get("templates[quotationTemplate]")
-    rfqTemplateFile = frappe.local.request.files.get("templates[rfqTemplate]")
-    if invoiceTemplateFile: 
-        file = save_file(invoiceTemplateFile, folder_type="pdfs") if invoiceTemplateFile else None
-        company.custom_invoicetemplate = file
-    
-    if quotationTemplateFile:
-        quotationPdfPath = save_file(quotationTemplateFile, folder_type="pdfs") if quotationTemplateFile else None
-        company.custom_quotationtemplate = quotationPdfPath
-    
-    if rfqTemplateFile:
-        rfqPdfPath = save_file(rfqTemplateFile, folder_type="pdfs") if rfqTemplateFile else None
-        company.custom_rfqtemplate = rfqPdfPath
-        
-    terms = extract_nested_array("terms")
+    terms = data.get("terms") or {}
     random_id = "{:06d}".format(random.randint(0, 999999)) 
-    selling = terms.get("selling")
+    selling = terms.get("selling") or {}
     if selling is not None:
-        selling_payment = selling.get("payment") or {}
-        selling_phases = extract_phases("terms[selling][payment][phases]")
+        selling_payment = selling.get("payment", {})
+        selling_phases = selling_payment.get("phases", [])
 
      
         if frappe.db.exists("Company Selling Terms", {"company": custom_company_id}):
@@ -1808,10 +1387,10 @@ def update_company_api():
                     updated_ids.add(phase_doc.name)
 
 
-    buying = terms.get("buying")
+    buying = terms.get("buying") or {}
     if buying is not None:
-        buying_payment = buying.get("payment") or {}
-        buying_phases = extract_phases("terms[buying][payment][phases]")
+        buying_payment = buying.get("payment", {})
+        buying_phases = buying_payment.get("phases", [])
 
     
         if frappe.db.exists("Company Buying Terms", {"company": custom_company_id}):
@@ -1890,3 +1469,38 @@ def update_company_api():
         http_status=200
     )
 
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_company_files():
+    data = frappe.form_dict
+    custom_company_id = data.get("id")
+
+    if not custom_company_id:
+        return send_response(status="fail", message="Company ID is required", status_code=400, http_status=400)
+
+    if not frappe.db.exists("Company", {"custom_company_id": custom_company_id}):
+        return send_response(status="fail", message=f"Company with ID {custom_company_id} not found", status_code=404, http_status=404)
+
+    company = frappe.get_doc("Company", {"custom_company_id": custom_company_id})
+
+
+    companyLogoFile = frappe.local.request.files.get("documents[companyLogoUrl]")
+    authorizedSignatureFile = frappe.local.request.files.get("documents[authorizedSignatureUrl]")
+    invoiceTemplateFile = frappe.local.request.files.get("templates[invoiceTemplate]")
+    quotationTemplateFile = frappe.local.request.files.get("templates[quotationTemplate]")
+    rfqTemplateFile = frappe.local.request.files.get("templates[rfqTemplate]")
+
+    if companyLogoFile:
+        company.company_logo = save_file(companyLogoFile, site_name="erpnext.localhost", folder_type="logos")
+    if authorizedSignatureFile:
+        company.custom_signature = save_file(authorizedSignatureFile, site_name="erpnext.localhost", folder_type="signatures")
+    if invoiceTemplateFile:
+        company.custom_invoicetemplate = save_file(invoiceTemplateFile, folder_type="pdfs")
+    if quotationTemplateFile:
+        company.custom_quotationtemplate = save_file(quotationTemplateFile, folder_type="pdfs")
+    if rfqTemplateFile:
+        company.custom_rfqtemplate = save_file(rfqTemplateFile, folder_type="pdfs")
+
+    company.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return send_response(status="success", message=f"Files for company '{company.company_name}' updated successfully", status_code=200)
