@@ -31,7 +31,6 @@ def ensure_account(account_name, account_type="Expense", company="Izyane"):
 
 def ensure_company_accounts(company_name):
     try:
-        # Step 1: Get Expense root group
         expense_root = frappe.get_all("Account", filters={
             "root_type": "Expense",
             "company": company_name,
@@ -43,7 +42,6 @@ def ensure_company_accounts(company_name):
 
         expense_root_name = expense_root[0].name
 
-        # Step 2: Create Round Off group if not exists
         round_off_account_name = "Round Off - Izyane - I"
         if not frappe.db.exists("Account", {"account_name": round_off_account_name, "company": company_name}):
             round_off_group = frappe.get_doc({
@@ -51,7 +49,7 @@ def ensure_company_accounts(company_name):
                 "account_name": round_off_account_name,
                 "company": company_name,
                 "parent_account": expense_root_name,
-                "account_type": "Round Off",  # Must be Round Off type
+                "account_type": "Round Off", 
                 "root_type": "Expense",
                 "is_group": 1
             })
@@ -60,7 +58,6 @@ def ensure_company_accounts(company_name):
         else:
             round_off_group = frappe.get_doc("Account", round_off_account_name)
 
-        # Step 3: Create Stock Difference ledger under Round Off
         stock_diff_name = "Stock Difference - Izyane - I"
         if not frappe.db.exists("Account", {"account_name": stock_diff_name, "company": company_name}):
             stock_diff = frappe.get_doc({
@@ -74,8 +71,6 @@ def ensure_company_accounts(company_name):
             })
             stock_diff.insert(ignore_permissions=True)
             frappe.db.commit()
-
-        # Step 4: Assign accounts to company
         company = frappe.get_doc("Company", company_name)
         updated = False
         if not company.round_off_account:
@@ -240,7 +235,7 @@ def get_sales_item_codes(sales_invoice_no=None, item_code=None):
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
     data = frappe.form_dict
-    customer_id = frappe.form_dict.get("customer_id")
+    customer_id = frappe.form_dict.get("customerId")
     isExport = frappe.form_dict.get("isExport")
     isRvatSale = frappe.form_dict.get("isRvatAgent")
     principalId = frappe.form_dict.get("principalId")
@@ -249,7 +244,8 @@ def create_sales_invoice():
     createBy = frappe.form_dict.get("created_by")
     destnCountryCd = frappe.form_dict.get("destnCountryCd")
     lpoNumber = frappe.form_dict.get("lpoNumber")
-    custom_invoice_status = frappe.form_dict.get("custom_invoice_status")
+    invoiceStatus = frappe.form_dict.get("invoiceStatus")
+    invoiceType = frappe.form_dict.get("invoiceType")
     custom_terms_and_conditions = frappe.form_dict.get("custom_terms_and_conditions")
     custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
     custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
@@ -257,51 +253,53 @@ def create_sales_invoice():
     custom_billing_address_city = data.get("custom_billing_address_city")
     custom_billing_address_state = data.get("custom_billing_address_state")
     custom_billing_address_country = data.get("custom_billing_address_country")
-    custom_payment_terms = data.get("custom_payment_terms")
-    custom_payment_method = data.get("custom_payment_method")
-    custom_bank_name = data.get("custom_bank_name")
-    custom_account_number = data.get("custom_account_number")
-    custom_routing_number = data.get("custom_routing_number")
-    custom_swift = data.get("custom_swift")
-    custom_invoice_type = data.get("custom_invoice_type")
     
+    payment_info = data.get("paymentInformation")
+
+    if not payment_info or not isinstance(payment_info, dict):
+        return send_response(
+            status="error",
+            message="paymentInformation is required and must be an object",
+            status_code=400
+        )
+    payment_terms = payment_info.get("paymentTerms")
+    payment_method = payment_info.get("paymentMethod")
+    bank_name = payment_info.get("bankName")
+    account_number = payment_info.get("accountNumber")
+    routing_number = payment_info.get("routingNumber")
+    swift_code = payment_info.get("swiftCode")
+
+
     required_fields = {
-    "custom_billing_address_line_1": "Billing Address Line 1 is required.",
-    "custom_billing_address_line_2": "Billing Address Line 2 is required.",
-    "custom_billing_address_postal_code": "Postal Code is required.",
-    "custom_billing_address_city": "City is required.",
-    "custom_billing_address_state": "State/Province is required.",
-    "custom_billing_address_country": "Country is required.",
-    "custom_payment_terms": "Payment terms are required.",
-    "custom_payment_method": "Payment method is required.",
-    "custom_bank_name": "Bank name is required.",
-    "custom_account_number": "Account number is required.",
-    "custom_routing_number": "Routing number is required.",
-    "custom_swift": "SWIFT code is required."
+        "paymentTerms": payment_terms,
+        "paymentMethod": payment_method,
+        "bankName": bank_name,
+        "accountNumber": account_number,
+        "routingNumber": routing_number,
+        "swiftCode": swift_code,
     }
-    
-    
-    
-    for field, error_message in required_fields.items():
-        if not data.get(field):
-            return send_response(
-                status="fail",
-                message=error_message,
-                status_code=400,
-                http_status=400
-            )
+
+    missing_fields = [key for key, value in required_fields.items() if not value]
+
+    if missing_fields:
+        return send_response(
+            status="error",
+            message=f"Missing paymentInformation fields: {', '.join(missing_fields)}",
+            status_code=400
+        )
+
             
     allowedInvoiceType = ["Non-Export", "Export", "LPO"]
 
-    if not custom_invoice_type:
+    if not invoiceType:
         return send_response(
             status="fail",
-            message="Missing required field: custom_invoice_type",
+            message="Missing required field: invoiceType",
             status_code=400,
             http_status=400
         )
 
-    if custom_invoice_type not in allowedInvoiceType:
+    if invoiceType not in allowedInvoiceType:
         return send_response(
             status="fail",
             message=f"Invalid custom_invoice_type. Allowed values are: {', '.join(allowedInvoiceType)}",
@@ -309,17 +307,17 @@ def create_sales_invoice():
             http_status=400
         )
 
-    if not custom_invoice_status:
+    if not invoiceStatus:
         send_response(
             status="fail",
-            message="Invoice status is required(custom_invoice_status)",
+            message="Invoice status is required(invoiceStatus)",
             status_code=400,
             http_status=400
         )
         return
     allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
 
-    if custom_invoice_status not in allowedInvoiceStatus:
+    if invoiceStatus not in allowedInvoiceStatus:
         send_response(
             status="fail",
             message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
@@ -547,11 +545,11 @@ def create_sales_invoice():
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
             "name": new_invoice_name,
-            "custom_invoice_type": custom_invoice_type,
+            "custom_invoice_type": invoiceType,
             "custom_exchange_rate": exchange_rate,
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
-            "custom_invoice_status": custom_invoice_status,
+            "custom_invoice_status": invoiceStatus,
             "custom_terms_and_conditions": custom_terms_and_conditions,
             "custom_billing_address_line_1": custom_billing_address_line_1,
             "custom_billing_address_line_2": custom_billing_address_line_2,
