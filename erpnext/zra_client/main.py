@@ -245,36 +245,40 @@ class ZRAClient:
 
     def check_stock(self, item_code, required_qty):
         warehouse = "Finished Goods - Izyane"
+
         try:
             required_qty = float(required_qty)
         except (TypeError, ValueError):
-            send_response(
-                status="fail",
-                message="Required quantity must be a valid number",
-                status_code=400,
-                http_status=400
-            )
-            return
+            return {
+                "status": "fail",
+                "message": "Required quantity must be a valid number"
+            }, 400
 
         if not item_code:
-            send_response(
-                status="fail",
-                message="Item code is required",
-                status_code=400,
-                http_status=400
-            )
-            return
+            return {
+                "status": "fail",
+                "message": "Item code is required"
+            }, 400
 
         if required_qty <= 0:
-            send_response(
-                status="fail",
-                message="Required quantity must be greater than 0",
-                status_code=400,
-                http_status=400
-            )
-            return
+            return {
+                "status": "fail",
+                "message": "Required quantity must be greater than 0"
+            }, 400
 
-        bin_doc = frappe.get_value(
+        if not frappe.db.exists("Item", {"name": item_code, "disabled": 0}):
+            return {
+                "status": "fail",
+                "message": f"Item {item_code} does not exist or is disabled"
+            }, 404
+
+        if not frappe.db.exists("Warehouse", warehouse):
+            return {
+                "status": "fail",
+                "message": f"Warehouse {warehouse} does not exist"
+            }, 404
+
+        bin_doc = frappe.db.get_value(
             "Bin",
             {"item_code": item_code, "warehouse": warehouse},
             ["actual_qty", "reserved_qty"],
@@ -282,28 +286,39 @@ class ZRAClient:
         )
 
         if not bin_doc:
-            send_response(
-                status="fail",
-                message=f"Item {item_code} not found in warehouse {warehouse}",
-                status_code=404,
-                http_status=404
-            )
-            return
+            return {
+                "status": "fail",
+                "message": f"Item {item_code} is not stocked in warehouse {warehouse}. Please create stock for this item before proceeding."
+            }, 404
 
-        available_qty = bin_doc["actual_qty"] - bin_doc["reserved_qty"]
-        print(f"Available stock for {item_code}: {available_qty}, Required: {required_qty}")
+        available_qty = (bin_doc.actual_qty or 0) - (bin_doc.reserved_qty or 0)
 
-        if available_qty >= required_qty:
-            return {"status": "success", "available_qty": available_qty}, 200
-        else:
-            needed_qty = required_qty - available_qty
-            send_response(
-                status="fail",
-                message =f"Not enough stock: {available_qty} available, {required_qty} required. You need {needed_qty} more.",
-                status_code=400,
-                http_status=400
-            )
-            return
+        if available_qty < required_qty:
+            return {
+                "status": "fail",
+                "message": (
+                    f"Not enough stock. "
+                    f"{available_qty} available, {required_qty} required."
+                ),
+                "data": {
+                    "item_code": item_code,
+                    "warehouse": warehouse,
+                    "available_qty": available_qty,
+                    "required_qty": required_qty
+                }
+            }, 400
+
+        return {
+            "status": "success",
+            "message": "Sufficient stock available",
+            "data": {
+                "item_code": item_code,
+                "warehouse": warehouse,
+                "available_qty": available_qty,
+                "required_qty": required_qty
+            }
+        }, 200
+
         
     def canItemStockBeUpdate(self, item_code):
         if not item_code:
