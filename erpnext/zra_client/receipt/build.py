@@ -7,7 +7,7 @@ class BuildPdf:
         cust_tpin, cust_name = customer_info[0]
         invoice_number, invoice_date, invoice_type, get_qrcode_url = invoice[0]
         current_date, sdc_id = sdc_data[0]
-
+    
         invoice_data = {
             "company": {
                 "name": company_name,

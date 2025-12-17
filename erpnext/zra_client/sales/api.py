@@ -4,6 +4,7 @@ from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.sales.credit_note import CreditNoteSale
 from erpnext.zra_client.sales.debit_note import DebitNoteSale
+from frappe.utils import today, getdate
 from frappe import _
 import random
 import frappe
@@ -31,7 +32,6 @@ def ensure_account(account_name, account_type="Expense", company="Izyane"):
 
 def ensure_company_accounts(company_name):
     try:
-        # Step 1: Get Expense root group
         expense_root = frappe.get_all("Account", filters={
             "root_type": "Expense",
             "company": company_name,
@@ -43,7 +43,6 @@ def ensure_company_accounts(company_name):
 
         expense_root_name = expense_root[0].name
 
-        # Step 2: Create Round Off group if not exists
         round_off_account_name = "Round Off - Izyane - I"
         if not frappe.db.exists("Account", {"account_name": round_off_account_name, "company": company_name}):
             round_off_group = frappe.get_doc({
@@ -51,7 +50,7 @@ def ensure_company_accounts(company_name):
                 "account_name": round_off_account_name,
                 "company": company_name,
                 "parent_account": expense_root_name,
-                "account_type": "Round Off",  # Must be Round Off type
+                "account_type": "Round Off", 
                 "root_type": "Expense",
                 "is_group": 1
             })
@@ -60,7 +59,6 @@ def ensure_company_accounts(company_name):
         else:
             round_off_group = frappe.get_doc("Account", round_off_account_name)
 
-        # Step 3: Create Stock Difference ledger under Round Off
         stock_diff_name = "Stock Difference - Izyane - I"
         if not frappe.db.exists("Account", {"account_name": stock_diff_name, "company": company_name}):
             stock_diff = frappe.get_doc({
@@ -74,8 +72,6 @@ def ensure_company_accounts(company_name):
             })
             stock_diff.insert(ignore_permissions=True)
             frappe.db.commit()
-
-        # Step 4: Assign accounts to company
         company = frappe.get_doc("Company", company_name)
         updated = False
         if not company.round_off_account:
@@ -240,68 +236,139 @@ def get_sales_item_codes(sales_invoice_no=None, item_code=None):
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
     data = frappe.form_dict
-    customer_id = frappe.form_dict.get("customer_id")
-    isExport = frappe.form_dict.get("isExport")
-    isRvatSale = frappe.form_dict.get("isRvatAgent")
-    principalId = frappe.form_dict.get("principalId")
+    customer_id = frappe.form_dict.get("customerId")
     currencyCd = frappe.form_dict.get("currencyCode")
     exchangeRt = frappe.form_dict.get("exchangeRt")
     createBy = frappe.form_dict.get("created_by")
     destnCountryCd = frappe.form_dict.get("destnCountryCd")
     lpoNumber = frappe.form_dict.get("lpoNumber")
-    custom_invoice_status = frappe.form_dict.get("custom_invoice_status")
-    custom_terms_and_conditions = frappe.form_dict.get("custom_terms_and_conditions")
-    custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
-    custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
-    custom_billing_address_postal_code = data.get("custom_billing_address_postal_code")
-    custom_billing_address_city = data.get("custom_billing_address_city")
-    custom_billing_address_state = data.get("custom_billing_address_state")
-    custom_billing_address_country = data.get("custom_billing_address_country")
-    custom_payment_terms = data.get("custom_payment_terms")
-    custom_payment_method = data.get("custom_payment_method")
-    custom_bank_name = data.get("custom_bank_name")
-    custom_account_number = data.get("custom_account_number")
-    custom_routing_number = data.get("custom_routing_number")
-    custom_swift = data.get("custom_swift")
-    custom_invoice_type = data.get("custom_invoice_type")
+    invoiceStatus = frappe.form_dict.get("invoiceStatus")
+    invoiceType = frappe.form_dict.get("invoiceType")
+    dueDate = data.get("dueDate")
+    billingAddress = data.get("billingAddress")
+    billingAddressLine1 = billingAddress.get("line1")
+    billingAddressLine2 = billingAddress.get("line2")
+    billingAddressPostalCode = billingAddress.get("postalCode")
+    billingAddressCity = billingAddress.get("city")
+    billingAddressState = billingAddress.get("state")
+    billingAddressCountry = billingAddress.get("country")
     
-    required_fields = {
-    "custom_billing_address_line_1": "Billing Address Line 1 is required.",
-    "custom_billing_address_line_2": "Billing Address Line 2 is required.",
-    "custom_billing_address_postal_code": "Postal Code is required.",
-    "custom_billing_address_city": "City is required.",
-    "custom_billing_address_state": "State/Province is required.",
-    "custom_billing_address_country": "Country is required.",
-    "custom_payment_terms": "Payment terms are required.",
-    "custom_payment_method": "Payment method is required.",
-    "custom_bank_name": "Bank name is required.",
-    "custom_account_number": "Account number is required.",
-    "custom_routing_number": "Routing number is required.",
-    "custom_swift": "SWIFT code is required."
-    }
-    
-    
-    
-    for field, error_message in required_fields.items():
-        if not data.get(field):
-            return send_response(
-                status="fail",
-                message=error_message,
-                status_code=400,
-                http_status=400
-            )
-            
-    allowedInvoiceType = ["Non-Export", "Export", "LPO"]
+    shippingAddress = data.get("shippingAddress")
+    shippingAddressLine1 = shippingAddress.get("line1")
+    shippingAddressLine2 = shippingAddress.get("line2")
+    shippingAddressPostalCode = shippingAddress.get("postalCode")
+    shippingAddressCity = shippingAddress.get("city")
+    shippingAddressState = shippingAddress.get("state")
+    shippingAddressCountry = shippingAddress.get("country")
+    payment_info = data.get("paymentInformation")
 
-    if not custom_invoice_type:
+    if not payment_info or not isinstance(payment_info, dict):
+        return send_response(
+            status="error",
+            message="paymentInformation is required and must be an object",
+            status_code=400
+        )
+    payment_terms = payment_info.get("paymentTerms")
+    payment_method = payment_info.get("paymentMethod")
+    bank_name = payment_info.get("bankName")
+    account_number = payment_info.get("accountNumber")
+    routing_number = payment_info.get("routingNumber")
+    swift_code = payment_info.get("swiftCode")
+    
+    PAYMENT_METHOD_LIST = ["01", "02", "03", "04", "05", "06", "07", "08"]
+
+    if not payment_method:
         return send_response(
             status="fail",
-            message="Missing required field: custom_invoice_type",
+            message="'paymentMethod' is required.",
             status_code=400,
             http_status=400
         )
 
-    if custom_invoice_type not in allowedInvoiceType:
+    if payment_method not in PAYMENT_METHOD_LIST:
+        return send_response(
+            status="fail",
+            message=f"Invalid paymentMethod '{payment_method}'. Allowed values are {PAYMENT_METHOD_LIST}.",
+            status_code=400,
+            http_status=400
+        )
+    
+    terms = data.get("terms") or {}
+    selling = terms.get("selling") or {}
+
+    general = (selling.get("general") or "").strip()
+    delivery = (selling.get("delivery") or "").strip()
+    cancellation = (selling.get("cancellation") or "").strip()
+    warranty = (selling.get("warranty") or "").strip()
+    liability = (selling.get("liability") or "").strip()
+    payment_terms_data = selling.get("payment") or {}
+    dueDates = payment_terms_data.get("dueDates", "")
+    lateCharges = payment_terms_data.get("lateCharges", "")
+    tax = payment_terms_data.get("taxes", "")
+    notes = payment_terms_data.get("notes", "")
+    phases = payment_terms_data.get("phases", [])
+    
+    today_date = getdate(today())
+    
+    due_date_str = data.get("dueDate")
+    if not due_date_str:
+        return send_response(
+            status="fail",
+            message="dueDate is required",
+            data=None,
+            status_code=400,
+            http_status=400
+        )
+
+    due_date = getdate(due_date_str)
+    if due_date < today_date:
+        return send_response(
+            status="fail",
+            message="Due Date cannot be before today's date",
+            data=None,
+            status_code=400,
+            http_status=400
+        )
+
+    required_fields = {
+        "paymentTerms": payment_terms,
+        "paymentMethod": payment_method,
+        "bankName": bank_name,
+        "accountNumber": account_number,
+        "routingNumber": routing_number,
+        "swiftCode": swift_code,
+    }
+
+    missing_fields = [key for key, value in required_fields.items() if not value]
+
+    if missing_fields:
+        return send_response(
+            status="error",
+            message=f"Missing paymentInformation fields: {', '.join(missing_fields)}",
+            status_code=400
+        )
+
+            
+    allowedInvoiceType = ["Non-Export", "Export", "LPO"]
+    
+    if not customer_id:
+        return send_response(
+            status="fail",
+            message="Customer ID is required (customerId)",
+            status_code=400,
+            http_status=400
+        )
+    
+
+    if not invoiceType:
+        return send_response(
+            status="fail",
+            message="Missing required field: invoiceType",
+            status_code=400,
+            http_status=400
+        )
+
+    if invoiceType not in allowedInvoiceType:
         return send_response(
             status="fail",
             message=f"Invalid custom_invoice_type. Allowed values are: {', '.join(allowedInvoiceType)}",
@@ -309,17 +376,17 @@ def create_sales_invoice():
             http_status=400
         )
 
-    if not custom_invoice_status:
+    if not invoiceStatus:
         send_response(
             status="fail",
-            message="Invoice status is required(custom_invoice_status)",
+            message="Invoice status is required(invoiceStatus)",
             status_code=400,
             http_status=400
         )
         return
     allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
 
-    if custom_invoice_status not in allowedInvoiceStatus:
+    if invoiceStatus not in allowedInvoiceStatus:
         send_response(
             status="fail",
             message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
@@ -329,8 +396,8 @@ def create_sales_invoice():
         return
 
     if not currencyCd:
-        currencyCd = "ZMW"
-        exchangeRt = "1"
+        currencyCd == "ZMW"
+        exchangeRt == 1
 
     allowedCurrencies = ["ZMW", "USD", "ZRA", "GBP", "CNY", "EUR"]
 
@@ -361,17 +428,7 @@ def create_sales_invoice():
             message=f"Invalid JSON payload: {str(e)}",
             status_code=400
         )
-
-    customer_id = payload.get("customer_id")
     items = payload.get("items", [])
-
-    if not customer_id:
-        return send_response(
-            status="fail",
-            message="Customer ID is required",
-            status_code=400,
-            http_status=400
-        )
 
     if not items or not isinstance(items, list):
         return send_response(
@@ -390,10 +447,10 @@ def create_sales_invoice():
     sale_payload_items = []
 
     for item in items:
-        item_code = item.get("item_code")
-        qty = item.get("qty", 1)
+        item_code = item.get("itemCode")
+        qty = item.get("quantity", 1)
         rate = item.get("price")
-        vatCd = item.get("vatCd")
+        vatCd = item.get("vatCode")
         iplCd = item.get("iplCd")
         tlCd = item.get("tlCd")
         discount = float(item.get("discount", 0))
@@ -419,9 +476,18 @@ def create_sales_invoice():
             )
             return
         
-        checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+        checkStockResponse, checkStockStatusCode = (
+            ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+        )
+
         if checkStockStatusCode != 200:
-            return checkStockResponse
+            return send_response(
+                status=checkStockResponse["status"],
+                message=checkStockResponse["message"],
+                data=checkStockResponse.get("data"),
+                status_code=checkStockStatusCode,
+                http_status=checkStockStatusCode
+            )
     
 
         if vatCd == "C2":
@@ -505,10 +571,8 @@ def create_sales_invoice():
         "customerName": customer_data.get("customer_name"),
         "customer_tpin": customer_data.get("custom_customer_tpin"),
         "destnCountryCd": destnCountryCd,
+        "PaymentMethod": payment_method,
         "lpoNumber": lpoNumber,
-        "isExport": isExport,
-        "isRvatAgent": isRvatSale,
-        "principalId": principalId,
         "currencyCd": currencyCd,
         "exchangeRt": exchangeRt,
         "created_by": createBy,
@@ -547,24 +611,32 @@ def create_sales_invoice():
         doc = frappe.get_doc({
             "doctype": "Sales Invoice",
             "name": new_invoice_name,
-            "custom_invoice_type": custom_invoice_type,
+            "custom_invoice_type": invoiceType,
             "custom_exchange_rate": exchange_rate,
             "custom_total_tax_amount": total_tax,
             "custom_zra_currency": currency,
-            "custom_invoice_status": custom_invoice_status,
-            "custom_terms_and_conditions": custom_terms_and_conditions,
-            "custom_billing_address_line_1": custom_billing_address_line_1,
-            "custom_billing_address_line_2": custom_billing_address_line_2,
-            "custom_billing_address_postal_code": custom_billing_address_postal_code,
-            "custom_billing_address_city": custom_billing_address_city,
-            "custom_billing_address_state": custom_billing_address_state,
-            "custom_billing_address_country": custom_billing_address_country,
-            "custom_payment_terms": custom_payment_terms,
-            "custom_payment_method": custom_payment_method,
-            "custom_bank_name": custom_bank_name,
-            "custom_account_number": custom_account_number,
-            "custom_routing_number": custom_routing_number,
-            "custom_swift": custom_swift,
+            "custom_invoice_status": invoiceStatus,
+            "due_date": dueDate,
+            "custom_billing_address_line_1": billingAddressLine1,
+            "custom_billing_address_line_2": billingAddressLine2,
+            "custom_billing_address_postal_code": billingAddressPostalCode,
+            "custom_billing_address_city":  billingAddressCity,
+            "custom_billing_address_state": billingAddressState,
+            "custom_billing_address_country": billingAddressCountry,
+            "custom_shipping_address_line1": shippingAddressLine1,
+            "custom_shipping_address_line2": shippingAddressLine2,
+            "custom_shipping_address_postal_code": shippingAddressPostalCode, 
+            "custom_shipping_address_city": shippingAddressCity, 
+            "custom_shipping_address_state": shippingAddressState, 
+            "custom_shipping_address_country": shippingAddressCountry,
+            "custom_export_destination_country": destnCountryCd,
+            "custom_local_purchase_order_number": lpoNumber,
+            "custom_payment_terms": payment_terms,
+            "custom_payment_method": payment_method,
+            "custom_bank_name": bank_name,
+            "custom_account_number": account_number,
+            "custom_routing_number": routing_number,
+            "custom_swift": swift_code,
             "customer": customer_data.get("name"),
             "update_stock": 1 if canUpdateInvoice else 0,
             "items": invoice_items
@@ -572,6 +644,45 @@ def create_sales_invoice():
         doc.insert(ignore_permissions=True)
         doc.submit()
         frappe.db.commit()
+        
+        terms_doc = frappe.get_doc({
+            "doctype": "Sale Invoice Selling Terms",
+            "invoiceno": new_invoice_name,
+            "general": general,
+            "delivery": delivery,
+            "cancellation": cancellation,
+            "warranty": warranty,
+            "liability": liability
+        })
+        terms_doc.insert()
+        frappe.db.commit()
+        
+        if payment_terms_data:
+            payment_doc = frappe.get_doc({
+                "doctype": "Sale Invoice Selling Payment",
+                "invoiceno": new_invoice_name,
+                "duedates": dueDates,     
+                "latecharges": lateCharges, 
+                "taxes": tax,
+                "notes": notes
+            })
+            payment_doc.insert()
+            frappe.db.commit()
+        if phases:
+            for phase in phases:
+                
+                random_id = "{:06d}".format(random.randint(0, 999999)) 
+                phase_doc = frappe.get_doc({
+                    "doctype": "Sale Invoice Selling Payment Phases",
+                    "id": random_id,
+                    "invoiceno": new_invoice_name, 
+                    "phase_name": phase.get("name"),
+                    "percentage": phase.get("percentage", ""),
+                    "condition": phase.get("condition", "")
+                })
+                phase_doc.insert()
+                frappe.db.commit()
+
         return send_response(
             status="success",
             message="Sales Invoice created successfully",
@@ -630,7 +741,6 @@ def get_sales_invoice():
                 http_status=400
             )
 
-        # -------- Validate Page Size --------
         page_size = args.get("page_size")
         if not page_size:
             return send_response(
@@ -706,12 +816,13 @@ def get_sales_invoice():
                 "receiptNumber": inv.custom_rcptno,
                 "currency": inv.custom_zra_currency,
                 "exchangeRate": inv.custom_exchange_rate,
-                "Date": str(inv.posting_date),
+                "dueDate": inv.due_date,
+                "dateOfInvoice": str(inv.posting_date),
                 "Total": float(inv.grand_total),
                 "totalTax": inv.custom_total_tax_amount,
-                "custom_invoice_status": inv.custom_invoice_status,
+                "invoiceStatus": inv.custom_invoice_status,
                 "invoiceTypeParent": invoice_type,
-                "custom_invoice_type": inv.custom_invoice_type
+                "invoiceType": inv.custom_invoice_type
             })
 
         total_pages = (total_invoices + page_size - 1) // page_size
@@ -772,63 +883,86 @@ def get_sales_invoice_by_id():
     try:
         doc = frappe.get_doc("Sales Invoice", invoice_name)
 
-        if doc.is_return == 1:
-            invoice_type = "Credit Note"
-        elif getattr(doc, "is_debit_note", 0) == 1:
-            invoice_type = "Debit Note"
-        elif doc.grand_total < 0 or doc.outstanding_amount < 0:
-            invoice_type = "Debit Note"
-        else:
-            invoice_type = "Normal"
+
         items_data = []
-        total_item_discount = 0
         for i in doc.items:
-            
-            itemInfo = get_item_details(i.item_code)
-            itemClassficationCode = itemInfo.get("itemClassCd")
+            item_info = get_item_details(i.item_code)
             items_data.append({
                 "itemCode": i.item_code,
-                "itemClassCode": itemClassficationCode,
-                "itemName": i.item_name,
-                "qty": i.qty,
+                "quantity": i.qty,
+                "description": i.description,
+                "discount": i.discount_amount,
                 "price": i.rate,
-                "discount": total_item_discount,
-                "amount": i.amount,
                 "vatCode": i.custom_vatcd,
-                "iplCode": i.custom_iplcd,
-                "tlCode": i.custom_tlcd,
                 "vatTaxableAmount": i.custom_vattaxblamt,
-                "description": i.description
             })
-            
-            total_item_discount += i.discount_amount
-            
+
+        terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": invoice_name})
+        payment_doc = frappe.get_doc("Sale Invoice Selling Payment", {"invoiceno": invoice_name})
+        phases = frappe.get_all(
+            "Sale Invoice Selling Payment Phases",
+            filters={"invoiceno": invoice_name},
+            fields=["phase_name as name", "percentage", "condition"]
+        )
+
         data = {
             "invoiceNumber": doc.name,
-            "custom_invoice_type": doc.custom_invoice_type,
-            "receiptNumber": doc.custom_rcptno,
             "customerName": doc.customer,
-            "postingDate": str(doc.posting_date),
-            "Total": doc.grand_total,
-            "totalTax": doc.custom_total_tax_amount,
-            # "status": doc.status,
-            # "invoiceType": invoice_type,
+            "currencyCode": doc.custom_zra_currency or doc.currency,
+            "exchangeRt": str(doc.custom_exchange_rate or 1),
+            "dateOfInvoice": str(doc.posting_date),
+            "dueDate": str(doc.due_date),
+            "invoiceStatus": doc.custom_invoice_status,
+            "invoiceType": doc.custom_invoice_type,
             "Receipt": doc.custom_receipt,
-            "custom_invoice_status": doc.custom_invoice_status,
-            "custom_terms_and_conditions": doc.custom_terms_and_conditions,
-            "custom_billing_address_line_1": doc.custom_billing_address_line_1,
-            "custom_billing_address_line_2": doc.custom_billing_address_line_2,
-            "custom_billing_address_postal_code": doc.custom_billing_address_postal_code,
-            "custom_billing_address_city": doc.custom_billing_address_city,
-            "custom_billing_address_state": doc.custom_billing_address_state,
-            "custom_billing_address_country": doc.custom_billing_address_country,
-            "custom_payment_terms": doc.custom_payment_terms,
-            "custom_payment_method": doc.custom_payment_method,
-            "custom_bank_name": doc.custom_bank_name,
-            "custom_account_number": doc.custom_account_number,
-            "custom_routing_number": doc.custom_routing_number,
-            "custom_swift": doc.custom_swift,
-            "items": items_data
+            "Receipt No": doc.custom_rcptno,
+            "lpoNumber": doc.custom_local_purchase_order_number,
+            "destnCountryCd": doc.custom_export_destination_country,
+            "billingAddress": {
+                "line1": doc.custom_billing_address_line_1,
+                "line2": doc.custom_billing_address_line_2,
+                "postalCode": doc.custom_billing_address_postal_code,
+                "city": doc.custom_billing_address_city,
+                "state": doc.custom_billing_address_state,
+                "country": doc.custom_billing_address_country
+            },
+
+            "shippingAddress": {
+                "line1": doc.custom_shipping_address_line1,
+                "line2": doc.custom_shipping_address_line2,
+                "postalCode": doc.custom_shipping_address_postal_code,
+                "city": doc.custom_shipping_address_city,
+                "state": doc.custom_shipping_address_state,
+                "country": doc.custom_shipping_address_country
+            },
+
+            "paymentInformation": {
+                "paymentTerms": doc.custom_payment_terms,
+                "paymentMethod": doc.custom_payment_method,
+                "bankName": doc.custom_bank_name,
+                "accountNumber": doc.custom_account_number,
+                "routingNumber": doc.custom_routing_number,
+                "swiftCode": doc.custom_swift
+            },
+
+            "items": items_data,
+
+            "terms": {
+                "selling": {
+                    "general": getattr(terms_doc, "general", ""),
+                    "delivery": getattr(terms_doc, "delivery", ""),
+                    "cancellation": getattr(terms_doc, "cancellation", ""),
+                    "warranty": getattr(terms_doc, "warranty", ""),
+                    "liability": getattr(terms_doc, "liability", ""),
+                    "payment": {
+                        "dueDates": getattr(payment_doc, "duedates", ""),
+                        "lateCharges": getattr(payment_doc, "latecharges", ""),
+                        "taxes": getattr(payment_doc, "taxes", ""),
+                        "notes": getattr(payment_doc, "notes", ""),
+                        "phases": phases
+                    }
+                }
+            }
         }
 
         return send_response(
@@ -847,8 +981,6 @@ def get_sales_invoice_by_id():
             status_code=500,
             http_status=500
         )
-
-
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
@@ -1200,3 +1332,81 @@ def create_debit_note_from_invoice():
         frappe.log_error(frappe.get_traceback(), "Create Debit Note API Error")
         frappe.db.rollback()
         return send_response(status="fail", message=f"Unexpected Error: {str(e)}", status_code=500)
+
+
+
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_invoice_status():
+    try:
+        data = frappe.form_dict
+
+        invoice_name = data.get("invoiceNumber")
+        invoice_status = data.get("invoiceStatus")
+
+        if not invoice_name or not invoice_status:
+            return send_response(
+                status="fail",
+                message="invoiceNumber and invoiceStatus are required",
+                status_code=400
+            )
+            
+        ALLOWED_INVOICE_STATUS = {
+            "Draft",
+            "Approved",
+            "Rejected",
+            "Paid",
+            "Cancelled"
+        }
+
+        if invoice_status not in ALLOWED_INVOICE_STATUS:
+            return send_response(
+                status="fail",
+                message=(
+                    f"Invalid invoiceStatus '{invoice_status}'. "
+                    f"Allowed values are: {', '.join(ALLOWED_INVOICE_STATUS)}"
+                ),
+                status_code=400
+            )
+        if not frappe.db.exists("Sales Invoice", invoice_name):
+            return send_response(
+                status="fail",
+                message=f"Sales Invoice {invoice_name} not found",
+                status_code=404
+            )
+
+        if not frappe.has_permission("Sales Invoice", "write", invoice_name):
+            return send_response(
+                status="fail",
+                message="You do not have permission to update this invoice",
+                status_code=403
+            )
+
+        frappe.db.sql(
+            """
+            UPDATE `tabSales Invoice`
+            SET custom_invoice_status = %s
+            WHERE name = %s
+            """,
+            (invoice_status, invoice_name)
+        )
+
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Invoice {invoice_name} status updated to {invoice_status}",
+            status_code=200
+        )
+
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Update Invoice Status SQL + Enum Error"
+        )
+        return send_response(
+            status="fail",
+            message=f"Unexpected Error: {str(e)}",
+            status_code=500
+        )
+
+

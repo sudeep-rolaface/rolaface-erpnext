@@ -78,7 +78,7 @@ def create_item_api():
     custom_local_purchase_order_name = data.get("localPurchaseOrderName") or ""
     custom_local_purchase_order_description = data.get("localPurchaseOrderDescription") or ""
     custom_local_purchase_order_perct = data.get("localPurchaseOrderPerct") or 0
-    custom_weight = data.get("weightUnit") or 0
+    custom_weight = data.get("weight") or 0
     custom_valuation = data.get("valuationMethod") or ""
     custom_is_track_inventory = data.get("custom_is_track_inventory") or False
     custom_tracking_method = data.get("trackingMethod") or "None"
@@ -95,7 +95,7 @@ def create_item_api():
     if not custom_selling_price:
         return send_response(
             status="fail",
-            message="custom_selling_price is required",
+            message="selling price is required",
             status_code=400,
             http_status=400
         )
@@ -902,7 +902,10 @@ def get_all_item_groups_api():
                 "custom_selling_price",
                 "custom_sales_account"
             ],
-            order_by="item_group_name asc"
+            order_by="item_group_name asc",
+            filters={
+                "is_group": 0
+            }
         )
 
         total_groups = len(all_groups)
