@@ -465,7 +465,7 @@ def create_sales_invoice():
             )
             return
         
-        VAT_LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
+        VAT_LIST = ["A", "C1", "C2"]
 
         if vatCd not in VAT_LIST:
             send_response(
@@ -488,10 +488,19 @@ def create_sales_invoice():
                 status_code=checkStockStatusCode,
                 http_status=checkStockStatusCode
             )
-    
+            
+        ALLOWED_VAT_CODES = ["A", "C1", "C2"]
+        if vatCd not in ALLOWED_VAT_CODES:
+            return send_response(
+                status="fail",
+                message=f"Invalid VatCd '{vatCd}'. Allowed values are A, C1, C2.",
+                status_code=400,
+                http_status=400
+            )
+            
 
         if vatCd == "C2":
-            if lpoNumber is None:
+            if not lpoNumber:
                 send_response(
                     status="fail",
                     message="Local Purchase Order number (LPO) is required for transactions with VatCd 'C2' and cannot be null.",
@@ -500,7 +509,7 @@ def create_sales_invoice():
                 )
                 return
         if vatCd == "C1":
-            if destnCountryCd is None:
+            if not destnCountryCd:
                 send_response(
                     status="fail",
                     message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions. ",
@@ -508,6 +517,15 @@ def create_sales_invoice():
                     http_status=400
                 )
                 return
+            
+        if vatCd == "A":
+            if lpoNumber or destnCountryCd:
+                return send_response(
+                    status="fail",
+                    message="For VatCd 'A', lpoNumber and destnCountryCd must NOT be provided.",
+                    status_code=400,
+                    http_status=400
+                )
 
         if not item_code:
             return send_response(
@@ -728,6 +746,7 @@ def get_sales_invoice():
                 status_code=400,
                 http_status=400
             )
+
         try:
             page = int(page)
             if page < 1:
@@ -740,7 +759,6 @@ def get_sales_invoice():
                 status_code=400,
                 http_status=400
             )
-
         page_size = args.get("page_size")
         if not page_size:
             return send_response(
@@ -750,6 +768,7 @@ def get_sales_invoice():
                 status_code=400,
                 http_status=400
             )
+
         try:
             page_size = int(page_size)
             if page_size < 1:
@@ -763,9 +782,7 @@ def get_sales_invoice():
                 http_status=400
             )
 
-
         start = (page - 1) * page_size
-        end = start + page_size
         all_invoices = frappe.get_all(
             "Sales Invoice",
             fields=[
@@ -776,17 +793,22 @@ def get_sales_invoice():
                 "custom_zra_currency",
                 "custom_exchange_rate",
                 "posting_date",
+                "due_date",
                 "grand_total",
                 "custom_total_tax_amount",
                 "custom_invoice_status",
                 "is_return",
                 "is_debit_note",
+                "return_against",
+                "amended_from",
                 "outstanding_amount",
             ],
-            order_by="creation desc"
+            order_by="creation desc",
+            limit_start=start,
+            limit_page_length=page_size
         )
 
-        total_invoices = len(all_invoices)
+        total_invoices = frappe.db.count("Sales Invoice")
 
         if total_invoices == 0:
             return send_response(
@@ -797,18 +819,29 @@ def get_sales_invoice():
                 http_status=200
             )
 
-        invoices = all_invoices[start:end]
         formatted_invoices = []
 
-        for inv in invoices:
-            if inv.is_return == 1:
-                invoice_type = "Credit Note"
-            elif inv.is_debit_note == 1:
-                invoice_type = "Debit Note"
-            elif inv.grand_total < 0 or inv.outstanding_amount < 0:
-                invoice_type = "Debit Note"
-            else:
-                invoice_type = "Normal"
+        for inv in all_invoices:
+            invoice_type_parent = "Normal"
+            invoice_type = inv.custom_invoice_type
+
+            if inv.is_return == 1 and inv.return_against:
+                parent_invoice_type = frappe.db.get_value(
+                    "Sales Invoice",
+                    inv.return_against,
+                    "custom_invoice_type"
+                )
+                invoice_type_parent = "Credit Note"
+                invoice_type = parent_invoice_type
+
+            elif inv.is_debit_note == 1 and inv.amended_from:
+                parent_invoice_type = frappe.db.get_value(
+                    "Sales Invoice",
+                    inv.amended_from,
+                    "custom_invoice_type"
+                )
+                invoice_type_parent = "Debit Note"
+                invoice_type = parent_invoice_type
 
             formatted_invoices.append({
                 "invoiceNumber": inv.name,
@@ -816,20 +849,19 @@ def get_sales_invoice():
                 "receiptNumber": inv.custom_rcptno,
                 "currency": inv.custom_zra_currency,
                 "exchangeRate": inv.custom_exchange_rate,
-                "dueDate": inv.due_date,
                 "dateOfInvoice": str(inv.posting_date),
-                "Total": float(inv.grand_total),
+                "dueDate": inv.due_date,
+                "totalAmount": float(inv.grand_total),
                 "totalTax": inv.custom_total_tax_amount,
                 "invoiceStatus": inv.custom_invoice_status,
-                "invoiceTypeParent": invoice_type,
-                "invoiceType": inv.custom_invoice_type
+                "outstandingAmount": inv.outstanding_amount,
+                "invoiceTypeParent": invoice_type_parent,
+                "invoiceType": invoice_type
             })
 
         total_pages = (total_invoices + page_size - 1) // page_size
 
         response_data = {
-            "success": True,
-            "message": "Sales invoices retrieved successfully",
             "data": formatted_invoices,
             "pagination": {
                 "page": page,
@@ -850,7 +882,7 @@ def get_sales_invoice():
         )
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Get All Sales Invoices API Error")
+        frappe.log_error(frappe.get_traceback(), "Get Sales Invoices API Error")
         return send_response(
             status="fail",
             message=str(e),
@@ -858,7 +890,6 @@ def get_sales_invoice():
             status_code=500,
             http_status=500
         )
-
 
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
@@ -872,6 +903,7 @@ def get_sales_invoice_by_id():
             status_code=400,
             http_status=400
         )
+
     if not frappe.db.exists("Sales Invoice", invoice_name):
         return send_response(
             status="fail",
@@ -882,11 +914,31 @@ def get_sales_invoice_by_id():
 
     try:
         doc = frappe.get_doc("Sales Invoice", invoice_name)
+        if getattr(doc, "is_debit_note", 0) == 1:
+            invoice_type = "Debit Note"
+        elif getattr(doc, "is_return", 0) == 1:
+            invoice_type = "Return Invoice"
+        else:
+            invoice_type = "Normal Invoice"
 
+        parent_invoice_name = getattr(doc, "return_against", None) or invoice_name
+        parent_doc = frappe.get_doc("Sales Invoice", parent_invoice_name)
+        current_invoice = frappe.get_doc("Sales Invoice", parent_invoice_name)
+
+        terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": parent_invoice_name}) \
+            if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": parent_invoice_name}) else None
+
+        payment_doc = frappe.get_doc("Sale Invoice Selling Payment", {"invoiceno": parent_invoice_name}) \
+            if frappe.db.exists("Sale Invoice Selling Payment", {"invoiceno": parent_invoice_name}) else None
+
+        phases = frappe.get_all(
+            "Sale Invoice Selling Payment Phases",
+            filters={"invoiceno": parent_invoice_name},
+            fields=["phase_name as name", "percentage", "condition"]
+        ) if frappe.db.exists("Sale Invoice Selling Payment Phases", {"invoiceno": parent_invoice_name}) else []
 
         items_data = []
         for i in doc.items:
-            item_info = get_item_details(i.item_code)
             items_data.append({
                 "itemCode": i.item_code,
                 "quantity": i.qty,
@@ -896,69 +948,57 @@ def get_sales_invoice_by_id():
                 "vatCode": i.custom_vatcd,
                 "vatTaxableAmount": i.custom_vattaxblamt,
             })
-
-        terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": invoice_name})
-        payment_doc = frappe.get_doc("Sale Invoice Selling Payment", {"invoiceno": invoice_name})
-        phases = frappe.get_all(
-            "Sale Invoice Selling Payment Phases",
-            filters={"invoiceno": invoice_name},
-            fields=["phase_name as name", "percentage", "condition"]
-        )
+        def get_address(field_prefix):
+            return {
+                "line1":getattr(parent_doc, "custom_billing_address_line_1", ""),
+                "line2": getattr(parent_doc, "custom_billing_address_line_2", ""),
+                "postalCode": getattr(doc, f"{field_prefix}_postal_code", None) or getattr(parent_doc, f"{field_prefix}_postal_code", ""),
+                "city": getattr(doc, f"{field_prefix}_city", None) or getattr(parent_doc, f"{field_prefix}_city", ""),
+                "state": getattr(doc, f"{field_prefix}_state", None) or getattr(parent_doc, f"{field_prefix}_state", ""),
+                "country": getattr(doc, f"{field_prefix}_country", None) or getattr(parent_doc, f"{field_prefix}_country", "")
+            }
 
         data = {
             "invoiceNumber": doc.name,
+            "invoiceType": parent_doc.custom_invoice_type,
+            "originInvoice": getattr(doc, "return_against", None),
             "customerName": doc.customer,
             "currencyCode": doc.custom_zra_currency or doc.currency,
             "exchangeRt": str(doc.custom_exchange_rate or 1),
             "dateOfInvoice": str(doc.posting_date),
             "dueDate": str(doc.due_date),
             "invoiceStatus": doc.custom_invoice_status,
-            "invoiceType": doc.custom_invoice_type,
             "Receipt": doc.custom_receipt,
-            "Receipt No": doc.custom_rcptno,
-            "lpoNumber": doc.custom_local_purchase_order_number,
-            "destnCountryCd": doc.custom_export_destination_country,
-            "billingAddress": {
-                "line1": doc.custom_billing_address_line_1,
-                "line2": doc.custom_billing_address_line_2,
-                "postalCode": doc.custom_billing_address_postal_code,
-                "city": doc.custom_billing_address_city,
-                "state": doc.custom_billing_address_state,
-                "country": doc.custom_billing_address_country
-            },
+            "ReceiptNo": doc.custom_rcptno,
+            "lpoNumber": doc.custom_local_purchase_order_number or parent_doc.custom_local_purchase_order_number,
+            "destnCountryCd": doc.custom_export_destination_country or parent_doc.custom_export_destination_country,
 
-            "shippingAddress": {
-                "line1": doc.custom_shipping_address_line1,
-                "line2": doc.custom_shipping_address_line2,
-                "postalCode": doc.custom_shipping_address_postal_code,
-                "city": doc.custom_shipping_address_city,
-                "state": doc.custom_shipping_address_state,
-                "country": doc.custom_shipping_address_country
-            },
+            "billingAddress": get_address("custom_billing_address"),
+            "shippingAddress": get_address("custom_shipping_address"),
 
             "paymentInformation": {
-                "paymentTerms": doc.custom_payment_terms,
-                "paymentMethod": doc.custom_payment_method,
-                "bankName": doc.custom_bank_name,
-                "accountNumber": doc.custom_account_number,
-                "routingNumber": doc.custom_routing_number,
-                "swiftCode": doc.custom_swift
+                "paymentTerms": getattr(doc, "custom_payment_terms", None) or (getattr(parent_doc, "custom_payment_terms", None) if parent_doc else None) or (getattr(payment_doc, "duedates", None) if payment_doc else None),
+                "paymentMethod": getattr(doc, "custom_payment_method", None) or (getattr(parent_doc, "custom_payment_method", None) if parent_doc else None) or (getattr(payment_doc, "payment_method", None) if payment_doc else None),
+                "bankName": getattr(doc, "custom_bank_name", None) or getattr(parent_doc, "custom_bank_name", None),
+                "accountNumber": getattr(doc, "custom_account_number", None) or getattr(parent_doc, "custom_account_number", None),
+                "routingNumber": getattr(doc, "custom_routing_number", None) or getattr(parent_doc, "custom_routing_number", None),
+                "swiftCode": getattr(doc, "custom_swift", None) or getattr(parent_doc, "custom_swift", None)
             },
 
             "items": items_data,
 
             "terms": {
                 "selling": {
-                    "general": getattr(terms_doc, "general", ""),
-                    "delivery": getattr(terms_doc, "delivery", ""),
-                    "cancellation": getattr(terms_doc, "cancellation", ""),
-                    "warranty": getattr(terms_doc, "warranty", ""),
-                    "liability": getattr(terms_doc, "liability", ""),
+                    "general": getattr(terms_doc, "general", "") if terms_doc else "",
+                    "delivery": getattr(terms_doc, "delivery", "") if terms_doc else "",
+                    "cancellation": getattr(terms_doc, "cancellation", "") if terms_doc else "",
+                    "warranty": getattr(terms_doc, "warranty", "") if terms_doc else "",
+                    "liability": getattr(terms_doc, "liability", "") if terms_doc else "",
                     "payment": {
-                        "dueDates": getattr(payment_doc, "duedates", ""),
-                        "lateCharges": getattr(payment_doc, "latecharges", ""),
-                        "taxes": getattr(payment_doc, "taxes", ""),
-                        "notes": getattr(payment_doc, "notes", ""),
+                        "dueDates": getattr(payment_doc, "duedates", "") if payment_doc else "",
+                        "lateCharges": getattr(payment_doc, "latecharges", "") if payment_doc else "",
+                        "taxes": getattr(payment_doc, "taxes", "") if payment_doc else "",
+                        "notes": getattr(payment_doc, "notes", "") if payment_doc else "",
                         "phases": phases
                     }
                 }
@@ -981,6 +1021,7 @@ def get_sales_invoice_by_id():
             status_code=500,
             http_status=500
         )
+
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
