@@ -1297,7 +1297,6 @@ def create_credit_note_from_sales_invoice():
         http_status=201
     )
 
-
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_debit_note_from_invoice():
     try:
@@ -1309,11 +1308,60 @@ def create_debit_note_from_invoice():
             status_code=400
         )
 
-    sales_invoice_no = payload.get("sales_invoice_no")
+    sales_invoice_no = payload.get("originalSalesInvoiceNumber")
+    DebitNoteReasonCode = payload.get("DebitNoteReasonCode")
+    invcAdjustReason = payload.get("invcAdjustReason")
+    transactionProgress = payload.get("transactionProgress")
+    if not transactionProgress:
+        return send_response(
+            status="fail",
+            message="Transaction progress is required",
+            status_code=400,
+            http_status=400
+        )
+
+    VALID_TRANSACTION_PROGRESS = ["02", "05", "06", "04"]
+
+    if transactionProgress not in VALID_TRANSACTION_PROGRESS:
+        return send_response(
+            status="fail",
+            message=f"Invalid transaction progress: {transactionProgress}. Allowed values are {VALID_TRANSACTION_PROGRESS}",
+            status_code=400,
+            http_status=400
+        )
+
+
+    if not invcAdjustReason:
+        return send_response(
+            status="fail",
+            message="Invoice adjustment reason (invcAdjustReason) is required.",
+            status_code=400,
+            http_status= 400
+        )
+
+    
+    if not DebitNoteReasonCode:
+        return send_response(
+            status="fail",
+            message="Credit Note Reason Code is required",
+            status_code=400,
+            http_status=400,
+        )
+    ALLOWED_DEBIT_REASON_CODE = ["01", "02", "03", "04"]
+    if DebitNoteReasonCode not in ALLOWED_DEBIT_REASON_CODE:
+        return send_response(
+        status="fail",
+        message=(
+            f"Invalid Credit Note Reason Code '{DebitNoteReasonCode}'. "
+            f"Allowed values are: {', '.join(ALLOWED_DEBIT_REASON_CODE)}."
+        ),
+        status_code=400,
+        http_status=400
+    )
     req_items = payload.get("items", [])
 
     if not sales_invoice_no:
-        return send_response(status="fail", message="Sales Invoice number is required", status_code=400)
+        return send_response(status="fail", message="Original Sales Invoice number is required", status_code=400)
 
     if not isinstance(req_items, list) or not req_items:
         return send_response(status="fail", message="Items must be a non-empty list", status_code=400)
@@ -1322,6 +1370,9 @@ def create_debit_note_from_invoice():
         return send_response(status="fail", message=f"Sales Invoice '{sales_invoice_no}' not found", status_code=404)
 
     sales_invoice = frappe.get_doc("Sales Invoice", sales_invoice_no)
+    if not sales_invoice.customer:
+        return send_response(status="fail", message="Sales Invoice has no customer assigned", status_code=400)
+
     customer_doc = frappe.get_doc("Customer", sales_invoice.customer)
     customer_data = get_customer_details(customer_doc.custom_id)
 
@@ -1332,37 +1383,60 @@ def create_debit_note_from_invoice():
     sale_payload_items = []
 
     for inv_item in sales_invoice.items:
-        req_item = next((i for i in req_items if i.get("item_code") == inv_item.item_code), None)
+
+        req_item = next((i for i in req_items if i.get("itemCode") == inv_item.item_code), None)
         if not req_item:
             continue
 
-        qty = float(req_item.get("qty", inv_item.qty))
+        qty = float(req_item.get("quantity", inv_item.qty))
         if qty <= 0:
             continue
+
         item_code = inv_item.item_code
         item_codes = get_sales_item_codes(sales_invoice_no, item_code)
-        
         rate = float(req_item.get("price", inv_item.rate))
-        vatCd = item_codes["vatCd"]
-        iplCd =  item_codes["iplCd"]
-        tlCd = item_codes["tlCd"]
 
-        if vatCd == "C2" and not payload.get("lpoNumber"):
-            return send_response(status="fail", message="LPO number is required for VatCd 'C2'", status_code=400)
+        vatCd = item_codes.get("vatCd", "")
+        iplCd = item_codes.get("iplCd", "")
+        tlCd = item_codes.get("tlCd", "")
+        destination_country_code = None
+        local_purchase_order_number = None
+        paymentMethod = sales_invoice.custom_payment_method
 
-        if vatCd == "C" and not payload.get("destnCountryCd"):
-            return send_response(status="fail", message="Destination country is required for VatCd 'C'", status_code=400)
+        if not paymentMethod:
+            return send_response(
+                status="fail",
+                message="Payment method is required for this sales invoice.",
+                status_code=400
+            )
 
-        item_details = get_item_details(inv_item.item_code)
+        if vatCd == "C1":
+            destination_country_code = getattr(sales_invoice, "custom_export_destination_country", None)
+            if not destination_country_code:
+                return send_response(
+                    status="fail",
+                    message=f"Export Destination Country is required on Sales Invoice for item {item_code}",
+                    status_code=400
+                )
+
+        if vatCd == "C2":
+            local_purchase_order_number = getattr(sales_invoice, "custom_local_purchase_order_number", None)
+            if not local_purchase_order_number:
+                return send_response(
+                    status="fail",
+                    message=f"Local Purchase Order Number is required on Sales Invoice for item {item_code} with VAT C",
+                    status_code=400
+                )
+
+        item_details = get_item_details(item_code)
         if not item_details:
             return send_response(
                 status="fail",
-                message=f"Item '{inv_item.item_code}' does not exist",
+                message=f"Item '{item_code}' does not exist",
                 status_code=404
             )
-
         debit_items.append({
-            "item_code": inv_item.item_code,
+            "item_code": item_code,
             "item_name": inv_item.item_name,
             "qty": qty,
             "rate": rate,
@@ -1375,8 +1449,9 @@ def create_debit_note_from_invoice():
             "warehouse": "Finished Goods - Izyane",
             "expense_account": "Stock Difference - Izyane - I",
         })
+
         sale_payload_items.append({
-            "itemCode": inv_item.item_code,
+            "itemCode": item_code,
             "itemName": inv_item.item_name,
             "qty": qty,
             "itemClassCode": item_details.get("itemClassCd"),
@@ -1395,18 +1470,25 @@ def create_debit_note_from_invoice():
             message="No valid items to create Debit Note",
             status_code=400
         )
+
     new_invoice_name = SalesInvoice.get_next_invoice_name()
     sale_payload = {
         "name": new_invoice_name,
         "originInvoice": sales_invoice,
         "customerName": customer_data.get("customer_name"),
-        "customer_tpin": customer_data.get("custom_customer_tpin"),
-        "isExport": payload.get("isExport", False),
-        "isRvatAgent": payload.get("isRvatAgent", False),
+        "customer_tpin": customer_data.get("tax_id"),
+        "destnCountryCd": destination_country_code,
+        "lpoNumber": local_purchase_order_number,
+        "DebitNoteReasonCode": DebitNoteReasonCode,
+        "invcAdjustReason": invcAdjustReason,
+        "paymentMethod": paymentMethod,
+        "transactionProgress": transactionProgress,
         "items": sale_payload_items
     }
 
+    print("Sales Payload to be procced: ", sale_payload)
     print("DEBIT PAYLOAD:", sale_payload)
+
     result = DEBIT_NOTE_INSTANCE.send_sale_data(sale_payload)
     if result.get("resultCd") != "000":
         return send_response(
@@ -1414,21 +1496,25 @@ def create_debit_note_from_invoice():
             message=result.get("resultMsg", "Unknown error from ZRA"),
             status_code=400
         )
-    
+
     canUpdateInvoice = all(
-        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) 
+        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("itemCode")) 
         for item in debit_items
     )
-    additional_info = result["additionalInfo"]
+
+    additional_info = result.get("additionalInfo", [None, None, None])
     currency = additional_info[0]
     exchange_rate = additional_info[1]
     total_tax = additional_info[2]
+
     zra_items = result.get("additionInfoToBeSavedItem", [])
     zra_lookup = { item["itemCd"]: item["vatTaxblAmt"] for item in zra_items }
+
     for inv_item in debit_items:
         item_code = inv_item.get("item_code")
         if item_code in zra_lookup:
             inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+
     try:
         debit_note_doc = frappe.get_doc({
             "doctype": "Sales Invoice",
@@ -1451,7 +1537,6 @@ def create_debit_note_from_invoice():
         return send_response(
             status="success",
             message=f"Debit Note '{debit_note_doc.name}' created for {sales_invoice_no}",
-            data={"debit_note_no": debit_note_doc.name},
             status_code=201,
             http_status=201
         )
