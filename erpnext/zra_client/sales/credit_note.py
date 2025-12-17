@@ -203,8 +203,8 @@ class CreditNoteSale(ZRAClient):
             "custNm": base_data["cust_name"],
             "salesTyCd": "N",
             "rcptTyCd": "R",
-            "pmtTyCd": "01",
-            "salesSttsCd": "02",
+            "pmtTyCd": base_data["paymentMethod"],
+            "salesSttsCd": base_data["transactionProgress"],
             "cfmDt": datetime.now().strftime("%Y%m%d%H%M%S"),
             "salesDt": datetime.now().strftime("%Y%m%d"),
             "totItemCnt": len(items),
@@ -221,8 +221,8 @@ class CreditNoteSale(ZRAClient):
             "modrId": username,
             "modrNm": username,
             "saleCtyCd": "1",
-            "rfdRsnCd": "01",
-            "invcAdjustReason": "",
+            "rfdRsnCd": base_data["CreditNoteReasonCode"],
+            "invcAdjustReason": base_data["invcAdjustReason"],
             "itemList": processed_items
         }
         if destnCountryCd:
@@ -274,6 +274,10 @@ class CreditNoteSale(ZRAClient):
         created_by = sell_data.get("modified_by")
         currencyCd = sell_data.get("currencyCd")
         lpoNumber = sell_data.get("lpoNumber")
+        CreditNoteReasonCode = sell_data.get("CreditNoteReasonCode")
+        invcAdjustReason = sell_data.get("invcAdjustReason")
+        paymentMethod = sell_data.get("paymentMethod")
+        transactionProgress = sell_data.get("transactionProgress")
     
         sell_data_item = sell_data.get("items")
         items = []
@@ -321,7 +325,11 @@ class CreditNoteSale(ZRAClient):
             "created_by": created_by,
             "currencyCd": "ZMW",
             "lpoNumber": lpoNumber,
-            "destnCountryCd": destnCountryCd
+            "paymentMethod": paymentMethod,
+            "destnCountryCd": destnCountryCd,
+            "CreditNoteReasonCode": CreditNoteReasonCode,
+            "invcAdjustReason": invcAdjustReason,
+            "transactionProgress": transactionProgress,
 
             
         }

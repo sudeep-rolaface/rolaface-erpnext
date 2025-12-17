@@ -1038,6 +1038,55 @@ def create_credit_note_from_sales_invoice():
 
     original_invoice_no = request_data.get("originalSalesInvoiceNumber")
     requested_items = request_data.get("items", [])
+    CreditNoteReasonCode = request_data.get("CreditNoteReasonCode")
+    invcAdjustReason = request_data.get("invcAdjustReason")
+    transactionProgress = request_data.get("transactionProgress")
+    if not transactionProgress:
+        return send_response(
+            status="fail",
+            message="Transaction progress is required",
+            status_code=400,
+            http_status=400
+        )
+
+    VALID_TRANSACTION_PROGRESS = ["02", "05", "06", "04"]
+
+    if transactionProgress not in VALID_TRANSACTION_PROGRESS:
+        return send_response(
+            status="fail",
+            message=f"Invalid transaction progress: {transactionProgress}. Allowed values are {VALID_TRANSACTION_PROGRESS}",
+            status_code=400,
+            http_status=400
+        )
+
+
+    if not invcAdjustReason:
+        return send_response(
+            status="fail",
+            message="Invoice adjustment reason (invcAdjustReason) is required.",
+            status_code=400,
+            http_status= 400
+        )
+
+    
+    if not CreditNoteReasonCode:
+        return send_response(
+            status="fail",
+            message="Credit Note Reason Code is required",
+            status_code=400,
+            http_status=400,
+        )
+    ALLOWED_CREDIT_REASON_CODE = ["01", "02", "03", "04", "05", "06", "07"]
+    if CreditNoteReasonCode not in ALLOWED_CREDIT_REASON_CODE:
+        return send_response(
+        status="fail",
+        message=(
+            f"Invalid Credit Note Reason Code '{CreditNoteReasonCode}'. "
+            f"Allowed values are: {', '.join(ALLOWED_CREDIT_REASON_CODE)}."
+        ),
+        status_code=400,
+        http_status=400
+    )
 
     if not original_invoice_no:
         return send_response(
@@ -1149,6 +1198,14 @@ def create_credit_note_from_sales_invoice():
     vat_code = next(iter(vat_codes_detected))
     destination_country_code = None
     local_purchase_order_number = None
+    paymentMethod = sales_invoice.custom_payment_method
+
+    if not paymentMethod:
+        return send_response(
+            status="fail",
+            message="Payment method is required for this sales invoice.",
+            status_code=400
+        )
 
     if vat_code == "C1":
         destination_country_code = sales_invoice.custom_export_destination_country
@@ -1175,6 +1232,10 @@ def create_credit_note_from_sales_invoice():
     zra_payload = {
         "originalInvoice": original_invoice_no,
         "name": next_invoice_number,
+        "CreditNoteReasonCode": CreditNoteReasonCode,
+        "invcAdjustReason": invcAdjustReason,
+        "paymentMethod": paymentMethod,
+        "transactionProgress": transactionProgress,
         "customerName": customer_info.get("customer_name"),
         "items": zra_sale_items
     }
