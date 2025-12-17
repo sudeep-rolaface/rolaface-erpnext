@@ -198,7 +198,7 @@ class CreditNoteSale(ZRAClient):
             "bhfId": self.get_branch_code(),
             "orgSdcId": self.get_origin_sdc_id(),
             "orgInvcNo": originRcptNo,
-            "cisInvcNo":  name,
+            "cisInvcNo":  str(uuid.uuid4()),
             "custTpin": base_data["cust_tpin"],
             "custNm": base_data["cust_name"],
             "salesTyCd": "N",
