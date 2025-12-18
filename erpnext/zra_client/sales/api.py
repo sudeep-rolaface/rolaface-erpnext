@@ -1,5 +1,5 @@
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
-from erpnext.zra_client.generic_api import send_response, send_response_list
+from erpnext.zra_client.generic_api import send_response, send_response_list, send_response_list_sale
 from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.sales.sale_helper import NormaSale
 from erpnext.zra_client.sales.credit_note import CreditNoteSale
@@ -861,24 +861,21 @@ def get_sales_invoice():
 
         total_pages = (total_invoices + page_size - 1) // page_size
 
-        response_data = {
-            "data": formatted_invoices,
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total": total_invoices,
-                "total_pages": total_pages,
-                "has_next": page < total_pages,
-                "has_prev": page > 1
-            }
+        pagination ={
+            "page": page,
+            "page_size": page_size,
+            "total": total_invoices,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
         }
-
-        return send_response_list(
+        return send_response_list_sale(
             status="success",
             message="Sales invoices retrieved successfully",
             status_code=200,
             http_status=200,
-            data=response_data
+            data=formatted_invoices,
+            pagination=pagination
         )
 
     except Exception as e:
@@ -1661,5 +1658,4 @@ def update_invoice_status():
             message=f"Unexpected Error: {str(e)}",
             status_code=500
         )
-
 
