@@ -1,4 +1,4 @@
-from erpnext.zra_client.generic_api import send_response
+from erpnext.zra_client.generic_api import send_response, send_response_list_sale
 from erpnext.zra_client.main import ZRAClient
 from frappe.utils import today, getdate
 import frappe
@@ -6,6 +6,27 @@ import json
 import random
 
 ZRA_INSTANCE = ZRAClient()
+
+def generate_proforma_number():
+    frappe.db.sql("LOCK TABLES `tabProforma` WRITE")
+
+    last = frappe.db.sql("""
+        SELECT name FROM `tabProforma`
+        WHERE name LIKE 'PRO-%'
+        ORDER BY creation DESC
+        LIMIT 1
+    """, as_dict=True)
+
+    if not last:
+        next_no = 1
+    else:
+        next_no = int(last[0]["name"].split("-")[1]) + 1
+
+    proforma_no = f"PRO-{next_no:03d}"
+
+    frappe.db.sql("UNLOCK TABLES")
+
+    return proforma_no
 
 
 @frappe.whitelist(allow_guest=False)
@@ -20,20 +41,24 @@ def create_proforma_api():
     exchangeRt = float(payload.get("exchangeRt", 1))
     invoiceType = payload.get("invoiceType")
     invoiceStatus = payload.get("invoiceStatus")
+    dateOfInvoice = payload.get("dateOfInvoice")
     dueDate = payload.get("dueDate")
     items = payload.get("items", [])
+    
+    if not dateOfInvoice:
+        return send_response(status="fail", message="date Of Invoice is required", status_code=400, http_status=400)
 
     if not customer_id:
-        return send_response("fail", "customerId is required", 400)
+        return send_response(status="fail", message="customerId is required", status_code=400, http_status=400)
 
     if not dueDate:
-        return send_response("fail", "dueDate is required", 400)
+        return send_response(status="fail", message="dueDate is required", status_code=400, http_status=400)
 
     if getdate(dueDate) < getdate(today()):
-        return send_response("fail", "Due Date cannot be in the past", 400)
+        return send_response(status="fail", message="Due Date cannot be in the past", status_code=400, http_status=400)
 
     if not items or not isinstance(items, list):
-        return send_response("fail", "Items must be a non-empty list", 400)
+        return send_response(status="fail", message="Items must be a non-empty list", status_code=400, http_status=400)
 
     customer_data = ZRA_INSTANCE.get_customer_details(customer_id)
     if not customer_data or customer_data.get("status") == "fail":
@@ -52,7 +77,7 @@ def create_proforma_api():
     swift_code = payment_info.get("swiftCode")
 
     if not payment_method:
-        return send_response("fail", "paymentMethod is required", 400)
+        return send_response(status="fail", message="paymentMethod is required", status_code = 400, http_status=400)
 
 
     terms = payload.get("terms", {}).get("selling", {})
@@ -68,11 +93,15 @@ def create_proforma_api():
     tax_notes = payment_terms_data.get("taxes")
     notes = payment_terms_data.get("notes")
     phases = payment_terms_data.get("phases", [])
+    
+    next_proforma_invoice_id = generate_proforma_number(),
 
     try:
 
         proforma = frappe.get_doc({
             "doctype": "Proforma",
+            "name": next_proforma_invoice_id,
+            "id": next_proforma_invoice_id,
             "customer": customer_data.get("name"),
             "customer_name": customer_data.get("customer_name"),
             "invoice_type": invoiceType,
@@ -80,7 +109,7 @@ def create_proforma_api():
             "currency": currencyCd,
             "exchange_rate": exchangeRt,
             "due_date": dueDate,
-
+            "date_of_invoice": dateOfInvoice,
             "billing_address_line_1": billing.get("line1"),
             "billing_address_line_2": billing.get("line2"),
             "billing_address_postal_code": billing.get("postalCode"),
@@ -122,7 +151,7 @@ def create_proforma_api():
 
             frappe.get_doc({
                 "doctype": "Proforma Item",
-                "proforma_id": proforma.name,
+                "proforma_id": next_proforma_invoice_id,
                 "item_name": item.get("itemName"),
                 "item_code": item.get("itemCode"),
                 "description": item.get("description"),
@@ -142,7 +171,7 @@ def create_proforma_api():
 
         frappe.get_doc({
             "doctype": "Sale Invoice Selling Terms",
-            "invoiceno": proforma.name,
+            "invoiceno": next_proforma_invoice_id,
             "general": general,
             "delivery": delivery,
             "cancellation": cancellation,
@@ -153,7 +182,7 @@ def create_proforma_api():
 
         frappe.get_doc({
             "doctype": "Sale Invoice Selling Payment",
-            "invoiceno": proforma.name,
+            "invoiceno": next_proforma_invoice_id,
             "duedates": dueDates,
             "latecharges": lateCharges,
             "taxes": tax_notes,
@@ -164,7 +193,7 @@ def create_proforma_api():
         for phase in phases:
             frappe.get_doc({
                 "doctype": "Sale Invoice Selling Payment Phases",
-                "invoiceno": proforma.name,
+                "invoiceno": next_proforma_invoice_id,
                 "phase_name": phase.get("name"),
                 "percentage": phase.get("percentage"),
                 "condition": phase.get("condition")
@@ -175,11 +204,6 @@ def create_proforma_api():
         return send_response(
             status="success",
             message="Proforma created successfully",
-            data={
-                "proforma_id": proforma.name,
-                "total_items": total_items,
-                "total_amount": grand_total
-            },
             status_code=200
         )
 
@@ -187,3 +211,252 @@ def create_proforma_api():
         frappe.db.rollback()
         frappe.log_error(frappe.get_traceback(), "Create Proforma API Error")
         return send_response("fail", str(e), 500)
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_proforma_api():
+    try:
+        args = frappe.request.args
+
+        page = args.get("page")
+        page_size = args.get("page_size")
+
+        if not page or not page_size:
+            return send_response(
+                status="error",
+                message="'page' and 'page_size' are required",
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page = int(page)
+            page_size = int(page_size)
+            if page < 1 or page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' and 'page_size' must be positive integers",
+                status_code=400,
+                http_status=400
+            )
+
+        start = (page - 1) * page_size
+
+        proformas = frappe.get_all(
+            "Proforma",
+            fields=[
+                "name",
+                "id",
+                "customer_name",
+                "currency",
+                "exchange_rate",
+                "due_date",
+                "total_amount",
+                "invoice_status",
+                "creation"
+            ],
+            order_by="creation desc",
+            limit_start=start,
+            limit_page_length=page_size
+        )
+
+        total = frappe.db.count("Proforma")
+
+        if total == 0:
+            return send_response(
+                status="success",
+                message="No proformas found",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+        formatted = []
+        for p in proformas:
+            formatted.append({
+                "proformaId": p.id,
+                "customerName": p.customer_name,
+                "currency": p.currency,
+                "exchangeRate": p.exchange_rate,
+                "dueDate": str(p.due_date),
+                "totalAmount": float(p.total_amount),
+                "status": p.invoice_status,
+                "createdAt": str(p.creation)
+            })
+
+        total_pages = (total + page_size - 1) // page_size
+
+        pagination = {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+
+        return send_response_list_sale(
+            status="success",
+            message="Proformas retrieved successfully",
+            data=formatted,
+            pagination=pagination,
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get Proforma API Error")
+        return send_response(
+            status="fail",
+            message=str(e),
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_proforma_by_id():
+    proforma_id = (frappe.form_dict.get("id") or "").strip()
+
+    if not proforma_id:
+        return send_response(
+            status="fail",
+            message="Proforma id is required",
+            status_code=400,
+            http_status=400
+        )
+
+    # ---------------- CHECK PROFORMA EXISTS ----------------
+    if not frappe.db.exists("Proforma", {"id": proforma_id}):
+        return send_response(
+            status="fail",
+            message=f"Proforma {proforma_id} not found",
+            status_code=404,
+            http_status=404
+        )
+
+    try:
+        # ---------------- FETCH PROFORMA ----------------
+        doc = frappe.get_doc("Proforma", {"id": proforma_id})
+
+        # ---------------- FETCH ITEMS ----------------
+        items = frappe.get_all(
+            "Proforma Item",
+            filters={"proforma_id": proforma_id},
+            fields=[
+                "item_code",
+                "item_name",
+                "description",
+                "qty",
+                "unit_price",
+                "discount",
+                "tax",
+                "item_total"
+            ]
+        )
+
+        formatted_items = [
+            {
+                "itemCode": i.item_code,
+                "itemName": i.item_name,
+                "description": i.description,
+                "quantity": i.qty,
+                "price": i.unit_price,
+                "discount": i.discount,
+                "tax": i.tax,
+                "itemTotal": i.item_total
+            } for i in items
+        ]
+
+        # ---------------- TERMS AND PAYMENTS ----------------
+        terms_doc = frappe.get_doc(
+            "Sale Invoice Selling Terms",
+            {"invoiceno": proforma_id}
+        ) if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": proforma_id}) else None
+
+        payment_doc = frappe.get_doc(
+            "Sale Invoice Selling Payment",
+            {"invoiceno": proforma_id}
+        ) if frappe.db.exists("Sale Invoice Selling Payment", {"invoiceno": proforma_id}) else None
+
+        phases = frappe.get_all(
+            "Sale Invoice Selling Payment Phases",
+            filters={"invoiceno": proforma_id},
+            fields=["phase_name as name", "percentage", "condition"]
+        )
+
+        # ---------------- RESPONSE DATA ----------------
+        data = {
+            "proformaId": doc.id,  # using your custom 'id'
+            "customerName": doc.customer_name,
+            "currencyCode": doc.currency,
+            "exchangeRt": str(doc.exchange_rate),
+            "dueDate": str(doc.due_date),
+            "invoiceStatus": doc.invoice_status,
+            "totalAmount": float(doc.total_amount or 0),
+
+            "billingAddress": {
+                "line1": doc.billing_address_line_1,
+                "line2": doc.billing_address_line_2,
+                "postalCode": doc.billing_address_postal_code,
+                "city": doc.billing_address_city,
+                "state": doc.billing_address_state,
+                "country": doc.billing_address_country
+            },
+
+            "shippingAddress": {
+                "line1": doc.shipping_address_line_1,
+                "line2": doc.shipping_address_line_2,
+                "postalCode": doc.shipping_address_postal_code,
+                "city": doc.shipping_address_city,
+                "state": doc.shipping_address_state,
+                "country": doc.shipping_address_country
+            },
+
+            "paymentInformation": {
+                "paymentTerms": doc.payment_terms,
+                "paymentMethod": doc.payment_method,
+                "bankName": doc.bank_name,
+                "accountNumber": doc.account_number,
+                "routingNumber": doc.routing_number,
+                "swiftCode": doc.swift_code
+            },
+
+            "items": formatted_items,
+
+            "terms": {
+                "selling": {
+                    "general": getattr(terms_doc, "general", ""),
+                    "delivery": getattr(terms_doc, "delivery", ""),
+                    "cancellation": getattr(terms_doc, "cancellation", ""),
+                    "warranty": getattr(terms_doc, "warranty", ""),
+                    "liability": getattr(terms_doc, "liability", ""),
+                    "payment": {
+                        "dueDates": getattr(payment_doc, "duedates", ""),
+                        "lateCharges": getattr(payment_doc, "latecharges", ""),
+                        "taxes": getattr(payment_doc, "taxes", ""),
+                        "notes": getattr(payment_doc, "notes", ""),
+                        "phases": phases
+                    }
+                }
+            }
+        }
+
+        return send_response(
+            status="success",
+            message=f"Proforma {proforma_id} fetched successfully",
+            data=data,
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get Proforma By ID API Error")
+        return send_response(
+            status="fail",
+            message=str(e),
+            status_code=500,
+            http_status=500
+        )
