@@ -460,3 +460,121 @@ def get_proforma_by_id():
             status_code=500,
             http_status=500
         )
+        
+
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_proforma_status():
+    try:
+        data = frappe.form_dict
+
+        proforma_id = (data.get("proformaId") or "").strip()
+        proforma_status = (data.get("proformaStatus") or "").strip()
+
+        if not proforma_id or not proforma_status:
+            return send_response(
+                status="fail",
+                message="Both 'proformaId' and 'proformaStatus' are required",
+                status_code=400
+            )
+        ALLOWED_PROFORMA_STATUS = {"Draft", "Approved", "Rejected", "Paid", "Cancelled"}
+        if proforma_status not in ALLOWED_PROFORMA_STATUS:
+            return send_response(
+                status="fail",
+                message=(
+                    f"Invalid proformaStatus '{proforma_status}'. "
+                    f"Allowed values: {', '.join(sorted(ALLOWED_PROFORMA_STATUS))}"
+                ),
+                status_code=400
+            )
+
+        if not frappe.db.exists("Proforma", {"id": proforma_id}):
+            return send_response(
+                status="fail",
+                message=f"Proforma '{proforma_id}' not found",
+                status_code=404
+            )
+        if not frappe.has_permission("Proforma", "write", {"id": proforma_id}):
+            return send_response(
+                status="fail",
+                message="You do not have permission to update this proforma",
+                status_code=403
+            )
+
+        frappe.db.set_value(
+            "Proforma",
+            {"id": proforma_id},
+            "invoice_status",
+            proforma_status
+        )
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Proforma '{proforma_id}' status updated to '{proforma_status}'",
+            status_code=200
+        )
+
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Update Proforma Status API Error"
+        )
+        return send_response(
+            status="fail",
+            message=f"Unexpected Error: {str(e)}",
+            status_code=500
+        )
+
+@frappe.whitelist(allow_guest=False, methods=["DELETE"])
+def delete_proforma():
+    try:
+        proforma_id = (frappe.form_dict.get("proformaId") or "").strip()
+
+        if not proforma_id:
+            return send_response(
+                status="fail",
+                message="'proformaId' is required",
+                status_code=400,
+                http_status=400,
+            )
+        doc_name = frappe.db.get_value("Proforma", {"id": proforma_id})
+        if not doc_name:
+            return send_response(
+                status="fail",
+                message=f"Proforma '{proforma_id}' not found",
+                status_code=404,
+                http_status=404
+            )
+
+        if not frappe.has_permission("Proforma", "delete", doc_name):
+            return send_response(
+                status="fail",
+                message="You do not have permission to delete this proforma",
+                status_code=403,
+                http_status=403
+            )
+
+        frappe.db.delete("Proforma Item", {"proforma_id": proforma_id})
+        frappe.db.delete("Sale Invoice Selling Terms", {"invoiceno": proforma_id})
+        frappe.db.delete("Sale Invoice Selling Payment", {"invoiceno": proforma_id})
+        frappe.db.delete("Sale Invoice Selling Payment Phases", {"invoiceno": proforma_id})
+
+        doc = frappe.get_doc("Proforma", doc_name)
+        doc.delete()
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Proforma '{proforma_id}' and related documents deleted successfully",
+            status_code=200,
+            http_status=200,
+        )
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Delete Proforma API Error")
+        return send_response(
+            status="fail",
+            message=f"Unexpected Error: {str(e)}",
+            status_code=500,
+            http_status=500
+        )
