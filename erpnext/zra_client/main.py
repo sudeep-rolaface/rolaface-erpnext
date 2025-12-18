@@ -344,7 +344,145 @@ class ZRAClient:
 
         return item_type in (1, 2)
 
-
-
     
+    def get_customer_details(self, customer_id):
+        if not customer_id:
+            return send_response(
+                status="fail",
+                message="Customer ID is required",
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            customer = frappe.get_all("Customer", filters={"custom_id": customer_id}, limit=1)
+            if not customer:
+                return send_response(
+                    status="fail",
+                    message=f"Customer with ID '{customer_id}' not found",
+                    status_code=404,
+                    http_status=404
+                )
+            
+            customer_doc = frappe.get_doc("Customer", customer[0]["name"])
+
+            def safe_attr(obj, attr):
+                return getattr(obj, attr, "") or ""
+
+            data = {
+                "custom_customer_tpin": safe_attr(customer_doc, "tax_id"),
+                "name": safe_attr(customer_doc, "name"),
+                "customer_name": safe_attr(customer_doc, "customer_name"),
+            }
+            return data
+
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), "Get Customer Details API Error")
+            return send_response(
+                status="fail",
+                message=f"Error retrieving customer: {str(e)}",
+                status_code=500,
+                http_status=500
+            )
     
+    def get_item_details(item_code):
+        if not item_code:
+            return send_response(
+                status="fail",
+                message="Item code is required.",
+                status_code=400,
+                http_status=400
+            )
+        
+        try:
+            item = frappe.get_doc("Item", item_code)
+        except frappe.DoesNotExistError:
+            return send_response(
+                status="fail",
+                message="Item not found",
+                status_code=404,
+                http_status=404
+            )
+        except Exception as e:
+            return send_response(
+                status="fail",
+                message=f"Cannot proceed: {str(e)}",
+                status_code=400,
+                http_status=400
+            )
+        
+        itemName = item.item_name
+        itemClassCd = getattr(item, "custom_itemclscd", None)
+        itemPackingUnitCd = getattr(item, "custom_pkgunitcd", None)
+        itemUnitCd = getattr(item, "stock_uom", None)
+        itemVatCd = getattr(item, "custom_vatcd", None)
+        itemIplCd = getattr(item, "custom_iplcd", None)
+        itemTlCd = getattr(item, "custom_tlcd", None)
+
+        return {
+            "itemName": itemName,
+            "itemClassCd": itemClassCd,
+            "itemPackingUnitCd": itemPackingUnitCd,
+            "itemUnitCd": itemUnitCd,
+            "itemVatCd": itemVatCd,
+            "itemIplCd": itemIplCd,
+            "itemTlCd": itemTlCd
+        }
+        
+    def get_sales_item_codes(sales_invoice_no=None, item_code=None):
+        if not sales_invoice_no:
+            return send_response(
+                status="fail",
+                message="Sales Invoice number is required.",
+                status_code=400,
+                http_status=400
+            )
+
+        if not item_code:
+            return send_response(
+                status="fail",
+                message="Item code is required.",
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            invoice = frappe.get_doc("Sales Invoice", sales_invoice_no)
+            for item in invoice.items:
+                if item.item_code == item_code:
+                    data = {
+                        "vatCd": item.custom_vatcd or "",
+                        "iplCd": item.custom_iplcd or "",
+                        "tlCd": item.custom_tlcd or ""
+                    }
+                    print("**** item codes", data)
+
+                    return data
+
+            return send_response(
+                status="fail",
+                message=f"Item '{item_code}' not found in Sales Invoice '{sales_invoice_no}'.",
+                status_code=404,
+                http_status=404
+            )
+
+        except frappe.DoesNotExistError:
+            return send_response(
+                status="fail",
+                message=f"Sales Invoice '{sales_invoice_no}' does not exist.",
+                status_code=404,
+                http_status=404
+            )
+
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), "get_sales_item_codes Error")
+
+            return send_response(
+                status="fail",
+                message=f"Unexpected error: {str(e)}",
+                status_code=500,
+                http_status=500
+            )
+
+        
+        
