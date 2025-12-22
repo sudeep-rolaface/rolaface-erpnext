@@ -1,9 +1,35 @@
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.selling.doctype.quotation.quotation import Quotation
 from erpnext.zra_client.main import ZRAClient
+from frappe.utils import getdate, today
 from frappe import _
+import json
 import frappe
 import re
+
+ZRA_INSTANCE = ZRAClient()
+
+
+def generate_Quotation_number():
+    frappe.db.sql("LOCK TABLES `tabQuotation` WRITE")
+
+    last = frappe.db.sql("""
+        SELECT name FROM `tabQuotation`
+        WHERE name LIKE 'QUO-%'
+        ORDER BY creation DESC
+        LIMIT 1
+    """, as_dict=True)
+
+    if not last:
+        next_no = 1
+    else:
+        next_no = int(last[0]["name"].split("-")[1]) + 1
+
+    quotation_no = f"QUO-{next_no:03d}"
+
+    frappe.db.sql("UNLOCK TABLES")
+
+    return quotation_no
 
 def get_customer_details(customer_id):
     if not customer_id:
@@ -267,323 +293,192 @@ def delete_quotation():
             status_code=500,
             http_status=500
         )
-        
+
+
+
 @frappe.whitelist(allow_guest=False)
 def create_quotation():
     data = frappe.local.form_dict
 
-    customer_id = data.get("customer_id")
-    company_id = data.get("company_id")
-    currency = data.get("currency")
-    valid_till = data.get("valid_till")
-    transaction_date = data.get("transaction_date")
-    custom_industry_bases = data.get("custom_industry_bases")
-    custom_tc = data.get("custom_tc")
-    custom_swift = data.get("custom_swift")
-    custom_bank_name = data.get("custom_bank_name")
-    custom_payment_terms = data.get("custom_payment_terms")
-    custom_payment_method = data.get("custom_payment_method")
-    custom_account_number = data.get("custom_account_number")
-    custom_routing_number = data.get("custom_routing_number")
-    custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
-    custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
-    custom_billing_address_city = data.get("custom_billing_address_city")
-    custom_billing_address_postal_code = data.get("custom_billing_address_postal_code")
-
-
-    items = data.get("items")
+    try:
+        payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
+    except Exception as e:
+        return send_response(status="fail", message=f"Invalid JSON payload: {str(e)}", status_code=400, http_status=400)
     
-    next_name = Quotation.get_next_quotation_name()
+    customer_id = payload.get("customerId")
+    currencyCd = payload.get("currencyCode", "ZMW")
+    exchangeRt = float(payload.get("exchangeRt", 1))
+    invoiceType = payload.get("invoiceType")
+    invoiceStatus = payload.get("invoiceStatus")
+    dateOfInvoice = payload.get("dateOfInvoice")
+    dueDate = payload.get("dueDate")
+    items = payload.get("items", [])
     
-    
-    
-    if not custom_industry_bases:
-        return send_response(
-            status="fail",
-            message=_("Industry Base is required"),
-            status_code=400,
-            http_status=400
-        )
-    
-    VALID_INDUSTRY_BASES = ["Service", "Product", "Manufacturing"]
-    if custom_industry_bases not in VALID_INDUSTRY_BASES:
-        return send_response(
-            status="fail",
-            message=_("Invalid Industry Base. Must be one of: {}").format(", ".join(VALID_INDUSTRY_BASES)),
-            status_code=400,
-            http_status=400
-        )
-    if not valid_till:
-        return send_response(
-            status="fail",
-            message=_("Valid Till date is required"),
-            status_code=400,
-            http_status=400
-        )
-        
-    if valid_till and not re.match(r"^\d{4}-\d{2}-\d{2}$", valid_till):
-        return send_response(
-            status="fail",
-            message=_("Valid Till date must be in YYYY-MM-DD format"),
-            status_code=400,
-            http_status=400
-        )
-        
-    
-    if valid_till and transaction_date and valid_till < transaction_date:
-        return send_response(
-            status="fail",
-            message=_("Valid Till date cannot be earlier than Transaction Date"),
-            status_code=400,
-            http_status=400
-        )
-    if not currency:
-        return send_response(
-            status="fail",
-            message=_("Currency is required"),
-            status_code=400,
-            http_status=400
-        )
+    if not dateOfInvoice:
+        return send_response(status="fail", message="date Of Invoice is required", status_code=400, http_status=400)
 
     if not customer_id:
-        return send_response(
-            status="fail",
-            message=_("Customer is required"),
-            status_code=400,
-            http_status=400
-        )
+        return send_response(status="fail", message="customerId is required", status_code=400, http_status=400)
 
-    customer_data = get_customer_details(customer_id)
+    if not dueDate:
+        return send_response(status="fail", message="dueDate is required", status_code=400, http_status=400)
+
+    if getdate(dueDate) < getdate(today()):
+        return send_response(status="fail", message="Due Date cannot be in the past", status_code=400, http_status=400)
+
+    if not items or not isinstance(items, list):
+        return send_response(status="fail", message="Items must be a non-empty list", status_code=400, http_status=400)
+
+    customer_data = ZRA_INSTANCE.get_customer_details(customer_id)
     if not customer_data or customer_data.get("status") == "fail":
         return customer_data
 
-    customer_name = customer_data.get("customer_name")
 
-    if not company_id:
-        return send_response(
-            status="fail",
-            message=_("Company is required"),
-            status_code=400,
-            http_status=400
-        )
+    billing = payload.get("billingAddress", {})
+    shipping = payload.get("shippingAddress", {})
 
-    company_check = frappe.get_all("Company", filters={"custom_company_id": company_id}, limit=1)
-    if not company_check:
-        return send_response(
-            status="fail",
-            message=_("Company with ID '{}' does not exist").format(company_id),
-            status_code=404,
-            http_status=404
-        )
+    payment_info = payload.get("paymentInformation", {})
+    payment_terms = payment_info.get("paymentTerms")
+    payment_method = payment_info.get("paymentMethod")
+    bank_name = payment_info.get("bankName")
+    account_number = payment_info.get("accountNumber")
+    routing_number = payment_info.get("routingNumber")
+    swift_code = payment_info.get("swiftCode")
 
-    company_name = company_check[0]["name"]
-
-    custom_tc = data.get("custom_tc")
-    if not custom_tc:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_tc",
-            status_code=400
-        )
-
-    custom_swift = data.get("custom_swift")
-    if not custom_swift:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_swift",
-            status_code=400
-        )
-
-    custom_bank_name = data.get("custom_bank_name")
-    if not custom_bank_name:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_bank_name",
-            status_code=400
-        )
-
-    custom_payment_terms = data.get("custom_payment_terms")
-    if not custom_payment_terms:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_payment_terms",
-            status_code=400
-        )
-
-    custom_payment_method = data.get("custom_payment_method")
-    if not custom_payment_method:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_payment_method",
-            status_code=400
-        )
-
-    custom_account_number = data.get("custom_account_number")
-    if not custom_account_number:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_account_number",
-            status_code=400
-        )
-
-    custom_routing_number = data.get("custom_routing_number")
-    if not custom_routing_number:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_routing_number",
-            status_code=400
-        )
-
-    custom_billing_address_line_1 = data.get("custom_billing_address_line_1")
-    if not custom_billing_address_line_1:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_billing_address_line_1",
-            status_code=400
-        )
-
-    # Optional field
-    custom_billing_address_line_2 = data.get("custom_billing_address_line_2")
-
-    custom_billing_address_city = data.get("custom_billing_address_city")
-    if not custom_billing_address_city:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_billing_address_city",
-            status_code=400
-        )
-
-    custom_billing_address_postal_code = data.get("custom_billing_address_postal_code")
-    if not custom_billing_address_postal_code:
-        return send_response(
-            status="fail",
-            message="Missing required field: custom_billing_address_postal_code",
-            status_code=400
-        )
+    if not payment_method:
+        return send_response(status="fail", message="paymentMethod is required", status_code = 400, http_status=400)
 
 
-    if not items:
-        return send_response(
-            status="fail",
-            message=_("Items are required"),
-            status_code=400,
-            http_status=400
-        )
+    terms = payload.get("terms", {}).get("selling", {})
+    general = terms.get("general")
+    delivery = terms.get("delivery")
+    cancellation = terms.get("cancellation")
+    warranty = terms.get("warranty")
+    liability = terms.get("liability")
 
-    if isinstance(items, str):
-        try:
-            items = frappe.parse_json(items)
-        except:
-            return send_response(
-                status="fail",
-                message=_("Items format is invalid"),
-                status_code=400,
-                http_status=400
-            )
+    payment_terms_data = terms.get("payment", {})
+    dueDates = payment_terms_data.get("dueDates")
+    lateCharges = payment_terms_data.get("lateCharges")
+    tax_notes = payment_terms_data.get("taxes")
+    notes = payment_terms_data.get("notes")
+    phases = payment_terms_data.get("phases", [])
 
-    if not isinstance(items, list) or len(items) == 0:
-        return send_response(
-            status="fail",
-            message=_("Items must be a non-empty list"),
-            status_code=400,
-            http_status=400
-        )
-
-    for i, item in enumerate(items):
-        item_code = item.get("item_code")
-        qty = item.get("qty")
-        rate = item.get("rate")
-
-        if not item_code:
-            return send_response(
-                status="fail",
-                message=_("Item #{} is missing item_code").format(i + 1),
-                status_code=400,
-                http_status=400
-            )
-
-        if not frappe.db.exists("Item", item_code):
-            return send_response(
-                status="fail",
-                message=_("Item {} does not exist").format(item_code),
-                status_code=400,
-                http_status=400
-            )
-
-        if qty is None:
-            return send_response(
-                status="fail",
-                message=_("Item #{} is missing qty").format(i + 1),
-                status_code=400,
-                http_status=400
-            )
-
-        if rate is None:
-            return send_response(
-                status="fail",
-                message=_("Item #{} is missing rate").format(i + 1),
-                status_code=400,
-                http_status=400
-            )
-
-        try:
-            if float(qty) <= 0:
-                return send_response(
-                    status="fail",
-                    message=_("Item #{} qty must be greater than 0").format(i + 1),
-                    status_code=400,
-                    http_status=400
-                )
-            if float(rate) < 0:
-                return send_response(
-                    status="fail",
-                    message=_("Item #{} rate cannot be negative").format(i + 1),
-                    status_code=400,
-                    http_status=400
-                )
-        except:
-            return send_response(
-                status="fail",
-                message=_("Qty and rate must be numeric values for item #{}").format(i + 1),
-                status_code=400,
-                http_status=400
-            )
+    next_quotation_id = generate_Quotation_number()
 
     try:
-        if not transaction_date:
-            transaction_date = frappe.utils.nowdate()
 
         quotation = frappe.get_doc({
             "doctype": "Quotation",
-            "name": next_name,
-            "customer": customer_name,
-            "company": company_name,
-            "currency": currency,
-            "valid_till": valid_till,
-            "custom_tc": custom_tc,
-            "custom_industry_bases": custom_industry_bases,
-            "transaction_date": transaction_date,
-            "items": items
-        })
+            "name": next_quotation_id,
+            "customer": customer_data.get("name"),
+            "customer_name": customer_data.get("customer_name"),
+            "invoice_type": invoiceType,
+            "invoice_status": invoiceStatus,
+            "currency": currencyCd,
+            "exchange_rate": exchangeRt,
+            "due_date": dueDate,
+            "date_of_invoice": dateOfInvoice,
+            "billing_address_line_1": billing.get("line1"),
+            "billing_address_line_2": billing.get("line2"),
+            "billing_address_postal_code": billing.get("postalCode"),
+            "billing_address_city": billing.get("city"),
+            "billing_address_state": billing.get("state"),
+            "billing_address_country": billing.get("country"),
 
-        quotation.insert()   
+   
+            "shipping_address_line_1": shipping.get("line1"),
+            "shipping_address_line_2": shipping.get("line2"),
+            "shipping_address_postal_code": shipping.get("postalCode"),
+            "shipping_address_city": shipping.get("city"),
+            "shipping_address_state": shipping.get("state"),
+            "shipping_address_country": shipping.get("country"),
+
+
+            "payment_terms": payment_terms,
+            "payment_method": payment_method,
+            "bank_name": bank_name,
+            "account_number": account_number,
+            "routing_number": routing_number,
+            "swift_code": swift_code,
+
+            "total_items": 0,
+            "total_amount": 0
+        })
+        quotation.insert(ignore_permissions=True)
+
+        total_items = 0
+        grand_total = 0
+
+        for item in items:
+            qty = float(item.get("quantity", 1))
+            unit_price = float(item.get("price", 0))
+            discount = float(item.get("discount", 0))
+            tax = float(item.get("tax", 0))
+
+            item_total = (qty * unit_price) - discount + tax
+
+            frappe.get_doc({
+                "doctype": "Proforma Item",
+                "proforma_id": next_proforma_invoice_id,
+                "item_name": item.get("itemName"),
+                "item_code": item.get("itemCode"),
+                "description": item.get("description"),
+                "qty": qty,
+                "unit_price": unit_price,
+                "discount": discount,
+                "tax": tax,
+                "item_total": item_total
+            }).insert(ignore_permissions=True)
+
+            total_items += qty
+            grand_total += item_total
+
+        proforma.total_items = total_items
+        proforma.total_amount = grand_total
+        proforma.save(ignore_permissions=True)
+
+        frappe.get_doc({
+            "doctype": "Sale Invoice Selling Terms",
+            "invoiceno": next_quotation_id,
+            "general": general,
+            "delivery": delivery,
+            "cancellation": cancellation,
+            "warranty": warranty,
+            "liability": liability
+        }).insert(ignore_permissions=True)
+
+
+        frappe.get_doc({
+            "doctype": "Sale Invoice Selling Payment",
+            "invoiceno": next_quotation_id,
+            "duedates": dueDates,
+            "latecharges": lateCharges,
+            "taxes": tax_notes,
+            "notes": notes
+        }).insert(ignore_permissions=True)
+
+
+        for phase in phases:
+            frappe.get_doc({
+                "doctype": "Sale Invoice Selling Payment Phases",
+                "invoiceno": next_quotation_id,
+                "phase_name": phase.get("name"),
+                "percentage": phase.get("percentage"),
+                "condition": phase.get("condition")
+            }).insert(ignore_permissions=True)
+
         frappe.db.commit()
 
         return send_response(
             status="success",
-            message=_("Quotation created successfully"),
-            data={"quotation_id": quotation.name},
-            status_code=201,
-            http_status=201
+            message="Quotation created successfully",
+            status_code=200
         )
 
     except Exception as e:
-        return send_response(
-            status="fail",
-            message=str(e),
-            status_code=500,
-            http_status=500
-        )
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback(), "Create Quotation API Error")
+        return send_response("fail", str(e), 500)
         
 @frappe.whitelist(allow_guest=False)
 def update_quotation():
