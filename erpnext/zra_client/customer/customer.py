@@ -158,6 +158,35 @@ def create_customer_api():
     customerCurrency = (frappe.form_dict.get("currency") or "").strip()
     customerAccountNo = (frappe.form_dict.get("accountNumber") or "")
     customer_onboarding_balance = frappe.form_dict.get("onboardingBalance") or "0"
+    customerTaxCategory = (frappe.form_dict.get("customerTaxCategory") or "").strip()
+    
+    
+    VALID_TAX_CATEGORY = ["export", "non-export", "lpo"]
+    if not customerTaxCategory:
+        return send_response(
+            status="fail",
+            message="Tax category is required (customerTaxCategory)",
+            status_code=400,
+            http_status=400
+        )
+
+    if customerTaxCategory not in VALID_TAX_CATEGORY:
+        return send_response(
+            status="fail",
+            message="Invalid tax category",
+            status_code=400,
+            http_status=400
+        )
+    tax_category_doc = frappe.db.get_value("Tax Category", {"name": customerTaxCategory})
+    if not tax_category_doc:
+        try:
+            frappe.get_doc({
+                "doctype": "Tax Category",
+                "title": customerTaxCategory
+            }).insert(ignore_permissions=True)
+            frappe.db.commit()
+        except Exception as e:
+            return send_response(status="error", message=f"Failed to create Tax Category: {str(e)}", status_code=500, http_status=500)
 
     try:
         customer_onboarding_balance = float(customer_onboarding_balance)
@@ -325,6 +354,7 @@ def create_customer_api():
             "custom_id": id,
             "customer_name": customer_name,
             "tax_id": tpin,
+            "tax_category": customerTaxCategory,
             "mobile_no": mobile_no,
             "customer_type": customerType,
             "email_id": customerEmail or email_id, 
@@ -594,6 +624,7 @@ def get_customer_by_id(custom_id):
         data = {
             "id": safe_attr(customer, "custom_id"),
             "tpin": safe_attr(customer, "tax_id"),
+            "customerTaxCategory": safe_attr(customer, "tax_category"),
             "name": safe_attr(customer, "customer_name"),
             "type": safe_attr(customer, "customer_type"),
             "mobile": safe_attr(customer, "mobile_no"),
@@ -642,6 +673,10 @@ def get_customer_by_id(custom_id):
             http_status=500
         )
         
+import random
+import frappe
+from frappe.utils import flt
+
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_customer_by_id():
     custom_id = (frappe.form_dict.get("id") or "").strip()
@@ -660,13 +695,34 @@ def update_customer_by_id():
             "data": None,
             "status_code": 404
         }
+    
+    # Handle Tax Category
+    customerTaxCategory = (frappe.form_dict.get("customerTaxCategory") or "").strip()
+    if customerTaxCategory:
+        tax_category_doc = frappe.db.get_value("Tax Category", {"name": customerTaxCategory})
+        if not tax_category_doc:
+            try:
+                frappe.get_doc({
+                    "doctype": "Tax Category",
+                    "title": customerTaxCategory
+                }).insert(ignore_permissions=True)
+                frappe.db.commit()
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Failed to create Tax Category: {str(e)}",
+                    "status_code": 500,
+                    "http_status": 500
+                }
 
+    # Get customer doc
     customer = frappe.get_doc("Customer", {"custom_id": custom_id})
 
-
+    # Map fields from input
     field_mapping = {
         "customer_name": frappe.form_dict.get("name"),
         "mobile_no": frappe.form_dict.get("mobile"),
+        "tax_category": customerTaxCategory,
         "email_id": frappe.form_dict.get("email"),
         "customer_type": frappe.form_dict.get("type"),
         "default_currency": frappe.form_dict.get("currency"),
@@ -688,10 +744,12 @@ def update_customer_by_id():
         "custom_display_name": frappe.form_dict.get("displayName")
     }
 
+    # Update fields
     for key, value in field_mapping.items():
         if value not in (None, ""):
             setattr(customer, key, value)
 
+    # Validate customer type
     if not validate_customer_type(customer.customer_type):
         return {
             "status": "fail",
@@ -700,12 +758,19 @@ def update_customer_by_id():
             "status_code": 400
         }
 
+    # Save customer before processing terms
+    customer.ignore_mandatory = True
+    customer.flags.ignore_links = True
+    customer.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    # Process terms if provided
     terms = frappe.form_dict.get("terms") or {}
     selling = terms.get("selling") or {}
     if selling:
-        terms_doc = frappe.get_all("Customer Terms", filters={"customer": custom_id}, limit_page_length=1)
-        if terms_doc:
-            terms_doc = frappe.get_doc("Customer Terms", terms_doc[0].name)
+        terms_doc_list = frappe.get_all("Customer Terms", filters={"customer": custom_id}, limit_page_length=1)
+        if terms_doc_list:
+            terms_doc = frappe.get_doc("Customer Terms", terms_doc_list[0].name)
         else:
             terms_doc = frappe.get_doc({"doctype": "Customer Terms", "customer": custom_id})
 
@@ -717,7 +782,6 @@ def update_customer_by_id():
         terms_doc.save(ignore_permissions=True)
 
         payment = selling.get("payment") or {}
-        data = ""
         if payment:
             payment_doc_list = frappe.get_all("Payment Terms", filters={"customer": custom_id}, limit_page_length=1)
             if payment_doc_list:
@@ -732,40 +796,27 @@ def update_customer_by_id():
             payment_doc.save(ignore_permissions=True)
 
             phases = payment.get("phases", [])
-
             for phase in phases:
                 phase_id = phase.get("id")
                 phase_name = phase.get("name")
                 phase_percentage = phase.get("percentage")
                 phase_condition = phase.get("condition")
-                is_delete = phase.get("isDelete", 0)  
+                is_delete = phase.get("isDelete", 0)
 
-                existing = frappe.get_all(
-                    "Payment Terms Phases",
-                    filters={"customer": custom_id, "id": phase_id},
-                    limit=1
-                )
+                existing = frappe.get_all("Payment Terms Phases", filters={"customer": custom_id, "id": phase_id}, limit=1)
 
                 if existing:
                     phase_doc = frappe.get_doc("Payment Terms Phases", existing[0].name)
-
                     if is_delete:
-        
                         frappe.delete_doc("Payment Terms Phases", phase_doc.name, ignore_permissions=True)
-                        continue 
-
-      
+                        continue
                     phase_doc.phase = phase_name
                     phase_doc.percentage = phase_percentage
                     phase_doc.condition = phase_condition
                     phase_doc.save(ignore_permissions=True)
-
                 else:
                     if is_delete:
-           
                         continue
-
-
                     random_id = "{:06d}".format(random.randint(0, 999999))
                     phase_doc = frappe.get_doc({
                         "doctype": "Payment Terms Phases",
@@ -776,51 +827,14 @@ def update_customer_by_id():
                         "condition": phase_condition
                     })
                     phase_doc.insert(ignore_permissions=True)
-
-   
-                customer.ignore_mandatory = True
-                customer.flags.ignore_links = True
-                customer.save(ignore_permissions=True)
-                frappe.db.commit()
-
-    def safe_attr(obj, attr):
-        return getattr(obj, attr, "") or ""
-
-    customer = frappe.get_doc("Customer", {"custom_id": custom_id})
-    data = {
-        "id": safe_attr(customer, "custom_id"),
-        "tpin": safe_attr(customer, "tax_id"),
-        "name": safe_attr(customer, "customer_name"),
-        "type": safe_attr(customer, "customer_type"),
-        "mobile": safe_attr(customer, "mobile_no"),
-        "email": safe_attr(customer, "email_id"),
-        "contactPerson": safe_attr(customer, "custom_contact_person"),
-        "displayName": safe_attr(customer, "custom_display_name"),
-        "currency": safe_attr(customer, "default_currency"),
-        "accountNumber": safe_attr(customer, "custom_account_number"),
-        "onboardingBalance": safe_attr(customer, "custom_onboard_balance"),
-        "billingAddressLine1": safe_attr(customer, "custom_billing_address_line_1"),
-        "billingAddressLine2": safe_attr(customer, "custom_billing_address_line_2"),
-        "billingPostalCode": safe_attr(customer, "custom_billing_address_postal_code"),
-        "billingCity": safe_attr(customer, "custom_billing_address_city"),
-        "billingState": safe_attr(customer, "custom_billing_address_state"),
-        "billingCountry": safe_attr(customer, "custom_billing_address_country"),
-        "shippingAddressLine1": safe_attr(customer, "custom_shipping_address_line_1"),
-        "shippingAddressLine2": safe_attr(customer, "custom_shipping_address_line_2"),
-        "shippingPostalCode": safe_attr(customer, "custom_shipping_address_postal_code"),
-        "shippingCity": safe_attr(customer, "custom_shipping_address_city"),
-        "shippingState": safe_attr(customer, "custom_shipping_address_state"),
-        "shippingCountry": safe_attr(customer, "custom_shipping_address_country"),
-    }
+            frappe.db.commit()
 
     return {
         "status": "success",
         "message": "Customer updated successfully",
-        "data": data,
-        "status_code": 200
+        "status_code": 200,
+        "http_status": 200
     }
-
-
 
 
 @frappe.whitelist(allow_guest=False)

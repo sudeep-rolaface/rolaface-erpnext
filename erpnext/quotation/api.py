@@ -378,12 +378,12 @@ def create_quotation():
             "exchange_rate": exchangeRt,
             "due_date": dueDate,
             "date_of_invoice": dateOfInvoice,
-            "billing_address_line_1": billing.get("line1"),
-            "billing_address_line_2": billing.get("line2"),
-            "billing_address_postal_code": billing.get("postalCode"),
-            "billing_address_city": billing.get("city"),
-            "billing_address_state": billing.get("state"),
-            "billing_address_country": billing.get("country"),
+            "custom_billing_address_line_1": billing.get("line1"),
+            "custom_billing_address_line_2": billing.get("line2"),
+            "custom_billing_address_postal_code": billing.get("postalCode"),
+            "custom_billing_address_city": billing.get("city"),
+            "custom_billing_address_state": billing.get("state"),
+            "custom_billing_address_country": billing.get("country"),
 
    
             "shipping_address_line_1": shipping.get("line1"),
