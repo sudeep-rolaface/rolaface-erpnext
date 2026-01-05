@@ -51,7 +51,7 @@ def create_item_api():
     item_group = (data.get("itemGroup") or "").strip()
     unit_of_measure_cd = (data.get("unitOfMeasureCd") or "Nos").strip()
     custom_itemclscd = (data.get("itemClassCode") or "").strip()
-    custom_itemtycd = data.get("itemTypeCode") or 0
+    custom_itemtycd = data.get("itemTypeCode")
     custom_orgnnatcd = (data.get("originNationCode") or "").strip()
     custom_pkgunitcd = (data.get("packagingUnitCode") or "").strip()
     custom_svcchargeyn = (data.get("svcCharge") or "").strip()
@@ -63,21 +63,6 @@ def create_item_api():
     custom_sku = data.get("sku") or ""
     custom_kg = data.get("weightUnit") or 0
     custom_vendor = data.get("preferredVendor") or ""
-    custom_non_export_tax = data.get("nonExportTax") or ""
-    custom_non_export_code = data.get("nonExportCode") or ""
-    custom_non_export_name = data.get("nonExportName") or ""
-    custom_non_export_description = data.get("nonExportDescription") or ""
-    custom_non_export_tax_perct = data.get("nonExportTaxPerct") or 0
-    custom_export_tax = data.get("exportTax") or ""
-    custom_export_code = data.get("exportCode") or ""
-    custom_export_name = data.get("exportName") or ""
-    custom_export_description = data.get("exportDescription") or ""
-    custom_export_tax_perct = data.get("exportTaxPerct") or 0
-    custom_local_purchase_order_tax = data.get("localPurchaseOrderTax") or ""
-    custom_local_purchase_order_code = data.get("localPurchaseOrderCode") or ""
-    custom_local_purchase_order_name = data.get("localPurchaseOrderName") or ""
-    custom_local_purchase_order_description = data.get("localPurchaseOrderDescription") or ""
-    custom_local_purchase_order_perct = data.get("localPurchaseOrderPerct") or 0
     custom_weight = data.get("weight") or 0
     custom_valuation = data.get("valuationMethod") or ""
     custom_is_track_inventory = data.get("custom_is_track_inventory") or False
@@ -91,6 +76,71 @@ def create_item_api():
     custom_dimensionlength = data.get("dimensionLength") or ""
     custom_dimensionwidth = data.get("dimensionWidth") or ""
     custom_dimensionheight = data.get("dimensionHeight") or ""
+    taxType = data.get("taxType")
+    taxCode = data.get("taxCode")
+    taxName = data.get("taxName")
+    taxDescription = data.get("taxDescription")
+    taxPerct = data.get("taxPerct")
+    taxCategory = data.get("taxCategory")
+    
+    
+    ALLOWED_TAX_CATEGORIES = ["export", "nonexport", "lpo"]
+    
+    if not taxCategory:
+        return send_response(
+            status="error",
+            message="taxCategory is required",
+            status_code=400,
+            http_status=400
+        )
+        
+    if taxCategory not in ALLOWED_TAX_CATEGORIES:
+        return send_response(
+            status="error",
+            message='taxCategory must be one of "export", "nonexport", or "lpo"',
+            status_code=400,
+            http_status=400
+        )
+    
+    if not item_name:
+        return send_response(
+            status="fail",
+            message="Item name is required",
+            status_code=400,
+            http_status=400,
+        )
+        
+    if not custom_orgnnatcd:
+        return send_response(
+            status="fail",
+            message="Item origin code is required",
+            status_code=400,
+            http_status=400
+        )
+        
+    if not custom_pkgunitcd:
+        return send_response(
+            status="fail",
+            message="Item packaging unit code is required",
+            status_code=400,
+            http_status=400
+        )
+        
+    if not custom_itemclscd:
+        return send_response(
+            status="fail",
+            message="Item classification code is required",
+            status_code=400,
+            http_status=400
+        )
+    
+    if not custom_itemtycd:
+        return send_response(
+            status="fail",
+            message="item Type Code is required",
+            status_code=400,
+            http_status=400
+        )
 
     if not custom_selling_price:
         return send_response(
@@ -99,37 +149,23 @@ def create_item_api():
             status_code=400,
             http_status=400
         )
-
-    provided_codes = [bool(custom_non_export_code), bool(custom_local_purchase_order_code), bool(custom_export_code)]
-    if provided_codes.count(True) != 1:
+        
+    if not taxCode:
         return send_response(
             status="fail",
-            message="Exactly one of custom_non_export_code, custom_local_purchase_order_code, or custom_export_code must be provided.",
-            status_code=400,
-            http_status=400
-        )
-    if custom_non_export_code and custom_non_export_code not in ["A", "B", "C3", "D", "E"]:
-        return send_response(
-            status="fail",
-            message="custom_non_export_code must be one of A, B, C3, D, E",
-            status_code=400,
-            http_status=400
-        )
-    if custom_local_purchase_order_code and custom_local_purchase_order_code != "C1":
-        return send_response(
-            status="fail",
-            message="custom_local_purchase_order_code must be C1",
-            status_code=400,
-            http_status=400
-        )
-    if custom_export_code and custom_export_code != "C2":
-        return send_response(
-            status="fail",
-            message="custom_export_code must be C2",
+            message="taxCode is required",
             status_code=400,
             http_status=400
         )
 
+    if taxCode not in ["A","C1", "C2"]:
+        return send_response(
+            status="fail",
+            message="taxCode must be one of A, C1, C2",
+            status_code=400,
+            http_status=400
+        )
+  
 
     required_fields = {
         "item_name": item_name,
@@ -185,7 +221,7 @@ def create_item_api():
         "pkgUnitCd": custom_pkgunitcd,
         "qtyUnitCd": unit_of_measure_cd,
         "dftPrc": custom_selling_price,
-        "vatCatCd": custom_non_export_code,
+        "vatCatCd": taxCode,
         "svcChargeYn": custom_svcchargeyn,
         "sftyQty": 0,
         "isrcAplcbYn": custom_isrcaplcbyn,
@@ -195,6 +231,8 @@ def create_item_api():
         "modrNm": frappe.session.user,
         "modrId": frappe.session.user
     }
+
+    print(json.dumps(PAYLOAD, indent=4))
 
     try:
         result = ZRA_CLIENT_INSTANCE.create_item_zra_client(PAYLOAD)
@@ -242,21 +280,11 @@ def create_item_api():
             "custom_suk": custom_sku,
             "custom_kg": custom_kg,
             "custom_vendor": custom_vendor,
-            "custom_non_export_tax": custom_non_export_tax,
-            "custom_non_export_code": custom_non_export_code,
-            "custom_non_export_name": custom_non_export_name,
-            "custom_non_export_description": custom_non_export_description,
-            "custom_non_export_tax_perct": custom_non_export_tax_perct,
-            "custom_export_tax": custom_export_tax,
-            "custom_export_code": custom_export_code,
-            "custom_export_name": custom_export_name,
-            "custom_export_description": custom_export_description,
-            "custom_export_tax_perct": custom_export_tax_perct,
-            "custom_local_purchase_order_tax": custom_local_purchase_order_tax,
-            "custom_local_purchase_order_code": custom_local_purchase_order_code,
-            "custom_local_purchase_order_name": custom_local_purchase_order_name,
-            "custom_local_purchase_order_description": custom_local_purchase_order_description,
-            "custom_local_purchase_order_perct": custom_local_purchase_order_perct,
+            "custom_tax_type": taxType,
+            "custom_tax_code": taxCode,
+            "custom_tax_name": taxName,
+            "custom_tax_description": taxDescription,
+            "custom_tax_perct": taxPerct,
             "custom_weight": custom_weight,
             "custom_valuation": custom_valuation,
             "custom_is_track_inventory": custom_is_track_inventory,
@@ -269,7 +297,8 @@ def create_item_api():
             "custom_tax_preference": custom_tax_preference,
             "custom_dimensionlength":custom_dimensionlength,
             "custom_dimensionwidth": custom_dimensionwidth,
-            "custom_dimensionheight":custom_dimensionheight
+            "custom_dimensionheight":custom_dimensionheight,
+            "custom_tax_category": taxCategory,
         })
         item.insert(ignore_permissions=True)
         frappe.db.commit()
@@ -296,6 +325,10 @@ def create_item_api():
 def get_all_items_api():
     try:
         args = frappe.request.args
+
+        # --------------------
+        # Pagination validation
+        # --------------------
         page = args.get("page")
         if not page:
             return send_response(
@@ -305,6 +338,7 @@ def get_all_items_api():
                 status_code=400,
                 http_status=400
             )
+
         try:
             page = int(page)
             if page < 1:
@@ -318,7 +352,6 @@ def get_all_items_api():
                 http_status=400
             )
 
-
         page_size = args.get("page_size")
         if not page_size:
             return send_response(
@@ -328,6 +361,7 @@ def get_all_items_api():
                 status_code=400,
                 http_status=400
             )
+
         try:
             page_size = int(page_size)
             if page_size < 1:
@@ -341,9 +375,15 @@ def get_all_items_api():
                 http_status=400
             )
 
-     
         start = (page - 1) * page_size
         end = start + page_size
+
+
+        tax_category = args.get("taxCategory")
+
+        filters = {"disabled": 0}
+        if tax_category:
+            filters["custom_tax_category"] = tax_category
 
         all_items = frappe.get_all(
             "Item",
@@ -355,10 +395,11 @@ def get_all_items_api():
                 "standard_rate",
                 "custom_itemclscd",
                 "custom_vendor",
+                "custom_tax_category",
                 "custom_min_stock_level",
                 "custom_max_stock_level",
             ],
-            filters={"disabled": 0},  
+            filters=filters,
             order_by="creation desc"
         )
 
@@ -372,18 +413,19 @@ def get_all_items_api():
                 status_code=200,
                 http_status=200
             )
-        items = all_items[start:end]
 
+        items = all_items[start:end]
         for it in items:
             it["id"] = it.pop("item_code")
             it["itemName"] = it.pop("item_name")
             it["itemGroup"] = it.pop("item_group")
-            it["itemClassCode"] = it.pop("custom_itemclscd")           
+            it["itemClassCode"] = it.pop("custom_itemclscd")
             it["unitOfMeasureCd"] = it.pop("stock_uom")
             it["sellingPrice"] = it.pop("standard_rate")
             it["preferredVendor"] = it.pop("custom_vendor")
             it["minStockLevel"] = it.pop("custom_min_stock_level")
             it["maxStockLevel"] = it.pop("custom_max_stock_level")
+            it["taxCategory"] = it.pop("custom_tax_category")
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -453,21 +495,11 @@ def get_item_by_id_api():
                 "custom_buying_price",
                 "custom_suk",
                 "custom_vendor",
-                "custom_non_export_tax",
-                "custom_non_export_code",
-                "custom_non_export_name",
-                "custom_non_export_description",
-                "custom_non_export_tax_perct",
-                "custom_export_tax",
-                "custom_export_code",
-                "custom_export_name",
-                "custom_export_description",
-                "custom_export_tax_perct",
-                "custom_local_purchase_order_tax",
-                "custom_local_purchase_order_code",
-                "custom_local_purchase_order_name",
-                "custom_local_purchase_order_description",
-                "custom_local_purchase_order_perct",
+                "custom_tax_type",
+                "custom_tax_code",
+                "custom_tax_name",
+                "custom_tax_description",
+                "custom_tax_perct",
                 "custom_dimension",
                 "custom_weight",
                 "custom_valuation",
@@ -485,6 +517,7 @@ def get_item_by_id_api():
                 "custom_dimensionlength",
                 "custom_dimensionwidth",
                 "custom_dimensionheight",
+                "custom_tax_category",
             ],
             limit_page_length=1
         )
@@ -519,21 +552,11 @@ def get_item_by_id_api():
             "preferredVendor": it.pop("custom_vendor", ""),
             "salesAccount": it.pop("custom_sales_account", ""),
             "purchaseAccount": it.pop("custom_purchase_account", ""),
-            "nonExportTax": it.pop("custom_non_export_tax", ""),
-            "nonExportCode": it.pop("custom_non_export_code", ""),
-            "nonExportName": it.pop("custom_non_export_name", ""),
-            "nonExportDescription": it.pop("custom_non_export_description", ""),
-            "nonExportTaxPerct": it.pop("custom_non_export_tax_perct", ""),
-            "exportTax": it.pop("custom_export_tax", ""),
-            "exportCode": it.pop("custom_export_code", ""),
-            "exportName": it.pop("custom_export_name", ""),
-            "exportDescription": it.pop("custom_export_description", ""),
-            "exportTaxPerct": it.pop("custom_export_tax_perct", ""),
-            "localPurchaseOrderTax": it.pop("custom_local_purchase_order_tax", ""),
-            "localPurchaseOrderCode": it.pop("custom_local_purchase_order_code", ""),
-            "localPurchaseOrderName": it.pop("custom_local_purchase_order_name", ""),
-            "localPurchaseOrderDescription": it.pop("custom_local_purchase_order_description", ""),
-            "localPurchaseOrderPerct": it.pop("custom_local_purchase_order_perct", ""),
+            "taxType": it.pop("custom_tax_type"),
+            "taxCode": it.pop("custom_tax_code"),
+            "taxName": it.pop("custom_tax_name"),
+            "taxDescription": it.pop("custom_tax_description"),
+            "taxPerct": it.pop("custom_tax_perct"),
             "dimensionUnit": it.pop("custom_dimension", ""),
             "weight": it.pop("custom_weight", ""),
             "valuationMethod": it.pop("custom_valuation", ""),
@@ -547,6 +570,7 @@ def get_item_by_id_api():
             "dimensionLength": it.pop("custom_dimensionlength", ""),
             "dimensionWidth":it.pop("custom_dimensionwidth", ""),
             "dimensionHeight":it.pop("custom_dimensionheight", ""),
+            "taxCategory": it.pop("custom_tax_category", ""),
         }
 
         return send_response(
@@ -660,78 +684,30 @@ def update_item_api():
     custom_dimensionlength = data.get("dimensionLength") or item.custom_dimensionlength 
     custom_dimensionwidth = data.get("dimensionWidth") or item.custom_dimensionwidth 
     custom_dimensionheight = data.get("dimensionHeight") or item.custom_dimensionheight 
-
-    tax_non_export = {
-        "tax": data.get("nonExportTax"),
-        "code": data.get("nonExportCode"),
-        "name": data.get("nonExportName"),
-        "description": data.get("nonExportDescription"),
-        "percentage": data.get("nonExportTaxPerct")
-    }
-    tax_export = {
-        "tax": data.get("exportTax"),
-        "code": data.get("exportCode"),
-        "name": data.get("exportName"),
-        "description": data.get("exportDescription"),
-        "percentage": data.get("exportTaxPerct")
-    }
-    tax_local_po = {
-        "tax": data.get("localPurchaseOrderTax"),
-        "code": data.get("localPurchaseOrderCode"),
-        "name": data.get("localPurchaseOrderName"),
-        "description": data.get("localPurchaseOrderDescription"),
-        "percentage": data.get("localPurchaseOrderPerct")
-    }
-    provided_codes = [
-        bool(tax_non_export["code"]),
-        bool(tax_export["code"]),
-        bool(tax_local_po["code"])
-    ]
-    if provided_codes.count(True) > 1:
+    taxType = data.get("taxType") or item.custom_tax_type
+    taxCode = data.get("taxCode") or item.custom_tax_code
+    taxName = data.get("taxName") or item.custom_tax_name
+    taxDescription = data.get("taxDescription") or item.custom_tax_description
+    taxPerct = data.get("taxPerct") or item.custom_tax_perct
+    taxCategory = data.get("taxCategory") or item.custom_tax_category
+    
+    if taxCode not in ["A","C1", "C2"]:
         return send_response(
             status="fail",
-            message="Exactly one of nonExportCode, localPurchaseOrderCode or exportCode must be provided.",
+            message="taxCode must be one of A, C1, C2",
             status_code=400,
             http_status=400
         )
+    ALLOWED_TAX_CATEGORIES = ["export", "nonexport", "lpo"] 
+    if taxCategory not in ALLOWED_TAX_CATEGORIES:
+        return send_response(
+            status="error",
+            message='taxCategory must be one of "export", "nonexport", or "lpo"',
+            status_code=400,
+            http_status=400
+        )
+    
 
-    if tax_non_export["code"]:
-        active_tax = tax_non_export
-        tax_export = {k: "" for k in tax_export}
-        tax_local_po = {k: "" for k in tax_local_po}
-    elif tax_export["code"]:
-        active_tax = tax_export
-        tax_non_export = {k: "" for k in tax_non_export}
-        tax_local_po = {k: "" for k in tax_local_po}
-    elif tax_local_po["code"]:
-        active_tax = tax_local_po
-        tax_non_export = {k: "" for k in tax_non_export}
-        tax_export = {k: "" for k in tax_export}
-    else:
-        tax_non_export["code"] = item.custom_non_export_code
-        tax_non_export["tax"] = item.custom_non_export_tax
-        tax_non_export["name"] = item.custom_non_export_name
-        tax_non_export["description"] = item.custom_non_export_description
-        tax_non_export["percentage"] = item.custom_non_export_tax_perct
-
-        tax_export["code"] = item.custom_export_code
-        tax_export["tax"] = item.custom_export_tax
-        tax_export["name"] = item.custom_export_name
-        tax_export["description"] = item.custom_export_description
-        tax_export["percentage"] = item.custom_export_tax_perct
-
-        tax_local_po["code"] = item.custom_local_purchase_order_code
-        tax_local_po["tax"] = item.custom_local_purchase_order_tax
-        tax_local_po["name"] = item.custom_local_purchase_order_name
-        tax_local_po["description"] = item.custom_local_purchase_order_description
-        tax_local_po["percentage"] = item.custom_local_purchase_order_perct
-
-    if tax_non_export["code"] and tax_non_export["code"] not in ["A", "B", "C3", "D", "E"]:
-        return send_response(status="fail", message="Invalid nonExportCode (allowed A,B,C3,D,E)", status_code=400, http_status=400)
-    if tax_local_po["code"] and tax_local_po["code"] != "C1":
-        return send_response(status="fail", message="localPurchaseOrderCode must be C1", status_code=400, http_status=400)
-    if tax_export["code"] and tax_export["code"] != "C2":
-        return send_response(status="fail", message="exportCode must be C2", status_code=400, http_status=400)
 
     ensure_uom_exists(unit_of_measure_cd)
     exists = check_if_group_exists(item_group)
@@ -743,8 +719,6 @@ def update_item_api():
             frappe.get_doc({"doctype": "Brand", "brand": brand}).insert(ignore_permissions=True)
         except Exception as e:
             return send_response(status="fail", message=f"Failed to create brand '{brand}'", data={"error": str(e)}, status_code=500)
-
-    # ---------------- Update ZRA ----------------
     PAYLOAD = {
         "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
         "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
@@ -756,7 +730,7 @@ def update_item_api():
         "pkgUnitCd": custom_pkgunitcd,
         "qtyUnitCd": unit_of_measure_cd,
         "dftPrc": custom_selling_price,
-        "vatCatCd": tax_non_export["code"] or tax_local_po["code"] or tax_export["code"],
+        "vatCatCd": taxCode,
         "svcChargeYn": custom_svcchargeyn,
         "isrcAplcbYn": custom_isrcaplcbyn,
         "useYn": "Y",
@@ -765,7 +739,7 @@ def update_item_api():
         "modrNm": frappe.session.user,
         "modrId": frappe.session.user
     }
-
+    print(json.dumps(PAYLOAD, indent=4))
     try:
         zra_response = ZRA_CLIENT_INSTANCE.update_item_zra_client(PAYLOAD)
         zra_json = zra_response.json()
@@ -795,6 +769,11 @@ def update_item_api():
             "custom_valuation": custom_valuation,
             "custom_vendor": custom_vendor,
             "custom_kg": custom_kg,
+            "custom_tax_type": taxType,
+            "custom_tax_code": taxCode,
+            "custom_tax_name": taxName,
+            "custom_tax_description": taxDescription,
+            "custom_tax_perct": taxPerct,
             "custom_is_track_inventory": custom_is_track_inventory,
             "custom_tracking_method": custom_tracking_method,
             "custom_sales_account": custom_sales_account,
@@ -803,24 +782,10 @@ def update_item_api():
             "custom_min_stock_level": custom_min_stock_level,
             "custom_max_stock_level": custom_max_stock_level,
             "custom_tax_preference": custom_tax_preference,
-            "custom_non_export_code": tax_non_export["code"],
-            "custom_non_export_name": tax_non_export["name"],
-            "custom_non_export_description": tax_non_export["description"],
-            "custom_non_export_tax": tax_non_export["tax"],
-            "custom_non_export_tax_perct": tax_non_export["percentage"],
-            "custom_export_code": tax_export["code"],
-            "custom_export_name": tax_export["name"],
-            "custom_export_description": tax_export["description"],
-            "custom_export_tax": tax_export["tax"],
-            "custom_export_tax_perct": tax_export["percentage"],
-            "custom_local_purchase_order_code": tax_local_po["code"],
-            "custom_local_purchase_order_name": tax_local_po["name"],
-            "custom_local_purchase_order_description": tax_local_po["description"],
-            "custom_local_purchase_order_tax": tax_local_po["tax"],
-            "custom_local_purchase_order_perct": tax_local_po["percentage"],
             "custom_dimensionlength":custom_dimensionlength,
             "custom_dimensionwidth": custom_dimensionwidth,
-            "custom_dimensionheight":custom_dimensionheight
+            "custom_dimensionheight":custom_dimensionheight,
+            "custom_tax_category": taxCategory
         })
 
         item.save(ignore_permissions=True)
