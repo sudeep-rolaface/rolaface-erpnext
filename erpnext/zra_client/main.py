@@ -384,8 +384,8 @@ class ZRAClient:
                 status_code=500,
                 http_status=500
             )
-    
-    def get_item_details(item_code):
+
+    def get_item_details(self, item_code):
         if not item_code:
             return send_response(
                 status="fail",

@@ -8,25 +8,23 @@ import random
 ZRA_INSTANCE = ZRAClient()
 
 def generate_proforma_number():
-    frappe.db.sql("LOCK TABLES `tabProforma` WRITE")
+    last_id = frappe.db.get_value(
+        "Proforma",
+        {},
+        "id",
+        order_by="creation desc"
+    )
 
-    last = frappe.db.sql("""
-        SELECT name FROM `tabProforma`
-        WHERE name LIKE 'PRO-%'
-        ORDER BY creation DESC
-        LIMIT 1
-    """, as_dict=True)
-
-    if not last:
+    if not last_id:
         next_no = 1
     else:
-        next_no = int(last[0]["name"].split("-")[1]) + 1
+        try:
+            next_no = int(last_id.split("-")[1]) + 1
+        except Exception:
+            next_no = 1
 
-    proforma_no = f"PRO-{next_no:03d}"
+    return f"PRO-{next_no:05d}"
 
-    frappe.db.sql("UNLOCK TABLES")
-
-    return proforma_no
 
 
 @frappe.whitelist(allow_guest=False)
@@ -94,14 +92,15 @@ def create_proforma_api():
     notes = payment_terms_data.get("notes")
     phases = payment_terms_data.get("phases", [])
     
-    next_proforma_invoice_id = generate_proforma_number(),
+    next_proforma_invoice_id = generate_proforma_number()
+    id = next_proforma_invoice_id
 
     try:
 
         proforma = frappe.get_doc({
             "doctype": "Proforma",
             "name": next_proforma_invoice_id,
-            "id": next_proforma_invoice_id,
+            "id": id,
             "customer": customer_data.get("name"),
             "customer_name": customer_data.get("customer_name"),
             "invoice_type": invoiceType,
@@ -148,11 +147,12 @@ def create_proforma_api():
             tax = float(item.get("tax", 0))
 
             item_total = (qty * unit_price) - discount + tax
+            getItemDetails = ZRA_INSTANCE.get_item_details(item.get("itemCode"))
 
             frappe.get_doc({
                 "doctype": "Proforma Item",
                 "proforma_id": next_proforma_invoice_id,
-                "item_name": item.get("itemName"),
+                "item_name": getItemDetails.get("itemName"),
                 "item_code": item.get("itemCode"),
                 "description": item.get("description"),
                 "qty": qty,
