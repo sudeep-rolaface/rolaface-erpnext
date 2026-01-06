@@ -84,7 +84,7 @@ def create_item_api():
     taxCategory = data.get("taxCategory")
     
     
-    ALLOWED_TAX_CATEGORIES = ["export", "nonexport", "lpo"]
+    ALLOWED_TAX_CATEGORIES = ["Non-Export", "Export", "LPO"]
     
     if not taxCategory:
         return send_response(
@@ -544,7 +544,7 @@ def get_item_by_id_api():
             "svcCharge": it.pop("custom_svcchargeyn", "Y"),
             "ins": it.pop("custom_isrcaplcbyn", "Y"),
             "sellingPrice": it.pop("standard_rate", 0),
-            "buyingPrice": it.pop("custom_buying_price", 0),
+            "buyingPrice": int(it.pop("custom_buying_price", 0)),
             "unitOfMeasureCd": it.pop("stock_uom", "U"),
             "description": "",
             "sku": it.pop("custom_suk", ""),
@@ -698,7 +698,7 @@ def update_item_api():
             status_code=400,
             http_status=400
         )
-    ALLOWED_TAX_CATEGORIES = ["export", "nonexport", "lpo"] 
+    ALLOWED_TAX_CATEGORIES = ["Non-Export", "Export", "LPO"] 
     if taxCategory not in ALLOWED_TAX_CATEGORIES:
         return send_response(
             status="error",
