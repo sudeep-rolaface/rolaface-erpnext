@@ -84,7 +84,7 @@ def create_item_api():
     taxCategory = data.get("taxCategory")
     
     
-    ALLOWED_TAX_CATEGORIES = ["Non-Export", "Export", "LPO"]
+    
     
     if not taxCategory:
         return send_response(
@@ -93,11 +93,12 @@ def create_item_api():
             status_code=400,
             http_status=400
         )
-        
-    if taxCategory not in ALLOWED_TAX_CATEGORIES:
+    
+    allowed_categories = ZRA_CLIENT_INSTANCE.getTaxCategory()
+    if taxCategory not in allowed_categories:
         return send_response(
             status="error",
-            message='taxCategory must be one of "export", "nonexport", or "lpo"',
+            message=f'taxCategory must be one of {allowed_categories}',
             status_code=400,
             http_status=400
         )
@@ -698,11 +699,11 @@ def update_item_api():
             status_code=400,
             http_status=400
         )
-    ALLOWED_TAX_CATEGORIES = ["Non-Export", "Export", "LPO"] 
-    if taxCategory not in ALLOWED_TAX_CATEGORIES:
+    allowed_categories = ZRA_CLIENT_INSTANCE.getTaxCategory()
+    if taxCategory not in ZRA_CLIENT_INSTANCE.getTaxCategory():
         return send_response(
             status="error",
-            message='taxCategory must be one of "export", "nonexport", or "lpo"',
+            message=f"taxCategory must be one of {allowed_categories}",
             status_code=400,
             http_status=400
         )
