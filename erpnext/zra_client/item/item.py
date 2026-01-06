@@ -544,7 +544,7 @@ def get_item_by_id_api():
             "svcCharge": it.pop("custom_svcchargeyn", "Y"),
             "ins": it.pop("custom_isrcaplcbyn", "Y"),
             "sellingPrice": it.pop("standard_rate", 0),
-            "buyingPrice": it.pop("custom_buying_price", 0),
+            "buyingPrice": int(it.pop("custom_buying_price", 0)),
             "unitOfMeasureCd": it.pop("stock_uom", "U"),
             "description": "",
             "sku": it.pop("custom_suk", ""),
