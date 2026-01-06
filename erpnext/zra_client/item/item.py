@@ -84,7 +84,7 @@ def create_item_api():
     taxCategory = data.get("taxCategory")
     
     
-    ALLOWED_TAX_CATEGORIES = ["export", "nonexport", "lpo"]
+    ALLOWED_TAX_CATEGORIES = ["Non-Export", "Export", "LPO"]
     
     if not taxCategory:
         return send_response(
@@ -698,7 +698,7 @@ def update_item_api():
             status_code=400,
             http_status=400
         )
-    ALLOWED_TAX_CATEGORIES = ["export", "nonexport", "lpo"] 
+    ALLOWED_TAX_CATEGORIES = ["Non-Export", "Export", "LPO"] 
     if taxCategory not in ALLOWED_TAX_CATEGORIES:
         return send_response(
             status="error",
