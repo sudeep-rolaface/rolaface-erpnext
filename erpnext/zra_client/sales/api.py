@@ -349,7 +349,7 @@ def create_sales_invoice():
         )
 
             
-    allowedInvoiceType = ["Non-Export", "Export", "LPO"]
+    allowedInvoiceType = ZRA_CLIENT_INSTANCE.getTaxCategory()
     
     if not customer_id:
         return send_response(
