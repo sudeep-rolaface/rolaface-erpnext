@@ -161,7 +161,7 @@ def create_customer_api():
     customerTaxCategory = (frappe.form_dict.get("customerTaxCategory") or "").strip()
     
     
-    VALID_TAX_CATEGORY = ["export", "non-export", "lpo"]
+    VALID_TAX_CATEGORY = ZRA_CLIENT_INSTANCE.getTaxCategory()
     if not customerTaxCategory:
         return send_response(
             status="fail",
@@ -173,7 +173,7 @@ def create_customer_api():
     if customerTaxCategory not in VALID_TAX_CATEGORY:
         return send_response(
             status="fail",
-            message="Invalid tax category",
+            message=f"Invalid tax category. Should be of {VALID_TAX_CATEGORY}",
             status_code=400,
             http_status=400
         )
@@ -508,6 +508,7 @@ def get_all_customers_api():
                 "custom_onboard_balance",
                 "custom_contact_person",
                 "custom_display_name",
+                "tax_category",
             ],
             order_by="customer_name asc"
         )
@@ -530,6 +531,7 @@ def get_all_customers_api():
             cust["accountNumber"] = cust.pop("custom_account_number")
             cust["currency"] = cust.pop("default_currency")
             cust["onboardingBalance"] = cust.pop("custom_onboard_balance")
+            cust["customerTaxCategory"] = cust.pop("tax_category")
 
         total_pages = (total_customers + page_size - 1) // page_size
         
@@ -673,9 +675,7 @@ def get_customer_by_id(custom_id):
             http_status=500
         )
         
-import random
-import frappe
-from frappe.utils import flt
+
 
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_customer_by_id():
@@ -695,10 +695,16 @@ def update_customer_by_id():
             "data": None,
             "status_code": 404
         }
-    
-    # Handle Tax Category
     customerTaxCategory = (frappe.form_dict.get("customerTaxCategory") or "").strip()
     if customerTaxCategory:
+        VALID_TAX_CATEGORY = ZRA_CLIENT_INSTANCE.getTaxCategory()
+        if customerTaxCategory not in VALID_TAX_CATEGORY:
+            return send_response(
+                status="fail",
+                message=f"Invalid tax category. Should be of {VALID_TAX_CATEGORY}",
+                status_code=400,
+                http_status=400
+            )
         tax_category_doc = frappe.db.get_value("Tax Category", {"name": customerTaxCategory})
         if not tax_category_doc:
             try:
@@ -715,10 +721,8 @@ def update_customer_by_id():
                     "http_status": 500
                 }
 
-    # Get customer doc
-    customer = frappe.get_doc("Customer", {"custom_id": custom_id})
 
-    # Map fields from input
+    customer = frappe.get_doc("Customer", {"custom_id": custom_id})
     field_mapping = {
         "customer_name": frappe.form_dict.get("name"),
         "mobile_no": frappe.form_dict.get("mobile"),
@@ -829,12 +833,12 @@ def update_customer_by_id():
                     phase_doc.insert(ignore_permissions=True)
             frappe.db.commit()
 
-    return {
-        "status": "success",
-        "message": "Customer updated successfully",
-        "status_code": 200,
-        "http_status": 200
-    }
+    return send_response(
+        status = "success",
+        message = "Customer updated successfully",
+        status_code = 200,
+        http_status = 200
+    )
 
 
 @frappe.whitelist(allow_guest=False)

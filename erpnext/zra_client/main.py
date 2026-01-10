@@ -483,6 +483,8 @@ class ZRAClient:
                 status_code=500,
                 http_status=500
             )
-
+    def getTaxCategory(self):
+        VALID_TAX_CATEGORY =  ["Non-Export", "Export", "LPO"]
+        return VALID_TAX_CATEGORY
         
         

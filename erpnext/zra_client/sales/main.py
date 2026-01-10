@@ -53,12 +53,12 @@ class zraSales(ZRAClient):
                 response = requests.post(url, json=payload, headers=headers)
 
                 if response.status_code == 200:
-                    print(f"✅ rcptNo '{rcpt_no}' updated for {docname} via API")
+                    print(f"rcptNo '{rcpt_no}' updated for {docname} via API")
                 else:
-                    print(f"❌ Failed to update rcptNo via API: {response.text}")
+                    print(f"Failed to update rcptNo via API: {response.text}")
 
             except Exception as e:
-                print(f"❌ Error calling API to update rcptNo: {e}")
+                print(f" Error calling API to update rcptNo: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -213,12 +213,12 @@ class zraSales(ZRAClient):
             "itemList": item_list
         }
         toUseData = payload
-        print("📦 Preparing sale data:", payload)
+        print("Preparing sale data:", payload)
         response = self.call_create_normal_sale_client(payload)
 
         if response.get("resultCd") == "000":
             get_rcpt_no = response.get("data", {}).get("rcptNo")
-            print("✅ Stock master updated successfully after sale.")
+            print(" Stock master updated successfully after sale.")
             doc_name = sell_order.get("name")
             self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
 
@@ -271,11 +271,11 @@ class zraSales(ZRAClient):
                 "itemList": update_stock_items
             }
 
-            print("📦 Preparing stock update data:", update_stock_payload)
+            print(" Preparing stock update data:", update_stock_payload)
 
             response = call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
             if response.get("resultCd") == "000":
-                print("✅ Stock updated successfully after sale.")
+                print(" Stock updated successfully after sale.")
 
                 create_update_stock_master_payload = {
                                 "tpin": self.tpin,
@@ -288,23 +288,19 @@ class zraSales(ZRAClient):
 
                                 }
 
-                print("📦 Preparing stock master update data:", create_update_stock_master_payload)
+                print(" Preparing stock master update data:", create_update_stock_master_payload)
                 response = call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
          
-            frappe.msgprint(f"✅ Sale made successfully: {response.get('resultMsg')}")
+            frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
         else:
-            frappe.throw(f"❌ Purchase save failed: {response.get('resultMsg')}")
+            frappe.throw(f"Purchase save failed: {response.get('resultMsg')}")
 
 
 
     def create_credit_note_sale(self, cancel_data):
         print("Sale cancelled", cancel_data)
-
-        # Receipt number and new CIS Invoice No
         rcpt_no = cancel_data.get("name")
         cisInvcNo = f'CIS{rcpt_no}-{random.randint(1000, 9999)}'
-
-        # Get customer info
         customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
         customer_doc = frappe.get_doc("Customer", customer_name)
         customer_tpin = customer_doc.get("custom_customer_tpin") or ""
@@ -419,7 +415,7 @@ class zraSales(ZRAClient):
             "itemList": item_list
         }
 
-        print("📦 SENDING PAYLOAD:", payload)
+        print(" SENDING PAYLOAD:", payload)
         response = self.call_create_credit_note_sale_client(payload)
         return response
 
