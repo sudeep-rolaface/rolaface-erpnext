@@ -129,7 +129,7 @@ def get_all_quotations():
             fields=[
                 "name",
                 "customer_name",
-                "custom_industry_bases",
+                "custom_invoice_type",
                 "transaction_date",
                 "valid_till",
                 "grand_total",
@@ -155,7 +155,7 @@ def get_all_quotations():
             return {
                 "id": quotation.get("name"),
                 "customerName": quotation.get("customer_name"),
-                "customIndustryBases": quotation.get("custom_industry_bases"),
+                "invoiceType": quotation.get("custom_invoice_type"),
                 "transactionDate": quotation.get("transaction_date"),
                 "validTill": quotation.get("valid_till"),
                 "grandTotal": quotation.get("grand_total"),
@@ -248,8 +248,7 @@ def get_quotation_by_id():
                 "quantity": item.qty,
                 "price": item.rate,
                 "discount": item.discount_amount,
-                # "vatRate": item.taxes_and_charges,
-                "vatCode": item.get("vat_code"),
+                "vatCode": item.get("custom_vat_code"),
             })
             
         terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": quotation_id}) \
@@ -282,15 +281,15 @@ def get_quotation_by_id():
             }
         
         response_data = {
-            "customerId": quotation.customer_namess,
+            "customerId": quotation.customer_name,
             "currencyCode": quotation.currency,
             "exchangeRt": str(quotation.conversion_rate),
             "dateOfInvoice": quotation.transaction_date,
             "dueDate": quotation.valid_till,
             "invoiceStatus": quotation.status,
-            # "invoiceType": quotation.custom_invoice_type,
-            # "destnCountryCd": quotation.custom_destn_country_cd,
-            # "lpoNumber": quotation.custom_lpo_number,
+            "invoiceType": quotation.custom_invoice_type,
+            "destnCountryCd": quotation.custom_destination_country_code,
+            "lpoNumber": quotation.custom_lpo_number,
             "billingAddress": billing_address,
             "shippingAddress": shipping_address,
             "paymentInformation": payment_information,
@@ -372,7 +371,6 @@ def create_quotation():
     customer_id = frappe.form_dict.get("customerId")
     currencyCd = frappe.form_dict.get("currencyCode")
     exchangeRt = frappe.form_dict.get("exchangeRt")
-    createBy = frappe.form_dict.get("created_by")
     destnCountryCd = frappe.form_dict.get("destnCountryCd")
     lpoNumber = frappe.form_dict.get("lpoNumber")
     invoiceStatus = frappe.form_dict.get("invoiceStatus")
@@ -562,6 +560,48 @@ def create_quotation():
             status_code=400
         )
     items = payload.get("items", [])
+    for i in items:
+        vatCd = i.get("vatCode")
+        VAT_LIST = ["A", "C1", "C2"]
+
+        if vatCd not in VAT_LIST:
+            send_response(
+                status="fail",
+                message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
+                status_code=400,
+                http_status=400
+            )
+            return
+        
+        if vatCd == "C2":
+            if not lpoNumber:
+                send_response(
+                    status="fail",
+                    message="Local Purchase Order number (LPO) is required for transactions with VatCd 'C2' and cannot be null.",
+                    status_code=400,
+                    http_status=400
+                )
+                return
+            
+        if vatCd == "C1":
+            if not destnCountryCd:
+                send_response(
+                    status="fail",
+                    message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions. ",
+                    status_code=400,
+                    http_status=400
+                )
+                return
+            
+        if vatCd == "A":
+            if lpoNumber or destnCountryCd:
+                return send_response(
+                    status="fail",
+                    message="For VatCd 'A', lpoNumber and destnCountryCd must NOT be provided.",
+                    status_code=400,
+                    http_status=400
+                )
+        
 
     if not items or not isinstance(items, list):
         return send_response(
@@ -587,6 +627,8 @@ def create_quotation():
             "currency": payload.get("currencyCode", "ZMW"),
             "conversion_rate": float(payload.get("exchangeRt", 1)),
             "valid_till": dueDate,
+            "custom_destination_country_code": destnCountryCd,
+            "custom_lpo_number": lpoNumber,
             "custom_billing_address_line_1": billingAddressLine1,
             "custom_billing_address_line_2": billingAddressLine2,
             "custom_billing_address_postal_code": billingAddressPostalCode,
@@ -605,6 +647,7 @@ def create_quotation():
             "custom_routing_number": routing_number,
             "custom_swift": swift_code,
             "custom_payment_terms": payment_terms,
+            "custom_invoice_type": invoiceType,
             "total_qty": 0,
             "grand_total": 0,
             "status": "Draft"
@@ -613,7 +656,6 @@ def create_quotation():
         total_qty = 0
         grand_total = 0
 
-        # --- Add Quotation Items ---
         for item in items:
             qty = float(item.get("quantity", 1))
             rate = float(item.get("price", 0))
@@ -629,8 +671,8 @@ def create_quotation():
                 "qty": qty,
                 "rate": rate,
                 "discount_amount": discount,
-                "taxes_and_charges": tax,
-                "amount": item_total
+                "amount": item_total,
+                "custom_vat_code": item.get("vatCode")
             })
 
             total_qty += qty
