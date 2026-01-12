@@ -128,6 +128,7 @@ def get_all_quotations():
             "Quotation",
             fields=[
                 "name",
+                "custom_industry_bases",
                 "customer_name",
                 "custom_invoice_type",
                 "transaction_date",
@@ -160,6 +161,7 @@ def get_all_quotations():
                 "validTill": quotation.get("valid_till"),
                 "grandTotal": quotation.get("grand_total"),
                 "currency": quotation.get("currency"),
+                "industryBases": quotation.get("custom_industry_bases"),
             }
 
         quotations_camel = [to_camel_case(q) for q in paginated_quotations]
@@ -285,7 +287,8 @@ def get_quotation_by_id():
             "currencyCode": quotation.currency,
             "exchangeRt": str(quotation.conversion_rate),
             "dateOfInvoice": quotation.transaction_date,
-            "dueDate": quotation.valid_till,
+            "industryBases": quotation.custom_industry_bases,
+            "validUntil": quotation.valid_till,
             "invoiceStatus": quotation.status,
             "invoiceType": quotation.custom_invoice_type,
             "destnCountryCd": quotation.custom_destination_country_code,
@@ -375,7 +378,8 @@ def create_quotation():
     lpoNumber = frappe.form_dict.get("lpoNumber")
     invoiceStatus = frappe.form_dict.get("invoiceStatus")
     invoiceType = frappe.form_dict.get("invoiceType")
-    dueDate = data.get("dueDate")
+    validUntil = data.get("validUntil")
+    industryBases = data.get("industryBases")
     billingAddress = data.get("billingAddress")
     billingAddressLine1 = billingAddress.get("line1")
     billingAddressLine2 = billingAddress.get("line2")
@@ -393,6 +397,14 @@ def create_quotation():
     shippingAddressCountry = shippingAddress.get("country")
     payment_info = data.get("paymentInformation")
 
+    if not industryBases:
+        return send_response(
+            status="fail",
+            message="Industry Bases is required",
+            status_code=400,
+            http_status=400
+        )
+        
     if not payment_info or not isinstance(payment_info, dict):
         return send_response(
             status="error",
@@ -441,11 +453,11 @@ def create_quotation():
     
     today_date = getdate(today())
     
-    due_date_str = data.get("dueDate")
+    due_date_str = data.get("validUntil")
     if not due_date_str:
         return send_response(
             status="fail",
-            message="dueDate is required",
+            message="validUntil is required",
             data=None,
             status_code=400,
             http_status=400
@@ -626,9 +638,10 @@ def create_quotation():
             "customer_name": customer_data.get("customer_name"),
             "currency": payload.get("currencyCode", "ZMW"),
             "conversion_rate": float(payload.get("exchangeRt", 1)),
-            "valid_till": dueDate,
+            "valid_till": validUntil,
             "custom_destination_country_code": destnCountryCd,
             "custom_lpo_number": lpoNumber,
+            "custom_industry_bases": industryBases,
             "custom_billing_address_line_1": billingAddressLine1,
             "custom_billing_address_line_2": billingAddressLine2,
             "custom_billing_address_postal_code": billingAddressPostalCode,
