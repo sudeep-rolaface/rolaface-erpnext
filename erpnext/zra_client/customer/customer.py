@@ -626,7 +626,7 @@ def get_customer_by_id(custom_id):
         data = {
             "id": safe_attr(customer, "custom_id"),
             "tpin": safe_attr(customer, "tax_id"),
-            "customerTaxCategory": safe_attr(customer, "tax_category"),
+            "customerTaxCategory": safe_attr(customer, "tax_category").capitalize(),
             "name": safe_attr(customer, "customer_name"),
             "type": safe_attr(customer, "customer_type"),
             "mobile": safe_attr(customer, "mobile_no"),
