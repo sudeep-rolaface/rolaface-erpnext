@@ -531,7 +531,7 @@ def get_all_customers_api():
             cust["accountNumber"] = cust.pop("custom_account_number")
             cust["currency"] = cust.pop("default_currency")
             cust["onboardingBalance"] = cust.pop("custom_onboard_balance")
-            cust["customerTaxCategory"] = cust.pop("tax_category")
+            cust["customerTaxCategory"] = (cust.pop("tax_category", "") or "").capitalize()
 
         total_pages = (total_customers + page_size - 1) // page_size
         
