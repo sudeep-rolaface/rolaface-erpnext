@@ -834,7 +834,7 @@ def get_sales_invoice():
                 invoice_type_parent = "Credit Note"
                 invoice_type = parent_invoice_type
 
-            elif inv.is_debit_note == 1 and inv.amended_from:
+            elif inv.is_debit_note == 1:
                 parent_invoice_type = frappe.db.get_value(
                     "Sales Invoice",
                     inv.amended_from,
@@ -1659,3 +1659,209 @@ def update_invoice_status():
             status_code=500
         )
 
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_credit_notes():
+    try:
+        args = frappe.request.args
+
+        page = int(args.get("page", 1))
+        page_size = int(args.get("page_size", 10))
+
+        if page < 1 or page_size < 1:
+            return send_response(
+                status="error",
+                message="'page' and 'page_size' must be positive integers.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        start = (page - 1) * page_size
+
+        credit_notes = frappe.get_all(
+            "Sales Invoice",
+            filters={
+                "is_return": 1,
+                "return_against": ["!=", ""]
+            },
+            fields=[
+                "name",
+                "customer",
+                "custom_rcptno",
+                "custom_zra_currency",
+                "custom_exchange_rate",
+                "posting_date",
+                "due_date",
+                "grand_total",
+                "custom_total_tax_amount",
+                "custom_invoice_status",
+                "outstanding_amount",
+                "return_against"
+            ],
+            order_by="creation desc",
+            limit_start=start,
+            limit_page_length=page_size
+        )
+
+        total = frappe.db.count(
+            "Sales Invoice",
+            {
+                "is_return": 1,
+                "return_against": ["!=", ""]
+            }
+        )
+
+        data = []
+        for inv in credit_notes:
+            parent_invoice_type = frappe.db.get_value(
+                "Sales Invoice",
+                inv.return_against,
+                "custom_invoice_type"
+            )
+
+            data.append({
+                "invoiceNumber": inv.name,
+                "customerName": inv.customer,
+                "receiptNumber": inv.custom_rcptno,
+                "currency": inv.custom_zra_currency,
+                "exchangeRate": inv.custom_exchange_rate,
+                "dateOfInvoice": str(inv.posting_date),
+                "dueDate": inv.due_date,
+                "totalAmount": float(inv.grand_total),
+                "totalTax": inv.custom_total_tax_amount,
+                "invoiceStatus": inv.custom_invoice_status,
+                "outstandingAmount": inv.outstanding_amount,
+                "invoiceTypeParent": "Credit Note",
+                "invoiceType": parent_invoice_type
+            })
+
+        return send_response_list_sale(
+            status="success",
+            message="Credit notes retrieved successfully",
+            status_code=200,
+            http_status=200,
+            data=data,
+            pagination={
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size,
+                "has_next": page * page_size < total,
+                "has_prev": page > 1
+            }
+        )
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get Credit Notes API Error")
+        return send_response(
+            status="fail",
+            message=str(e),
+            data=None,
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_debit_notes():
+    try:
+        args = frappe.request.args
+
+        page = int(args.get("page", 1))
+        page_size = int(args.get("page_size", 10))
+
+        if page < 1 or page_size < 1:
+            return send_response(
+                status="error",
+                message="'page' and 'page_size' must be positive integers.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        start = (page - 1) * page_size
+
+        debit_notes = frappe.get_all(
+            "Sales Invoice",
+            filters={
+                "is_debit_note": 1,
+                
+            },
+            fields=[
+                "name",
+                "customer",
+                "custom_rcptno",
+                "custom_zra_currency",
+                "custom_exchange_rate",
+                "posting_date",
+                "due_date",
+                "grand_total",
+                "custom_total_tax_amount",
+                "custom_invoice_status",
+                "outstanding_amount",
+                "amended_from"
+            ],
+            order_by="creation desc",
+            limit_start=start,
+            limit_page_length=page_size
+        )
+
+        total = frappe.db.count(
+            "Sales Invoice",
+            {
+                "is_debit_note": 1,
+                
+            }
+        )
+
+        data = []
+        for inv in debit_notes:
+            parent_invoice_type = frappe.db.get_value(
+                "Sales Invoice",
+                inv.amended_from,
+                "custom_invoice_type"
+            )
+
+            data.append({
+                "invoiceNumber": inv.name,
+                "customerName": inv.customer,
+                "receiptNumber": inv.custom_rcptno,
+                "currency": inv.custom_zra_currency,
+                "exchangeRate": inv.custom_exchange_rate,
+                "dateOfInvoice": str(inv.posting_date),
+                "dueDate": inv.due_date,
+                "totalAmount": float(inv.grand_total),
+                "totalTax": inv.custom_total_tax_amount,
+                "invoiceStatus": inv.custom_invoice_status,
+                "outstandingAmount": inv.outstanding_amount,
+                "invoiceTypeParent": "Debit Note",
+                "invoiceType": parent_invoice_type
+            })
+
+        return send_response_list_sale(
+            status="success",
+            message="Debit notes retrieved successfully",
+            status_code=200,
+            http_status=200,
+            data=data,
+            pagination={
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size,
+                "has_next": page * page_size < total,
+                "has_prev": page > 1
+            }
+        )
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get Debit Notes API Error")
+        return send_response(
+            status="fail",
+            message=str(e),
+            data=None,
+            status_code=500,
+            http_status=500
+        )

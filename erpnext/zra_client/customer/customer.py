@@ -531,7 +531,7 @@ def get_all_customers_api():
             cust["accountNumber"] = cust.pop("custom_account_number")
             cust["currency"] = cust.pop("default_currency")
             cust["onboardingBalance"] = cust.pop("custom_onboard_balance")
-            cust["customerTaxCategory"] = cust.pop("tax_category")
+            cust["customerTaxCategory"] = (cust.pop("tax_category", "") or "").capitalize()
 
         total_pages = (total_customers + page_size - 1) // page_size
         
@@ -626,7 +626,7 @@ def get_customer_by_id(custom_id):
         data = {
             "id": safe_attr(customer, "custom_id"),
             "tpin": safe_attr(customer, "tax_id"),
-            "customerTaxCategory": safe_attr(customer, "tax_category"),
+            "customerTaxCategory": safe_attr(customer, "tax_category").capitalize(),
             "name": safe_attr(customer, "customer_name"),
             "type": safe_attr(customer, "customer_type"),
             "mobile": safe_attr(customer, "mobile_no"),
