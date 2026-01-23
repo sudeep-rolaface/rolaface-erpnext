@@ -22,12 +22,19 @@ def get_next_custom_supplier_id():
 def get_suppliers():
     suppliers = frappe.get_all(
         "Supplier",
-        fields=["custom_supplier_id", "supplier_name", "tax_id", "default_currency", "country", "mobile_no", "email_id"],
+        fields=["custom_supplier_id", "supplier_name", "tax_id", "default_currency", "country", "mobile_no", "email_id", "custom_supplier_code"],
     )
     
     for i in suppliers:
-        i['supplier_tpin'] = i.pop('tax_id')
-    
+        i["supplierId"] = i.pop('custom_supplier_id')
+        i["supplierCode"] = i.pop('custom_supplier_code')
+        i["supplierName"] = i.pop('supplier_name')
+        i["currency"] = i.pop('default_currency')
+        i["emailId"] = i.pop('email_id')
+        i["phoneNo"] = i.pop('mobile_no')
+        i["tpin"] = i.pop('tax_id')
+        i["status"] = "Active"
+
     send_response(
         status="success",
         message="Suppliers fetched successfully",
@@ -63,30 +70,31 @@ def get_supplier_details_id(custom_supplier_id):
 
     supplier = frappe.get_doc("Supplier", supplier)
     supplier_details = {
-        "supplier_name": supplier.name,
-        "custom_supplier_id": supplier.custom_supplier_id,
-        "custom_suppliers_account_holder_name": supplier.custom_suppliers_account_holder_name,
-        "custom_supplier_date_of_addition": supplier.custom_supplier_date_of_addition,
-        "custom_supplier_opening_balance": supplier.custom_supplier_opening_balance,
-        "custom_supplier_payment_terms": supplier.custom_supplier_payment_terms,
-        "custom_supplier_bank_address": supplier.custom_supplier_bank_address,
-        "custom_supplier_alternate_no": supplier.custom_supplier_alternate_no,
-        "custom_supplier_postal_code": supplier.custom_supplier_postal_code,
-        "custom_supplier_swift_code": supplier.custom_supplier_swift_code,
-        "custom_supplier_sort_code": supplier.custom_supplier_sort_code,
-        "custom_supplier_district": supplier.custom_supplier_district,
-        "custom_supplier_province": supplier.custom_supplier_province,
-        "custom_supplier_code": supplier.custom_supplier_code,
-        "custom_account_no": supplier.custom_account_no,
-        "custom_supplier_city": supplier.custom_supplier_city,
-        "default_currency": supplier.default_currency,
+        "supplierName": supplier.name,
+        "supplierCode": supplier.custom_supplier_code,
+        "supplierId": supplier.custom_supplier_id,
+        "accountHolde": supplier.custom_suppliers_account_holder_name,
+        "dateOfAddition": supplier.custom_supplier_date_of_addition,
+        "openingBalance": supplier.custom_supplier_opening_balance,
+        "paymentTerms": supplier.custom_supplier_payment_terms,
+        "branchAddress": supplier.custom_supplier_bank_address,
+        "alternateNo": supplier.custom_supplier_alternate_no,
+        "postalCode": supplier.custom_supplier_postal_code,
+        "swiftCode": supplier.custom_supplier_swift_code,
+        "sortCode": supplier.custom_supplier_sort_code,
+        "district": supplier.custom_supplier_district,
+        "province": supplier.custom_supplier_province,
+        "supplierCode": supplier.custom_supplier_code,
+        "accountNumber": supplier.custom_account_no,
+        "city": supplier.custom_supplier_city,
+        "currency": supplier.default_currency,
         "supplier_primary_contact": supplier.supplier_primary_contact,
         "custom_supplier_address_line_2": supplier.custom_supplier_address_line_2,
         "custom_supplier_address_line_1": supplier.custom_supplier_address_line_1,
         "mobile_no": supplier.mobile_no,
-        "email_id": supplier.email_id,
+        "emailId": supplier.email_id,
         "country": supplier.country,
-        "supplier_tpin": supplier.tax_id,
+        "tpin": supplier.tax_id,
     }
     return send_response(
         status="success",
