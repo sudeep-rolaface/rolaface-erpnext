@@ -1,0 +1,194 @@
+{
+  "poNumber": "PO-2026-0001",
+  "poDate": "2026-01-23",
+  "requiredBy": "2026-01-30",
+
+  "supplierId": "1",
+  "supplierCode": "SUP-001",
+  "supplierName": "Supplier A",
+
+  "currency": "INR",
+  "status": "Draft",
+
+  "costCenter": "Manufacturing",
+  "project": "ERP Upgrade Phase 1",
+
+  "taxCategory": "GST",
+  "shippingRule": "Standard Shipping",
+  "incoterm": "FOB",
+  "taxesChargesTemplate": "GST Template 18%",
+
+  "placeOfSupply": "Delhi",
+
+  "addresses": {
+    "supplierAddress": {
+      "addressTitle": "Supplier Main Address",
+      "addressType": "Billing",
+      "addressLine1": "Plot 123, Industrial Area",
+      "addressLine2": "Near Main Road",
+      "city": "Lusaka",
+      "state": "Lusaka Province",
+      "country": "Zambia",
+      "postalCode": "10101",
+      "phone": "0977000000",
+      "email": "supplier@example.com"
+    },
+
+    "dispatchAddress": {
+      "addressTitle": "Warehouse Dispatch",
+      "addressType": "Shipping",
+      "addressLine1": "Warehouse Street 12",
+      "addressLine2": "",
+      "city": "Delhi",
+      "state": "Delhi",
+      "country": "India",
+      "postalCode": "110001"
+    },
+
+    "shippingAddress": {
+      "addressTitle": "Customer Delivery Address",
+      "addressType": "Shipping",
+      "addressLine1": "Customer Street 45",
+      "addressLine2": "",
+      "city": "Mumbai",
+      "state": "Maharashtra",
+      "country": "India",
+      "postalCode": "400001"
+    },
+
+    "companyBillingAddress": {
+      "addressTitle": "Company HQ Billing",
+      "addressType": "Billing",
+      "addressLine1": "HQ Building Road",
+      "addressLine2": "",
+      "city": "Bangalore",
+      "state": "Karnataka",
+      "country": "India",
+      "postalCode": "560001"
+    }
+  },
+
+  "paymentTermsTemplate": "Net 30 Days",
+
+  "terms": {
+    "selling": {
+      "general": "Terms for supply of agricultural chemicals",
+
+      "payment": {
+        "phases": [
+          {
+            "id": 1,
+            "name": "Deposit",
+            "percentage": 25,
+            "condition": "Required before stock reservation"
+          },
+          {
+            "id": 2,
+            "name": "Dispatch Payment",
+            "percentage": 50,
+            "condition": "Due before shipment of goods"
+          },
+          {
+            "id": 3,
+            "name": "Final Settlement",
+            "percentage": 25,
+            "condition": "Due upon delivery confirmation"
+          }
+        ],
+        "dueDays": 14,
+        "lateChargesRate": 15,
+        "taxRate": 18,
+        "notes": "Deposit is non-refundable once stock is allocated"
+      },
+
+      "delivery": "Delivery within 3–5 business days for in-stock items",
+      "cancellation": "Order cancellations allowed within 24 hours",
+      "warranty": "6-month quality guarantee",
+      "liability": "Liability restricted to replacement of defective goods"
+    }
+  },
+
+  "items": [
+    {
+      "itemCode": "ITEM-001",
+      "itemName": "Product A",
+      "requiredBy": "2026-01-30",
+      "quantity": 10,
+      "uom": "Unit",
+      "rate": 500,
+      "amount": 5000
+    },
+    {
+      "itemCode": "ITEM-002",
+      "itemName": "Product B",
+      "requiredBy": "2026-01-30",
+      "quantity": 5,
+      "uom": "Unit",
+      "rate": 1000,
+      "amount": 5000
+    }
+  ],
+
+  "taxes": [
+    {
+      "type": "GST",
+      "accountHead": "GST Payable",
+      "taxRate": 18,
+      "taxableAmount": 50000,
+      "taxAmount": 9000
+    }
+  ],
+
+  "payments": [
+    {
+      "paymentTerm": "Advance",
+      "description": "50% Advance",
+      "dueDate": "2026-01-25",
+      "invoicePortion": 50,
+      "paymentAmount": 25000
+    },
+    {
+      "paymentTerm": "Final",
+      "description": "Remaining 50%",
+      "dueDate": "2026-02-25",
+      "invoicePortion": 50,
+      "paymentAmount": 25000
+    }
+  ],
+
+  "summary": {
+    "totalQuantity": 100,
+    "subTotal": 50000,
+    "taxTotal": 9000,
+    "grandTotal": 59000,
+    "roundingAdjustment": -0.35,
+    "roundedTotal": 59000
+  },
+
+  "metadata": {
+    "createdBy": "userId-123",
+    "remarks": "Urgent procurement for ERP rollout"
+  }
+},
+
+{
+  "status": "success",
+  "pagination": {
+    "page": 1,
+    "page_size": 20,
+    "total": 107,
+    "total_pages": 6,
+    "has_next": true,
+    "has_prev": false
+  },
+  "data": [
+    {
+      "poId": "PO-001",
+      "supplierName": "TechSupply Co",
+      "poDate": "2025-01-15",
+      "deliveryDate": "2025-02-01",
+      "grandTotal": 48000,
+      "status": "Approved"
+    }
+  ]
+}
