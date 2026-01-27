@@ -154,7 +154,7 @@ def get_supplier_details_id():
         "contactPerson": supplier.supplier_primary_contact,
         "billingAddressLine1": supplier.custom_supplier_address_line_2,
         "billingAddressLine2": supplier.custom_supplier_address_line_1,
-        "mobile_no": supplier.mobile_no,
+        "phoneNo": supplier.mobile_no,
         "emailId": supplier.email_id,
         "country": supplier.country,
         "tpin": supplier.tax_id,
@@ -370,6 +370,8 @@ def update_supplier():
     bank_account = data.get("bankAccount")
     country = data.get("billingCountry")
     status = data.get("status")
+    
+    print('Mobile No:', mobile_no)
 
     if supplier_name_input:
         if (
@@ -463,10 +465,7 @@ def update_supplier():
 
     if default_currency is not None:
         supplier.default_currency = default_currency
-
-    if mobile_no is not None:
-        supplier.mobile_no = mobile_no
-
+        
     if bank_account is not None:
         supplier.custom_bank_account = bank_account
 
@@ -475,6 +474,7 @@ def update_supplier():
 
     if status is not None:
         supplier.custom_status = status
+        
 
     if tax_id is not None:
         supplier.tax_id = tax_id
@@ -510,15 +510,23 @@ def update_supplier():
                 "link_name": supplier.name
             })
 
-        contact.email_ids = []
-        contact.append("email_ids", {
-            "email_id": email_id,
-            "is_primary": 1
-        })
+        if email_id:
+            contact.email_ids = []
+            contact.append("email_ids", {
+                "email_id": email_id,
+                "is_primary": 1
+            })
+
         contact.save(ignore_permissions=True)
 
     try:
         supplier.save(ignore_permissions=True)
+        if mobile_no:
+            frappe.db.sql("""
+                UPDATE `tabSupplier`
+                SET mobile_no = %s
+                WHERE name = %s
+            """, (mobile_no, supplier_name))
         frappe.db.commit()
 
         return send_response(
