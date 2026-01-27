@@ -132,11 +132,11 @@ def get_supplier_details_id():
 
     supplier = frappe.get_doc("Supplier", supplier)
     supplier_details = {
-        "supplierName": supplier.name,
+        "supplierName": supplier.supplier_name,
         "supplierCode": supplier.custom_supplier_code,
         "supplierId": supplier.custom_supplier_id,
         "bankAccount": supplier.custom_bank_account,
-        "accountHolde": supplier.custom_suppliers_account_holder_name,
+        "accountHolder": supplier.custom_suppliers_account_holder_name,
         "dateOfAddition": supplier.custom_supplier_date_of_addition,
         "openingBalance": supplier.custom_supplier_opening_balance,
         "paymentTerms": supplier.custom_supplier_payment_terms,
@@ -316,17 +316,12 @@ def create_supplier():
             http_status=500
         )
 
-
-
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_supplier():
     data = frappe.form_dict
 
-    supplier_id = data.get("supplierId")
-    tax_id = data.get("tpin")
-    email_id = data.get("emailId")
-    supplier_name_input = data.get("supplierName")
 
+    supplier_id = data.get("supplierId")
     if not supplier_id:
         return send_response(
             status="fail",
@@ -350,20 +345,48 @@ def update_supplier():
         )
 
     supplier = frappe.get_doc("Supplier", supplier_name)
+    custom_suppliers_account_holder_name = data.get("accountHolder")
+    custom_supplier_date_of_addition = data.get("dateOfAddition")
+    custom_supplier_opening_balance = data.get("openingBalance")
+    custom_supplier_payment_terms = data.get("paymentTerms")
+    custom_supplier_bank_address = data.get("branchAddress")
+    custom_supplier_alternate_no = data.get("alternateNo")
+    custom_supplier_postal_code = data.get("billingPostalCode")
+    custom_supplier_swift_code = data.get("swiftCode")
+    custom_supplier_sort_code = data.get("sortCode")
+    supplier_primary_contact = data.get("contactPerson")
+    custom_supplier_address_line_1 = data.get("billingAddressLine1")
+    custom_supplier_address_line_2 = data.get("billingAddressLine2")
+    custom_supplier_district = data.get("district")
+    custom_supplier_province = data.get("province")
+    custom_supplier_code = data.get("supplierCode")
+    custom_account_no = data.get("accountNumber")
+    custom_supplier_city = data.get("billingCity")
+    default_currency = data.get("currency")
+    supplier_name_input = data.get("supplierName")
+    tax_id = data.get("tpin")
+    mobile_no = data.get("phoneNo")
+    email_id = data.get("emailId")
+    bank_account = data.get("bankAccount")
+    country = data.get("billingCountry")
+    status = data.get("status")
 
-    if tax_id:
-        if len(tax_id) != 10:
+    if supplier_name_input:
+        if (
+            supplier_name_input != supplier.supplier_name
+            and frappe.db.exists("Supplier", {"supplier_name": supplier_name_input})
+        ):
             return send_response(
                 status="fail",
-                message="Supplier TPIN must be exactly 10 characters long",
+                message=f"Supplier with name '{supplier_name_input}' already exists",
                 status_code=400,
                 http_status=400
             )
-
-        if not tax_id.isalnum():
+    if tax_id:
+        if len(tax_id) != 10 or not tax_id.isalnum():
             return send_response(
                 status="fail",
-                message="Supplier TPIN must be alphanumeric",
+                message="Supplier TPIN must be exactly 10 alphanumeric characters",
                 status_code=400,
                 http_status=400
             )
@@ -387,65 +410,115 @@ def update_supplier():
                 http_status=400
             )
 
-        if email_id != supplier.email_id and frappe.db.exists(
-            "Supplier", {"email_id": email_id}
-        ):
-            return send_response(
-                status="fail",
-                message=f"Supplier with email '{email_id}' already exists",
-                status_code=400,
-                http_status=400
-            )
+    if custom_suppliers_account_holder_name is not None:
+        supplier.custom_suppliers_account_holder_name = custom_suppliers_account_holder_name
 
-    if supplier_name_input:
-        if supplier_name_input != supplier.supplier_name and frappe.db.exists(
-            "Supplier", {"supplier_name": supplier_name_input}
-        ):
-            return send_response(
-                status="fail",
-                message=f"Supplier with name '{supplier_name_input}' already exists",
-                status_code=400,
-                http_status=400
-            )
+    if custom_supplier_date_of_addition is not None:
+        supplier.custom_supplier_date_of_addition = custom_supplier_date_of_addition
+
+    if custom_supplier_opening_balance is not None:
+        supplier.custom_supplier_opening_balance = custom_supplier_opening_balance
+
+    if custom_supplier_payment_terms is not None:
+        supplier.custom_supplier_payment_terms = custom_supplier_payment_terms
+
+    if custom_supplier_bank_address is not None:
+        supplier.custom_supplier_bank_address = custom_supplier_bank_address
+
+    if custom_supplier_alternate_no is not None:
+        supplier.custom_supplier_alternate_no = custom_supplier_alternate_no
+
+    if custom_supplier_postal_code is not None:
+        supplier.custom_supplier_postal_code = custom_supplier_postal_code
+
+    if custom_supplier_swift_code is not None:
+        supplier.custom_supplier_swift_code = custom_supplier_swift_code
+
+    if custom_supplier_sort_code is not None:
+        supplier.custom_supplier_sort_code = custom_supplier_sort_code
+
+    if supplier_primary_contact is not None:
+        supplier.custom_supplier_contact_name = supplier_primary_contact
+
+    if custom_supplier_address_line_1 is not None:
+        supplier.custom_supplier_address_line_1 = custom_supplier_address_line_1
+
+    if custom_supplier_address_line_2 is not None:
+        supplier.custom_supplier_address_line_2 = custom_supplier_address_line_2
+
+    if custom_supplier_district is not None:
+        supplier.custom_supplier_district = custom_supplier_district
+
+    if custom_supplier_province is not None:
+        supplier.custom_supplier_province = custom_supplier_province
+
+    if custom_supplier_code is not None:
+        supplier.custom_supplier_code = custom_supplier_code
+
+    if custom_account_no is not None:
+        supplier.custom_account_no = custom_account_no
+
+    if custom_supplier_city is not None:
+        supplier.custom_supplier_city = custom_supplier_city
+
+    if default_currency is not None:
+        supplier.default_currency = default_currency
+
+    if mobile_no is not None:
+        supplier.mobile_no = mobile_no
+
+    if bank_account is not None:
+        supplier.custom_bank_account = bank_account
+
+    if country is not None:
+        supplier.country = country
+
+    if status is not None:
+        supplier.custom_status = status
+
+    if tax_id is not None:
+        supplier.tax_id = tax_id
+
+    if supplier_name_input and supplier_name_input != supplier.supplier_name:
+        frappe.rename_doc(
+            "Supplier",
+            supplier.name,
+            supplier_name_input,
+            force=True
+        )
+        supplier = frappe.get_doc("Supplier", supplier_name_input)
 
 
-    field_map = {
-        "supplierName": "supplier_name",
-        "accountHolder": "custom_suppliers_account_holder_name",
-        "dateOfAddition": "custom_supplier_date_of_addition",
-        "openingBalance": "custom_supplier_opening_balance",
-        "paymentTerms": "custom_supplier_payment_terms",
-        "branchAddress": "custom_supplier_bank_address",
-        "alternateNo": "custom_supplier_alternate_no",
-        "billingPostalCode": "custom_supplier_postal_code",
-        "swiftCode": "custom_supplier_swift_code",
-        "sortCode": "custom_supplier_sort_code",
-        "contactPerson": "custom_supplier_contact_name",
-        "billingAddressLine1": "custom_supplier_address_line_1",
-        "billingAddressLine2": "custom_supplier_address_line_2",
-        "district": "custom_supplier_district",
-        "province": "custom_supplier_province",
-        "supplierCode": "custom_supplier_code",
-        "accountNumber": "custom_account_no",
-        "billingCity": "custom_supplier_city",
-        "currency": "default_currency",
-        "phoneNo": "mobile_no",
-        "emailId": "email_id",
-        "bankAccount": "custom_bank_account",
-        "billingCountry": "country",
-        "status": "custom_status"
-    }
+    if email_id:
+        contact_name = frappe.db.get_value(
+            "Dynamic Link",
+            {
+                "link_doctype": "Supplier",
+                "link_name": supplier.name,
+                "parenttype": "Contact"
+            },
+            "parent"
+        )
 
-    for payload_key, doc_field in field_map.items():
-        value = data.get(payload_key)
-        if value not in (None, ""):
-            supplier.set(doc_field, value)
+        if contact_name:
+            contact = frappe.get_doc("Contact", contact_name)
+        else:
+            contact = frappe.new_doc("Contact")
+            contact.first_name = supplier.supplier_name
+            contact.append("links", {
+                "link_doctype": "Supplier",
+                "link_name": supplier.name
+            })
 
-    if tax_id:
-        supplier.set("tax_id", tax_id)
+        contact.email_ids = []
+        contact.append("email_ids", {
+            "email_id": email_id,
+            "is_primary": 1
+        })
+        contact.save(ignore_permissions=True)
 
     try:
-        supplier.save()
+        supplier.save(ignore_permissions=True)
         frappe.db.commit()
 
         return send_response(
@@ -457,9 +530,10 @@ def update_supplier():
         )
 
     except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Update Supplier Error")
         return send_response(
             status="error",
-            message=f"Error updating supplier: {str(e)}",
+            message=str(e),
             data={},
             status_code=500,
             http_status=500

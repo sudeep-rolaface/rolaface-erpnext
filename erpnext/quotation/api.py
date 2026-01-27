@@ -286,7 +286,7 @@ def get_quotation_by_id():
             "customerId": quotation.customer_name,
             "currencyCode": quotation.currency,
             "exchangeRt": str(quotation.conversion_rate),
-            "dateOfInvoice": quotation.transaction_date,
+            "transactionDate": quotation.transaction_date,
             "industryBases": quotation.custom_industry_bases,
             "validUntil": quotation.valid_till,
             "invoiceStatus": quotation.status,
