@@ -486,5 +486,10 @@ class ZRAClient:
     def getTaxCategory(self):
         VALID_TAX_CATEGORY =  ["Non-Export", "Export", "LPO"]
         return VALID_TAX_CATEGORY
+    
+    
+    def AllowedInvoiceStatuses(self):
+        ALLOWED_STATUSES = ["Draft", "Sent", "Paid", "Overdue"]
+        return ALLOWED_STATUSES
         
         

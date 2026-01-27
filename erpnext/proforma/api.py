@@ -484,14 +484,16 @@ def update_proforma_status():
                     f"Invalid proformaStatus '{proforma_status}'. "
                     f"Allowed values: {', '.join(sorted(ALLOWED_PROFORMA_STATUS))}"
                 ),
-                status_code=400
+                status_code=400,
+                http_status=404,
             )
 
         if not frappe.db.exists("Proforma", {"id": proforma_id}):
             return send_response(
                 status="fail",
                 message=f"Proforma '{proforma_id}' not found",
-                status_code=404
+                status_code=404,
+                http_status=404
             )
         if not frappe.has_permission("Proforma", "write", {"id": proforma_id}):
             return send_response(

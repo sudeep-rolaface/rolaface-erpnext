@@ -818,3 +818,81 @@ def update_quotation():
         status_code=200,
         http_status=200,
     )
+
+
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_quotation_status():
+    data = frappe.local.form_dict
+    quotation_id = data.get("id")
+    new_status = data.get("invoiceStatus")
+
+    if not quotation_id:
+        return send_response(
+            status="fail",
+            message="Quotation ID is required",
+            status_code=400,
+            http_status=400,
+        )
+
+    if not new_status:
+        return send_response(
+            status="fail",
+            message="Status is required",
+            status_code=400,
+            http_status=400,
+        )
+
+
+    allowed_status = ZRA_INSTANCE.AllowedInvoiceStatuses()
+
+    if new_status not in allowed_status:
+        return send_response(
+            status="fail",
+            message=f"Invalid status. Allowed values are: {', '.join(allowed_status)}",
+            status_code=400,
+            http_status=400,
+        )
+
+    try:
+        quotation = frappe.get_doc("Quotation", quotation_id)
+    except frappe.DoesNotExistError:
+        return send_response(
+            status="fail",
+            message=f"Quotation {quotation_id} not found",
+            status_code=404,
+            http_status=404,
+        )
+
+    if quotation.docstatus != 0:
+        return send_response(
+            status="fail",
+            message="Cannot update status of submitted or cancelled Quotation",
+            status_code=400,
+            http_status=400,
+        )
+
+    try:
+        frappe.db.sql("""
+            UPDATE `tabQuotation`
+            SET `status` = %s
+            WHERE `name` = %s
+        """, (new_status, quotation_id))
+
+        frappe.db.commit()
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message="Quotation status updated successfully",
+            status_code=200,
+            http_status=200,
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=str(e),
+            status_code=500,
+            http_status=500,
+        )
