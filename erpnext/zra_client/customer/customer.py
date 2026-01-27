@@ -1,3 +1,4 @@
+import json
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.main import ZRAClient
 from frappe.utils import random_string
@@ -332,6 +333,7 @@ def create_customer_api():
             "modrNm": frappe.session.user,
             "modrId": frappe.session.user,
         }
+        print(json.dumps(payload, indent=4))
 
         result = ZRA_CLIENT_INSTANCE.create_customer(payload)
 
@@ -531,7 +533,14 @@ def get_all_customers_api():
             cust["accountNumber"] = cust.pop("custom_account_number")
             cust["currency"] = cust.pop("default_currency")
             cust["onboardingBalance"] = cust.pop("custom_onboard_balance")
-            cust["customerTaxCategory"] = (cust.pop("tax_category", "") or "").capitalize()
+            
+            VALID_TAX_CATEGORY = ZRA_CLIENT_INSTANCE.getTaxCategory()
+
+            cust["customerTaxCategory"] = cust.get("tax_category", "")
+
+            if cust["customerTaxCategory"] not in VALID_TAX_CATEGORY:
+                cust["customerTaxCategory"] = ""
+            cust.pop("tax_category", None)
 
         total_pages = (total_customers + page_size - 1) // page_size
         
@@ -569,6 +578,14 @@ def get_customer_by_id(custom_id):
         customer = frappe.get_doc("Customer", {"custom_id": custom_id})
         def safe_attr(obj, attr):
             return getattr(obj, attr, "") or "" 
+
+
+        VALID_TAX_CATEGORY = ZRA_CLIENT_INSTANCE.getTaxCategory()
+
+        tax_cat = safe_attr(customer, "tax_category").strip()
+
+        if tax_cat not in VALID_TAX_CATEGORY:
+            tax_cat = ""
         
         try:
             terms_doc = frappe.get_doc("Customer Terms", {"customer": custom_id})
@@ -626,7 +643,7 @@ def get_customer_by_id(custom_id):
         data = {
             "id": safe_attr(customer, "custom_id"),
             "tpin": safe_attr(customer, "tax_id"),
-            "customerTaxCategory": safe_attr(customer, "tax_category").capitalize(),
+            "customerTaxCategory": tax_cat,
             "name": safe_attr(customer, "customer_name"),
             "type": safe_attr(customer, "customer_type"),
             "mobile": safe_attr(customer, "mobile_no"),
