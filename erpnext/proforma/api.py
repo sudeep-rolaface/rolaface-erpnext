@@ -275,9 +275,16 @@ def get_proforma_api():
 
         formatted = []
         for p in proformas:
+            customer_tpin = frappe.db.get_value(
+                "Customer",
+                {"customer_name": p.customer_name},
+                "tax_id"
+            ) or ""
+
             formatted.append({
                 "proformaId": p.id,
                 "customerName": p.customer_name,
+                "customerTpin": customer_tpin,  
                 "currency": p.currency,
                 "exchangeRate": p.exchange_rate,
                 "dueDate": str(p.due_date),
@@ -327,8 +334,6 @@ def get_proforma_by_id():
             status_code=400,
             http_status=400
         )
-
-    # ---------------- CHECK PROFORMA EXISTS ----------------
     if not frappe.db.exists("Proforma", {"id": proforma_id}):
         return send_response(
             status="fail",
@@ -338,10 +343,12 @@ def get_proforma_by_id():
         )
 
     try:
-        # ---------------- FETCH PROFORMA ----------------
         doc = frappe.get_doc("Proforma", {"id": proforma_id})
-
-        # ---------------- FETCH ITEMS ----------------
+        customer_tpin = frappe.db.get_value(
+            "Customer",
+            doc.customer_name,
+            "tax_id"
+        ) or ""
         items = frappe.get_all(
             "Proforma Item",
             filters={"proforma_id": proforma_id},
@@ -387,10 +394,10 @@ def get_proforma_by_id():
             fields=["phase_name as name", "percentage", "condition"]
         )
 
-        # ---------------- RESPONSE DATA ----------------
         data = {
-            "proformaId": doc.id,  # using your custom 'id'
+            "proformaId": doc.id,  
             "customerName": doc.customer_name,
+            "customerTpin": customer_tpin,
             "currencyCode": doc.currency,
             "exchangeRt": str(doc.exchange_rate),
             "dueDate": str(doc.due_date),

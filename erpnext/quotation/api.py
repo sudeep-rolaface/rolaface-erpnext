@@ -153,9 +153,15 @@ def get_all_quotations():
         paginated_quotations = all_quotations[start_index:end_index]
         total_pages = (total_quotations + page_size - 1) // page_size
         def to_camel_case(quotation):
+            customerTpin = frappe.db.get_value(
+                "Customer",
+                quotation.get("customer_name"),
+                "tax_id"
+            ) or ""
             return {
                 "id": quotation.get("name"),
                 "customerName": quotation.get("customer_name"),
+                "customerTpin": customerTpin,
                 "invoiceType": quotation.get("custom_invoice_type"),
                 "transactionDate": quotation.get("transaction_date"),
                 "validTill": quotation.get("valid_till"),
@@ -209,8 +215,11 @@ def get_quotation_by_id():
 
     try:
         quotation = frappe.get_doc("Quotation", quotation_id)
-
-        # ---------------- Billing Address ----------------
+        customer_tpin = frappe.db.get_value(
+            "Customer",
+            quotation.customer_name,
+            "tax_id"
+        ) or ""
         billing_address = {
             "line1": quotation.custom_billing_address_line_1,
             "line2": quotation.custom_billing_address_line_2,
@@ -219,8 +228,6 @@ def get_quotation_by_id():
             "state": quotation.custom_billing_address_state,
             "country": quotation.custom_billing_address_country,
         }
-
-        # ---------------- Shipping Address ----------------
         shipping_address = {
             "line1": quotation.custom_shipping_address_line_1,
             "line2": quotation.custom_shipping_address_line_2,
@@ -229,8 +236,6 @@ def get_quotation_by_id():
             "state": quotation.custom_shipping_address_state,
             "country": quotation.custom_shipping_address_country,
         }
-
-        # ---------------- Payment Information ----------------
         payment_information = {
             "paymentTerms": quotation.custom_payment_terms,
             "paymentMethod": quotation.custom_payment_method,
@@ -239,8 +244,6 @@ def get_quotation_by_id():
             "routingNumber": quotation.custom_routing_number,
             "swiftCode": quotation.custom_swift,
         }
-
-        # ---------------- Items ----------------
         items = []
         for item in quotation.items:
             items.append({
@@ -283,7 +286,9 @@ def get_quotation_by_id():
             }
         
         response_data = {
+            "id": quotation.name,
             "customerId": quotation.customer_name,
+            "customerTpin": customer_tpin,
             "currencyCode": quotation.currency,
             "exchangeRt": str(quotation.conversion_rate),
             "transactionDate": quotation.transaction_date,
