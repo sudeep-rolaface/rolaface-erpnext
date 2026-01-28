@@ -142,23 +142,26 @@ def get_supplier_details_id():
         "paymentTerms": supplier.custom_supplier_payment_terms,
         "branchAddress": supplier.custom_supplier_bank_address,
         "alternateNo": supplier.custom_supplier_alternate_no,
-        "postalCode": supplier.custom_supplier_postal_code,
+        "billingPostalCode": supplier.custom_supplier_postal_code,
         "swiftCode": supplier.custom_supplier_swift_code,
         "sortCode": supplier.custom_supplier_sort_code,
         "district": supplier.custom_supplier_district,
         "province": supplier.custom_supplier_province,
         "supplierCode": supplier.custom_supplier_code,
         "accountNumber": supplier.custom_account_no,
-        "city": supplier.custom_supplier_city,
+        "billingCity": supplier.custom_supplier_city,
         "currency": supplier.default_currency,
         "contactPerson": supplier.supplier_primary_contact,
         "billingAddressLine1": supplier.custom_supplier_address_line_2,
         "billingAddressLine2": supplier.custom_supplier_address_line_1,
         "phoneNo": supplier.mobile_no,
         "emailId": supplier.email_id,
-        "country": supplier.country,
+        "billingCountry": supplier.country,
         "tpin": supplier.tax_id,
-        "status": supplier.custom_status
+        "status": supplier.custom_status,
+        "createdAt": supplier.creation,
+        "updatedAt": supplier.modified
+        
     }
     return send_response(
         status="success",
