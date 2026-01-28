@@ -275,9 +275,16 @@ def get_proforma_api():
 
         formatted = []
         for p in proformas:
+            customer_tpin = frappe.db.get_value(
+                "Customer",
+                {"customer_name": p.customer_name},
+                "tax_id"
+            ) or ""
+
             formatted.append({
                 "proformaId": p.id,
                 "customerName": p.customer_name,
+                "customerTpin": customer_tpin,  
                 "currency": p.currency,
                 "exchangeRate": p.exchange_rate,
                 "dueDate": str(p.due_date),

@@ -215,6 +215,11 @@ def get_quotation_by_id():
 
     try:
         quotation = frappe.get_doc("Quotation", quotation_id)
+        customer_tpin = frappe.db.get_value(
+            "Customer",
+            quotation.customer_name,
+            "tax_id"
+        ) or ""
         billing_address = {
             "line1": quotation.custom_billing_address_line_1,
             "line2": quotation.custom_billing_address_line_2,
@@ -281,7 +286,9 @@ def get_quotation_by_id():
             }
         
         response_data = {
+            "id": quotation.name,
             "customerId": quotation.customer_name,
+            "customerTpin": customer_tpin,
             "currencyCode": quotation.currency,
             "exchangeRt": str(quotation.conversion_rate),
             "transactionDate": quotation.transaction_date,
