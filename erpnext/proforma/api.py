@@ -397,6 +397,7 @@ def get_proforma_by_id():
         data = {
             "proformaId": doc.id,  
             "customerName": doc.customer_name,
+            "dateofinvoice": doc.date_of_invoice,
             "customerTpin": customer_tpin,
             "currencyCode": doc.currency,
             "exchangeRt": str(doc.exchange_rate),
