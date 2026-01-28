@@ -822,6 +822,11 @@ def get_sales_invoice():
         formatted_invoices = []
 
         for inv in all_invoices:
+            customer_tpin = frappe.db.get_value(
+                "Customer",
+                inv.customer,
+                "tax_id"
+            ) or ""
             invoice_type_parent = "Normal"
             invoice_type = inv.custom_invoice_type
 
@@ -846,6 +851,7 @@ def get_sales_invoice():
             formatted_invoices.append({
                 "invoiceNumber": inv.name,
                 "customerName": inv.customer,
+                "customerTpin": customer_tpin,
                 "receiptNumber": inv.custom_rcptno,
                 "currency": inv.custom_zra_currency,
                 "exchangeRate": inv.custom_exchange_rate,
@@ -911,6 +917,11 @@ def get_sales_invoice_by_id():
 
     try:
         doc = frappe.get_doc("Sales Invoice", invoice_name)
+        customer_tpin = frappe.db.get_value(
+            "Customer",
+            doc.customer_name,
+            "tax_id"
+        ) or ""
         if getattr(doc, "is_debit_note", 0) == 1:
             invoice_type = "Debit Note"
         elif getattr(doc, "is_return", 0) == 1:
@@ -960,6 +971,7 @@ def get_sales_invoice_by_id():
             "invoiceType": parent_doc.custom_invoice_type,
             "originInvoice": getattr(doc, "return_against", None),
             "customerName": doc.customer,
+            "customerTpin": customer_tpin,
             "currencyCode": doc.custom_zra_currency or doc.currency,
             "exchangeRt": str(doc.custom_exchange_rate or 1),
             "dateOfInvoice": str(doc.posting_date),
@@ -1715,6 +1727,11 @@ def get_credit_notes():
 
         data = []
         for inv in credit_notes:
+            customer_tpin = frappe.db.get_value(
+                "Customer",
+                inv.customer,
+                "tax_id"
+            ) or ""
             parent_invoice_type = frappe.db.get_value(
                 "Sales Invoice",
                 inv.return_against,
@@ -1724,6 +1741,7 @@ def get_credit_notes():
             data.append({
                 "invoiceNumber": inv.name,
                 "customerName": inv.customer,
+                "customerTpin": customer_tpin,
                 "receiptNumber": inv.custom_rcptno,
                 "currency": inv.custom_zra_currency,
                 "exchangeRate": inv.custom_exchange_rate,
@@ -1818,6 +1836,11 @@ def get_debit_notes():
 
         data = []
         for inv in debit_notes:
+            customer_tpin = frappe.db.get_value(
+                "Customer",
+                inv.customer,
+                "tax_id"
+            ) or ""
             parent_invoice_type = frappe.db.get_value(
                 "Sales Invoice",
                 inv.amended_from,
@@ -1827,6 +1850,7 @@ def get_debit_notes():
             data.append({
                 "invoiceNumber": inv.name,
                 "customerName": inv.customer,
+                "customerTpin": customer_tpin,
                 "receiptNumber": inv.custom_rcptno,
                 "currency": inv.custom_zra_currency,
                 "exchangeRate": inv.custom_exchange_rate,
