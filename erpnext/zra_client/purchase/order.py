@@ -72,7 +72,7 @@ def create_purchase_order():
     if taxCategory not in TAX_CAT:
         return send_response(
             status="fail",
-            message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++: {TAX_CAT}",
+            message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories : {TAX_CAT}",
             data=[],
             status_code=400,
             http_status=400
@@ -415,7 +415,10 @@ def get_purchase_order():
                 "shipping_address",
                 "incoterm",
                 "project",
-                "cost_center"
+                "cost_center",
+                "owner",
+                "creation",
+                "modified"
             ],
             as_dict=True
         )
@@ -438,7 +441,6 @@ def get_purchase_order():
                 "qty",
                 "rate",
                 "amount",
-                "warehouse"
             ]
         )
 
@@ -454,7 +456,42 @@ def get_purchase_order():
                 "description"
             ]
         )
+        
+        terms_doc = frappe.get_doc(
+            "Sale Invoice Selling Terms",
+            {"invoiceno": po.name}
+        ) if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": po.name}) else None
 
+        payment_doc = frappe.get_doc(
+            "Sale Invoice Selling Payment",
+            {"invoiceno": po.name}
+        ) if frappe.db.exists("Sale Invoice Selling Payment", {"invoiceno": po.name}) else None
+
+        phases = frappe.get_all(
+            "Sale Invoice Selling Payment Phases",
+            filters={"invoiceno": po.name},
+            fields=["phase_name as name", "percentage", "condition"]
+        )
+
+        def purchase_terms():
+            return {
+                "terms": {
+                    "selling": {
+                        "general": getattr(terms_doc, "general", ""),
+                        "delivery": getattr(terms_doc, "delivery", ""),
+                        "cancellation": getattr(terms_doc, "cancellation", ""),
+                        "warranty": getattr(terms_doc, "warranty", ""),
+                        "liability": getattr(terms_doc, "liability", ""),
+                        "payment": {
+                            "dueDates": getattr(payment_doc, "duedates", ""),
+                            "lateCharges": getattr(payment_doc, "latecharges", ""),
+                            "taxes": getattr(payment_doc, "taxes", ""),
+                            "notes": getattr(payment_doc, "notes", ""),
+                            "phases": phases
+                        }
+                    }
+                }
+            }
 
         def get_address_details(address_name):
             if not address_name:
@@ -509,7 +546,6 @@ def get_purchase_order():
             "grandTotal": po.grand_total,
             "taxCategory": po.tax_category,
             "placeOfSupply": po.custom_placeofsupply,
-            "remarks": po.custom_remarks,
             "incoterm": po.incoterm,
             "project": po.project,
             "costCenter": po.cost_center,
@@ -519,9 +555,17 @@ def get_purchase_order():
                 "dispatchAddress": dispatch_addr,
                 "shippingAddress": shipping_addr
             },
+            "terms": purchase_terms(),
 
             "items": items,
-            "taxes": taxes
+            "taxes": taxes,
+            "metadata": {
+                "createdBy": po.owner or "",
+                "remarks": po.custom_remarks or "",
+                "createdAt": (po.creation.isoformat() + "Z") if po.creation else "",
+                "updatedAt": (po.modified.isoformat() + "Z") if po.modified else ""
+            
+            },
         }
 
         return send_response(
@@ -537,6 +581,136 @@ def get_purchase_order():
         return send_response(
             status="fail",
             message="Failed to fetch purchase order",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["DELETE"])
+def delete_purchase_order():
+    try:
+        args = frappe.request.args
+        poId = args.get("id")
+
+        if not poId:
+            return send_response(
+                status="fail",
+                message="'id' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        if not frappe.db.exists("Purchase Order", poId):
+            return send_response(
+                status="fail",
+                message=f"Purchase Order '{poId}' not found.",
+                data=None,
+                status_code=404,
+                http_status=404
+            )
+
+        po_doc = frappe.get_doc("Purchase Order", poId)
+        if po_doc.docstatus == 1:
+            return send_response(
+                status="fail",
+                message="Cannot delete a submitted Purchase Order. Cancel it first.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        frappe.db.delete("Sale Invoice Selling Terms", {"invoiceno": poId})
+        frappe.db.delete("Sale Invoice Selling Payment", {"invoiceno": poId})
+        frappe.db.delete("Sale Invoice Selling Payment Phases", {"invoiceno": poId})
+
+        po_doc.delete(ignore_permissions=True)
+
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Purchase Order '{poId}' deleted successfully",
+            data={},
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(message=str(e), title="Delete Purchase Order API Error")
+        return send_response(
+            status="fail",
+            message="Failed to delete purchase order",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_purchase_order_status():
+    try:
+        data = frappe.form_dict
+        poId = data.get("id")
+        new_status = data.get("status")
+
+        if not poId:
+            return send_response(
+                status="fail",
+                message="'id' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        if not new_status:
+            return send_response(
+                status="fail",
+                message="'status' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        if not frappe.db.exists("Purchase Order", poId):
+            return send_response(
+                status="fail",
+                message=f"Purchase Order '{poId}' not found.",
+                data=None,
+                status_code=404,
+                http_status=404
+            )
+
+        # RAW SQL update
+        frappe.db.sql("""
+            UPDATE `tabPurchase Order`
+            SET status = %s,
+                modified = NOW(),
+                modified_by = %s
+            WHERE name = %s
+        """, (new_status, frappe.session.user, poId))
+
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message="Purchase Order status updated successfully",
+            data={
+                "poId": poId,
+                "status": new_status
+            },
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(message=str(e), title="Update Purchase Order Status API Error")
+        return send_response(
+            status="fail",
+            message="Failed to update purchase order status",
             data={"error": str(e)},
             status_code=500,
             http_status=500

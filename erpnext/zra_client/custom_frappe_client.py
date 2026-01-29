@@ -70,12 +70,15 @@ class CustomFrappeClient():
         warranty = (selling.get("warranty") or "").strip()
         liability = (selling.get("liability") or "").strip()
         payment_terms_data = selling.get("payment") or {}
+        print("Payments : ", payment_terms_data)
         dueDates = payment_terms_data.get("dueDates", "")
         lateCharges = payment_terms_data.get("lateCharges", "")
         tax = payment_terms_data.get("taxes", "")
         notes = payment_terms_data.get("notes", "")
         phases = payment_terms_data.get("phases", [])
         
+        
+        print("dueDate: ", dueDates, "lateCharges :", lateCharges, "tax: ", tax)
 
         terms_doc = frappe.get_doc({
             "doctype": "Sale Invoice Selling Terms",
