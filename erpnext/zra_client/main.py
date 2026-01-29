@@ -491,5 +491,175 @@ class ZRAClient:
     def AllowedInvoiceStatuses(self):
         ALLOWED_STATUSES = ["Draft", "Sent", "Paid", "Overdue"]
         return ALLOWED_STATUSES
+    
+    
+    def GetTopLevelCostCenter(self, company):
+        parent = frappe.db.get_value("Cost Center", {"company": company, "is_group": 1})
+        if parent:
+            return parent
+        doc = frappe.get_doc({
+            "doctype": "Cost Center",
+            "cost_center_name": f"{company} Cost Center Group",
+            "company": company,
+            "is_group": 1
+        })
+        try:
+            doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+        except frappe.DuplicateEntryError:
+            parent = frappe.db.get_value("Cost Center", {"company": company, "is_group": 1})
+            return parent
+        return doc.name
+
+
+    def getCurrentCompany(self):
+        COMPANY = "Izyane"
+        return COMPANY
+
+
+    def GetOrCreateCostCenter(self, doctype, name):
+        print("CALLS: ", doctype, name)
+        if not name:
+            return None
+        existing = frappe.db.exists(doctype, name)
+        if existing:
+            print("exists", existing)
+            return existing
+
+        company = self.getCurrentCompany()
+        parent = self.GetTopLevelCostCenter(company)
+
+        doc = frappe.get_doc({
+            "doctype": "Cost Center",
+            "cost_center_name": name,
+            "company": company,
+            "parent_cost_center": parent,
+            "is_group": 0
+        })
+        try:
+            doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+        except frappe.DuplicateEntryError:
+            existing = frappe.db.exists(doctype, name)
+            return existing
+        return doc.name
+    
+    
+    def GetOrCreateLink(self, doctype, name):
+        if not name:
+            return None
+        existing = frappe.db.exists(doctype, name)
+        if existing:
+            return existing
+        doc = frappe.get_doc({"doctype": doctype, "name": name})
+        try:
+            doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+        except frappe.DuplicateEntryError:
+            existing = frappe.db.exists(doctype, name)
+            return existing
+        return doc.nam
+    
+
+    def GetOrCreateProject(self, project_name):
+        if not project_name:
+            return None
+
+        existing = frappe.db.get_value("Project", {"project_name": project_name}, "name")
+        if existing:
+            return existing
+
+        doc = frappe.get_doc({
+            "doctype": "Project",
+            "project_name": project_name,
+            "company": self.getCurrentCompany()
+        })
+        try:
+            doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+        except frappe.DuplicateEntryError:
+            existing = frappe.db.get_value("Project", {"project_name": project_name}, "name")
+            return existing
+        except frappe.UniqueValidationError:
+            existing = frappe.db.get_value("Project", {"project_name": project_name}, "name")
+            return existing
+
+        return doc.name
+    
+    
+    
+    def GetOrCreateParentExpenseAccount(self):
+        """Ensure a top-level 'Expenses' account exists, create if missing"""
+        company = self.getCurrentCompany()
+        parent = frappe.db.get_value("Account", {"company": company, "account_name": "Expenses", "is_group": 1})
+        if parent:
+            return parent
+
+        # Create top-level Expenses account
+        doc = frappe.get_doc({
+            "doctype": "Account",
+            "account_name": "Expenses",
+            "account_type": "Expense Account",
+            "company": company,
+            "is_group": 1
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return doc.name
+
+    def GetOrCreateExpenseAccount(self):
+        """Return or create default Shipping Expense Account"""
+        company = self.getCurrentCompany()
+        account = frappe.db.get_value("Account", {"company": company, "account_name": "Shipping Expense"}, "name")
+        if account:
+            return account
+
+        parent = self.GetOrCreateParentExpenseAccount()
+
+        doc = frappe.get_doc({
+            "doctype": "Account",
+            "account_name": "Shipping Expense",
+            "account_type": "Expense Account",  # Correct type
+            "company": company,
+            "parent_account": parent,
+            "is_group": 0
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return doc.name
+
+    def GetOrCreateShippingRule(self, shipping_rule_name, cost_center_name, account=None):
+        print(shipping_rule_name, cost_center_name)
+        if not shipping_rule_name:
+            return None
+
+        # Ensure we have a valid cost center
+        if not cost_center_name:
+            frappe.throw("Cost Center is required for Shipping Rule")
+
+        if not account:
+            account = self.GetOrCreateExpenseAccount()
+
+        # Check if already exists
+        existing = frappe.db.get_value("Shipping Rule", {"label": shipping_rule_name}, "name")
+        if existing:
+            return existing
+
+        doc = frappe.get_doc({
+            "doctype": "Shipping Rule",
+            "label": shipping_rule_name,
+            "cost_center": cost_center_name,  # must be db 'name'
+            "account": account,
+            "company": self.getCurrentCompany()
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return doc.name
+
+
+
+    
+    
+
         
         

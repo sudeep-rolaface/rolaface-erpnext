@@ -1,0 +1,717 @@
+from erpnext.zra_client.generic_api import send_response, send_response_list
+from erpnext.zra_client.main import ZRAClient
+from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
+from frappe import _
+import frappe
+import random
+import json
+import re
+
+ZRA_CLIENT_INSTANCE = ZRAClient()
+CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
+
+
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+def create_purchase_order():
+    data = frappe.form_dict
+    supplierId = data.get("supplierId")
+    requiredBy = data.get("requiredBy")
+    currency = data.get("currency")
+    status = data.get("status")
+    costCenter = data.get("costCenter")
+    project = data.get("project")
+    taxCategory = data.get("taxCategory")
+    shippingRule = data.get("shippingRule")
+    incoterm = data.get("incoterm")
+    placeOfSupply = data.get("placeOfSupply")
+    addresses = data.get("addresses", {})
+    supplierAddress = addresses.get("supplierAddress", {})
+    dispatchAddress = addresses.get("dispatchAddress", {})
+    shippingAddress = addresses.get("shippingAddress", {})
+    
+    print(supplierAddress)
+    print(dispatchAddress)
+    print(shippingAddress)
+    
+    terms = data.get("terms")
+
+
+    items = data.get("items", [])
+        
+    taxes = data.get("taxes", [])
+
+    metadata = data.get("metadata", {})
+    remarks = metadata.get("remarks", "")
+    
+    if not supplierId:
+        return send_response(
+            status="fail",
+            message="Supplier Id must not be null",
+            data=[],
+            http_status=400,
+            status_code=400
+        )
+    
+    supplier = frappe.db.get_value(
+        "Supplier",
+        {"custom_supplier_id": supplierId},
+        "name"
+    )
+    
+    if not supplier:
+        return send_response(
+            status="fail",
+            message="Supplier not found",
+            data=[],
+            http_status=404,
+            status_code=404
+        )
+        
+    TAX_CAT = CUSTOM_FRAPPE_INSTANCE.GetAvailableTaxCategory()
+
+    if taxCategory not in TAX_CAT:
+        return send_response(
+            status="fail",
+            message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories : {TAX_CAT}",
+            data=[],
+            status_code=400,
+            http_status=400
+        )
+
+    
+    if not costCenter:
+        return send_response(
+            status="fail",
+            message="Cost center must not be null",
+            data=[],
+            status_code=400,
+            http_status=400
+        )
+        
+    if not project:
+        return send_response(
+            status="fail",
+            message="Project name must not null",
+            data=[],
+            status_code=400,
+            http_status=400
+        )
+        
+    costCenterName = ZRA_CLIENT_INSTANCE.GetOrCreateCostCenter("Cost Center", costCenter)
+    projectName = ZRA_CLIENT_INSTANCE.GetOrCreateProject(project),
+    
+
+    if not shippingRule:
+        return send_response(
+            status="fail",
+            message="Shipping rule must not be null",
+            data=[],
+            http_status=400,
+            status_code=400,
+        )
+    
+    
+    if not incoterm:
+        return send_response(
+            status="fail",
+            message="Incoterm must not be null",
+            data=[],
+            http_status=400,
+            status_code=400
+        )
+        
+    incotermName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateIncoterm(incoterm)
+    
+    invoice_items = []
+    for i in items:
+        print(i)
+        itemCode = i.get("itemCode")
+        quantity = i.get("quantity")
+        print(quantity)
+        
+        
+        if not itemCode:
+            return send_response(
+                status="fail",
+                message="Item code must not null",
+                data=[],
+                status_code=400,
+                http_status=400
+            )
+        
+        
+        if not quantity:
+            return send_response(
+                status="fail",
+                message="Item quantity must not be null",
+                data=[],
+                status_code=400,
+                http_status=400,
+            )
+        item_details = CUSTOM_FRAPPE_INSTANCE.GetItemDetails(itemCode)
+        if not item_details:
+            return send_response(
+                status="fail",
+                message=f"Item '{itemCode}' does not exist",
+                status_code=404,
+                http_status=404
+            )
+
+        
+        
+        invoice_items.append({
+            "item_code": itemCode,
+            "item_name": item_details.get("itemName"),
+            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(),
+            "qty": quantity,
+            "rate": item_details.get("standardRate"),
+            "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
+        
+        })
+    
+    supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier)
+    dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier)
+    shipping_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateShippingAddress(addresses, supplier)
+    print(supplier_addr_name, dispatch_addr_name, shipping_addr_name)
+
+    po_doc = frappe.get_doc({
+        "doctype": "Purchase Order",
+        "supplier": supplier,
+        "currency": currency,
+        "cost_center": costCenterName,
+        "project": projectName,
+        "schedule_date": requiredBy,
+        "incoterm": incotermName,
+        "status": status,
+        "custom_placeofsupply": placeOfSupply,
+        "custom_remarks": remarks,
+        "tax_category": taxCategory,
+        "items": invoice_items
+    })
+            
+    for t in taxes:
+        tax_type = (t.get("type") or "").strip()
+        account_head = (t.get("accountHead") or "").strip()
+        rate = float(t.get("taxRate") or 0)
+        taxable = float(t.get("taxableAmount") or 0)
+        amount = float(t.get("taxAmount") or 0)
+        
+        valid_tax_types = CUSTOM_FRAPPE_INSTANCE.GetTaxesChargesRate()
+        VALID_ACCOUNTS_HEAD = CUSTOM_FRAPPE_INSTANCE.GetExpensesValuationAccount() 
+
+        if tax_type not in valid_tax_types:
+            return send_response(
+                status="fail",
+                message=f"Invalid Tax Type: {tax_type}. Allowed: {', '.join(valid_tax_types)}",
+                status_code=400,
+                http_status=400
+            )
+            
+        if account_head not in VALID_ACCOUNTS_HEAD:
+            return send_response(
+                status="fail",
+                message=f"Invalid Account Head: {account_head}. Allowed: {', '.join(VALID_ACCOUNTS_HEAD)}",
+                status_code=400,
+                http_status=400
+            )
+
+        po_doc.append("taxes", {
+            "charge_type": tax_type,
+            "account_head": account_head,
+            "rate": rate,
+            "tax_amount": amount,
+            "total": taxable,
+            "description": tax_type
+        })
+    po_doc.insert(ignore_permissions=True)
+    po_doc.save(ignore_permissions=True)
+    frappe.db.sql("""
+        UPDATE `tabPurchase Order`
+        SET supplier_address = %s,
+            dispatch_address = %s,
+            shipping_address = %s
+        WHERE name = %s
+    """, (supplier_addr_name, dispatch_addr_name, shipping_addr_name, po_doc.name))
+
+    frappe.db.commit()
+
+    
+    CUSTOM_FRAPPE_INSTANCE.createInvoiceTermsAndPayments(po_doc.name, terms)
+    
+    return send_response(
+        status="success",
+        message="Purchase order created successfully",
+        data=[],
+        status_code=201,
+        http_status=201,
+    )
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_purchase_orders():
+    try:
+        args = frappe.request.args
+        page = args.get("page")
+        if not page:
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        page_size = args.get("page_size")
+        if not page_size:
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        start = (page - 1) * page_size
+        end = start + page_size
+
+
+        status_filter = args.get("status")
+        supplier_filter = args.get("supplier")
+
+        filters = {}
+        if status_filter:
+            filters["status"] = status_filter
+
+        if supplier_filter:
+            filters["supplier"] = supplier_filter
+
+        all_pos = frappe.get_all(
+            "Purchase Order",
+            fields=[
+                "name",
+                "supplier",
+                "transaction_date",
+                "schedule_date",
+                "grand_total",
+                "status",
+            ],
+            filters=filters,
+            order_by="creation desc"
+        )
+
+        total_items = len(all_pos)
+
+        if total_items == 0:
+            return send_response(
+                status="success",
+                message="No purchase orders found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+        pos = all_pos[start:end]
+
+
+        for po in pos:
+            po["poId"] = po.pop("name")
+            po["supplierName"] = po.pop("supplier")
+            po["poDate"] = str(po.pop("transaction_date")) if po.get("transaction_date") else None
+            po["deliveryDate"] = str(po.pop("schedule_date")) if po.get("schedule_date") else None
+            po["grandTotal"] = po.pop("grand_total")
+
+        total_pages = (total_items + page_size - 1) // page_size
+
+        response_data = {
+            "success": True,
+            "message": "Purchase orders retrieved successfully",
+            "data": pos,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+
+        return send_response_list(
+            status="success",
+            message="Purchase orders retrieved successfully",
+            status_code=200,
+            data=response_data,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get Purchase Orders API Error")
+        return send_response(
+            status="fail",
+            message="Failed to fetch purchase orders",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_purchase_order():
+    try:
+        args = frappe.request.args
+        poId = args.get("id")
+
+        if not poId:
+            return send_response(
+                status="fail",
+                message="'poId' parameter is required.",
+                data=[],
+                status_code=400,
+                http_status=400
+            )
+
+        po = frappe.db.get_value(
+            "Purchase Order",
+            poId,
+            [
+                "name",
+                "supplier",
+                "transaction_date",
+                "schedule_date",
+                "grand_total",
+                "status",
+                "currency",
+                "tax_category",
+                "custom_placeofsupply",
+                "custom_remarks",
+                "supplier_address",
+                "dispatch_address",
+                "shipping_address",
+                "incoterm",
+                "project",
+                "cost_center",
+                "owner",
+                "creation",
+                "modified"
+            ],
+            as_dict=True
+        )
+
+        if not po:
+            return send_response(
+                status="fail",
+                message=f"Purchase Order '{poId}' not found.",
+                data=[],
+                status_code=404,
+                http_status=404
+            )
+
+        items = frappe.get_all(
+            "Purchase Order Item",
+            filters={"parent": poId},
+            fields=[
+                "item_code",
+                "item_name",
+                "qty",
+                "rate",
+                "amount",
+            ]
+        )
+
+        taxes = frappe.get_all(
+            "Purchase Taxes and Charges",
+            filters={"parent": poId},
+            fields=[
+                "charge_type",
+                "account_head",
+                "rate",
+                "tax_amount",
+                "total",
+                "description"
+            ]
+        )
+        
+        terms_doc = frappe.get_doc(
+            "Sale Invoice Selling Terms",
+            {"invoiceno": po.name}
+        ) if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": po.name}) else None
+
+        payment_doc = frappe.get_doc(
+            "Sale Invoice Selling Payment",
+            {"invoiceno": po.name}
+        ) if frappe.db.exists("Sale Invoice Selling Payment", {"invoiceno": po.name}) else None
+
+        phases = frappe.get_all(
+            "Sale Invoice Selling Payment Phases",
+            filters={"invoiceno": po.name},
+            fields=["phase_name as name", "percentage", "condition"]
+        )
+
+        def purchase_terms():
+            return {
+                "terms": {
+                    "selling": {
+                        "general": getattr(terms_doc, "general", ""),
+                        "delivery": getattr(terms_doc, "delivery", ""),
+                        "cancellation": getattr(terms_doc, "cancellation", ""),
+                        "warranty": getattr(terms_doc, "warranty", ""),
+                        "liability": getattr(terms_doc, "liability", ""),
+                        "payment": {
+                            "dueDates": getattr(payment_doc, "duedates", ""),
+                            "lateCharges": getattr(payment_doc, "latecharges", ""),
+                            "taxes": getattr(payment_doc, "taxes", ""),
+                            "notes": getattr(payment_doc, "notes", ""),
+                            "phases": phases
+                        }
+                    }
+                }
+            }
+
+        def get_address_details(address_name):
+            if not address_name:
+                return None
+
+            addr = frappe.db.get_value(
+                "Address",
+                address_name,
+                [
+                    "name",
+                    "address_title",
+                    "address_type",
+                    "address_line1",
+                    "address_line2",
+                    "city",
+                    "state",
+                    "country",
+                    "pincode",
+                    "phone",
+                    "email_id"
+                ],
+                as_dict=True
+            )
+
+            if not addr:
+                return None
+
+            return {
+                "addressId": addr.name,
+                "addressTitle": addr.address_title,
+                "addressType": addr.address_type,
+                "addressLine1": addr.address_line1,
+                "addressLine2": addr.address_line2,
+                "city": addr.city,
+                "state": addr.state,
+                "country": addr.country,
+                "postalCode": addr.pincode,
+                "phone": addr.phone,
+                "email": addr.email_id
+            }
+
+        supplier_addr = get_address_details(po.supplier_address)
+        dispatch_addr = get_address_details(po.dispatch_address)
+        shipping_addr = get_address_details(po.shipping_address)
+        response_data = {
+            "poId": po.name,
+            "supplierName": po.supplier,
+            "poDate": str(po.transaction_date) if po.transaction_date else None,
+            "requiredBy": str(po.schedule_date) if po.schedule_date else None,
+            "currency": po.currency,
+            "status": po.status,
+            "grandTotal": po.grand_total,
+            "taxCategory": po.tax_category,
+            "placeOfSupply": po.custom_placeofsupply,
+            "incoterm": po.incoterm,
+            "project": po.project,
+            "costCenter": po.cost_center,
+
+            "addresses": {
+                "supplierAddress": supplier_addr,
+                "dispatchAddress": dispatch_addr,
+                "shippingAddress": shipping_addr
+            },
+            "terms": purchase_terms(),
+
+            "items": items,
+            "taxes": taxes,
+            "metadata": {
+                "createdBy": po.owner or "",
+                "remarks": po.custom_remarks or "",
+                "createdAt": (po.creation.isoformat() + "Z") if po.creation else "",
+                "updatedAt": (po.modified.isoformat() + "Z") if po.modified else ""
+            
+            },
+        }
+
+        return send_response(
+            status="success",
+            message="Purchase order retrieved successfully",
+            data=response_data,
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get Purchase Order By ID API Error")
+        return send_response(
+            status="fail",
+            message="Failed to fetch purchase order",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["DELETE"])
+def delete_purchase_order():
+    try:
+        args = frappe.request.args
+        poId = args.get("id")
+
+        if not poId:
+            return send_response(
+                status="fail",
+                message="'id' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        if not frappe.db.exists("Purchase Order", poId):
+            return send_response(
+                status="fail",
+                message=f"Purchase Order '{poId}' not found.",
+                data=None,
+                status_code=404,
+                http_status=404
+            )
+
+        po_doc = frappe.get_doc("Purchase Order", poId)
+        if po_doc.docstatus == 1:
+            return send_response(
+                status="fail",
+                message="Cannot delete a submitted Purchase Order. Cancel it first.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        frappe.db.delete("Sale Invoice Selling Terms", {"invoiceno": poId})
+        frappe.db.delete("Sale Invoice Selling Payment", {"invoiceno": poId})
+        frappe.db.delete("Sale Invoice Selling Payment Phases", {"invoiceno": poId})
+
+        po_doc.delete(ignore_permissions=True)
+
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message=f"Purchase Order '{poId}' deleted successfully",
+            data={},
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(message=str(e), title="Delete Purchase Order API Error")
+        return send_response(
+            status="fail",
+            message="Failed to delete purchase order",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def update_purchase_order_status():
+    try:
+        data = frappe.form_dict
+        poId = data.get("id")
+        new_status = data.get("status")
+
+        if not poId:
+            return send_response(
+                status="fail",
+                message="'id' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        if not new_status:
+            return send_response(
+                status="fail",
+                message="'status' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        if not frappe.db.exists("Purchase Order", poId):
+            return send_response(
+                status="fail",
+                message=f"Purchase Order '{poId}' not found.",
+                data=None,
+                status_code=404,
+                http_status=404
+            )
+
+        # RAW SQL update
+        frappe.db.sql("""
+            UPDATE `tabPurchase Order`
+            SET status = %s,
+                modified = NOW(),
+                modified_by = %s
+            WHERE name = %s
+        """, (new_status, frappe.session.user, poId))
+
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message="Purchase Order status updated successfully",
+            data={
+                "poId": poId,
+                "status": new_status
+            },
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(message=str(e), title="Update Purchase Order Status API Error")
+        return send_response(
+            status="fail",
+            message="Failed to update purchase order status",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
