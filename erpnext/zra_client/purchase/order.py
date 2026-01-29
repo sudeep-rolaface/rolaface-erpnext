@@ -23,91 +23,24 @@ def create_purchase_order():
     taxCategory = data.get("taxCategory")
     shippingRule = data.get("shippingRule")
     incoterm = data.get("incoterm")
-    taxesChargesTemplate = data.get("taxesChargesTemplate")
     placeOfSupply = data.get("placeOfSupply")
     addresses = data.get("addresses", {})
     supplierAddress = addresses.get("supplierAddress", {})
     dispatchAddress = addresses.get("dispatchAddress", {})
     shippingAddress = addresses.get("shippingAddress", {})
-    companyBillingAddress = addresses.get("companyBillingAddress", {})
     
-    supplierAddressTitle = supplierAddress.get("addressTitle")
-    supplierAddressType = supplierAddress.get("addressType")
-    supplierAddressLine1 = supplierAddress.get("addressLine1")
-    supplierAddressLine2 = supplierAddress.get("addressLine2")
-    supplierAddressCity = supplierAddress.get("city")
-    supplierAddressState = supplierAddress.get("state")
-    supplierAddressCountry = supplierAddress.get("country")
-    supplierAddressPostalCode = supplierAddress.get("postalCode")
-    supplierAddressPhone = supplierAddress.get("phone")
-    supplierAddressEmail = supplierAddress.get("email")
+    print(supplierAddress)
+    print(dispatchAddress)
+    print(shippingAddress)
     
-    dispatchAddressTitle = dispatchAddress.get("addressTitle")
-    dispatchAddressType = dispatchAddress.get("addressType")
-    dispatchAddressLine1 = dispatchAddress.get("addressLine1")
-    dispatchAddressLine2 = dispatchAddress.get("addressLine2")
-    dispatchAddressCity = dispatchAddress.get("city")
-    dispatchAddressState = dispatchAddress.get("state")
-    dispatchAddressCountry = dispatchAddress.get("country")
-    dispatchAddressPostalCode = dispatchAddress.get("postalCode")
-    
-    
-    shippingAddressTitle = shippingAddress.get("addressTitle")
-    shippingAddressType = shippingAddress.get("addressType")
-    shippingAddressLine1 = shippingAddress.get("addressLine1")
-    shippingAddressLine2 = shippingAddress.get("addressLine2")
-    shippingAddressCity = shippingAddress.get("city")
-    shippingAddressState = shippingAddress.get("state")
-    shippingAddressCountry = shippingAddress.get("country")
-    shippingAddressPostalCode = shippingAddress.get("postalCode")
-    
-    
-    shippingAddressTitle = shippingAddress.get("addressTitle")
-    shippingAddressType = shippingAddress.get("addressType")
-    shippingAddressLine1 = shippingAddress.get("addressLine1")
-    shippingAddressLine2 = shippingAddress.get("addressLine2")
-    shippingAddressCity = shippingAddress.get("city")
-    shippingAddressState = shippingAddress.get("state")
-    shippingAddressCountry = shippingAddress.get("country")
-    shippingAddressPostalCode = shippingAddress.get("postalCode")
-
-    
-    paymentTermsTemplate = data.get("paymentTermsTemplate")
     terms = data.get("terms")
-    selling = terms.get("selling") or {}
 
-    general = (selling.get("general") or "").strip()
-    delivery = (selling.get("delivery") or "").strip()
-    cancellation = (selling.get("cancellation") or "").strip()
-    warranty = (selling.get("warranty") or "").strip()
-    liability = (selling.get("liability") or "").strip()
-    payment_terms_data = selling.get("payment") or {}
-    dueDates = payment_terms_data.get("dueDates", "")
-    lateCharges = payment_terms_data.get("lateCharges", "")
-    tax = payment_terms_data.get("taxes", "")
-    notes = payment_terms_data.get("notes", "")
-    phases = payment_terms_data.get("phases", [])
 
     items = data.get("items", [])
         
     taxes = data.get("taxes", [])
-    for t in taxes:
-        tax_type = t.get("type")
-        account = t.get("accountHead")
-        rate = t.get("taxRate", 0)
-        taxable = t.get("taxableAmount", 0)
-        amount = t.get("taxAmount", 0)
-        
-    payments = data.get("payments", [])
-    for p in payments:
-        paymentTerm = p.get("paymentTerm", ""),
-        description = p.get("description", ""),
-        dueDate = p.get("dueDate", ""),
-        invoicePortion =p.get("invoicePortion", 0),
-        paymentAmount = p.get("paymentAmount", 0)
-        
+
     metadata = data.get("metadata", {})
-    created_by = metadata.get("createdBy", "")
     remarks = metadata.get("remarks", "")
     
     if not supplierId:
@@ -133,6 +66,18 @@ def create_purchase_order():
             http_status=404,
             status_code=404
         )
+        
+    TAX_CAT = CUSTOM_FRAPPE_INSTANCE.GetAvailableTaxCategory()
+
+    if taxCategory not in TAX_CAT:
+        return send_response(
+            status="fail",
+            message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++: {TAX_CAT}",
+            data=[],
+            status_code=400,
+            http_status=400
+        )
+
     
     if not costCenter:
         return send_response(
@@ -153,8 +98,6 @@ def create_purchase_order():
         )
         
     costCenterName = ZRA_CLIENT_INSTANCE.GetOrCreateCostCenter("Cost Center", costCenter)
-    
-    print("Name: ", costCenterName)
     projectName = ZRA_CLIENT_INSTANCE.GetOrCreateProject(project),
     
 
@@ -221,12 +164,16 @@ def create_purchase_order():
             "item_name": item_details.get("itemName"),
             "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(),
             "qty": quantity,
-            "rate": rate,
-            "description": description,
+            "rate": item_details.get("standardRate"),
             "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
         
         })
     
+    supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier)
+    dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier)
+    shipping_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateShippingAddress(addresses, supplier)
+    print(supplier_addr_name, dispatch_addr_name, shipping_addr_name)
+
     po_doc = frappe.get_doc({
         "doctype": "Purchase Order",
         "supplier": supplier,
@@ -236,14 +183,63 @@ def create_purchase_order():
         "schedule_date": requiredBy,
         "incoterm": incotermName,
         "status": status,
+        "custom_placeofsupply": placeOfSupply,
+        "custom_remarks": remarks,
+        "tax_category": taxCategory,
         "items": invoice_items
-
-        
     })
+            
+    for t in taxes:
+        tax_type = (t.get("type") or "").strip()
+        account_head = (t.get("accountHead") or "").strip()
+        rate = float(t.get("taxRate") or 0)
+        taxable = float(t.get("taxableAmount") or 0)
+        amount = float(t.get("taxAmount") or 0)
+        
+        valid_tax_types = CUSTOM_FRAPPE_INSTANCE.GetTaxesChargesRate()
+        VALID_ACCOUNTS_HEAD = CUSTOM_FRAPPE_INSTANCE.GetExpensesValuationAccount() 
+
+        if tax_type not in valid_tax_types:
+            return send_response(
+                status="fail",
+                message=f"Invalid Tax Type: {tax_type}. Allowed: {', '.join(valid_tax_types)}",
+                status_code=400,
+                http_status=400
+            )
+            
+        if account_head not in VALID_ACCOUNTS_HEAD:
+            return send_response(
+                status="fail",
+                message=f"Invalid Account Head: {account_head}. Allowed: {', '.join(VALID_ACCOUNTS_HEAD)}",
+                status_code=400,
+                http_status=400
+            )
+
+        po_doc.append("taxes", {
+            "charge_type": tax_type,
+            "account_head": account_head,
+            "rate": rate,
+            "tax_amount": amount,
+            "total": taxable,
+            "description": tax_type
+        })
     po_doc.insert(ignore_permissions=True)
+    po_doc.save(ignore_permissions=True)
+    frappe.db.sql("""
+        UPDATE `tabPurchase Order`
+        SET supplier_address = %s,
+            dispatch_address = %s,
+            shipping_address = %s
+        WHERE name = %s
+    """, (supplier_addr_name, dispatch_addr_name, shipping_addr_name, po_doc.name))
+
     frappe.db.commit()
+
+    
+    CUSTOM_FRAPPE_INSTANCE.createInvoiceTermsAndPayments(po_doc.name, terms)
+    
     return send_response(
-        status="sucess",
+        status="success",
         message="Purchase order created successfully",
         data=[],
         status_code=201,
@@ -253,7 +249,7 @@ def create_purchase_order():
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_purchase_order():
     return send_response(
-        status="sucess",
+        status="success",
         message="Purchase order fetched successfully",
         data=[],
         status_code=200,
