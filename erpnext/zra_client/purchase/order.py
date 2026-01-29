@@ -245,13 +245,299 @@ def create_purchase_order():
         status_code=201,
         http_status=201,
     )
-    
+
+
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_purchase_orders():
+    try:
+        args = frappe.request.args
+        page = args.get("page")
+        if not page:
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        page_size = args.get("page_size")
+        if not page_size:
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        start = (page - 1) * page_size
+        end = start + page_size
+
+
+        status_filter = args.get("status")
+        supplier_filter = args.get("supplier")
+
+        filters = {}
+        if status_filter:
+            filters["status"] = status_filter
+
+        if supplier_filter:
+            filters["supplier"] = supplier_filter
+
+        all_pos = frappe.get_all(
+            "Purchase Order",
+            fields=[
+                "name",
+                "supplier",
+                "transaction_date",
+                "schedule_date",
+                "grand_total",
+                "status",
+            ],
+            filters=filters,
+            order_by="creation desc"
+        )
+
+        total_items = len(all_pos)
+
+        if total_items == 0:
+            return send_response(
+                status="success",
+                message="No purchase orders found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+        pos = all_pos[start:end]
+
+
+        for po in pos:
+            po["poId"] = po.pop("name")
+            po["supplierName"] = po.pop("supplier")
+            po["poDate"] = str(po.pop("transaction_date")) if po.get("transaction_date") else None
+            po["deliveryDate"] = str(po.pop("schedule_date")) if po.get("schedule_date") else None
+            po["grandTotal"] = po.pop("grand_total")
+
+        total_pages = (total_items + page_size - 1) // page_size
+
+        response_data = {
+            "success": True,
+            "message": "Purchase orders retrieved successfully",
+            "data": pos,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+
+        return send_response_list(
+            status="success",
+            message="Purchase orders retrieved successfully",
+            status_code=200,
+            data=response_data,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get Purchase Orders API Error")
+        return send_response(
+            status="fail",
+            message="Failed to fetch purchase orders",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
+
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_purchase_order():
-    return send_response(
-        status="success",
-        message="Purchase order fetched successfully",
-        data=[],
-        status_code=200,
-        http_status=200,
-    )
+    try:
+        args = frappe.request.args
+        poId = args.get("id")
+
+        if not poId:
+            return send_response(
+                status="fail",
+                message="'poId' parameter is required.",
+                data=[],
+                status_code=400,
+                http_status=400
+            )
+
+        po = frappe.db.get_value(
+            "Purchase Order",
+            poId,
+            [
+                "name",
+                "supplier",
+                "transaction_date",
+                "schedule_date",
+                "grand_total",
+                "status",
+                "currency",
+                "tax_category",
+                "custom_placeofsupply",
+                "custom_remarks",
+                "supplier_address",
+                "dispatch_address",
+                "shipping_address",
+                "incoterm",
+                "project",
+                "cost_center"
+            ],
+            as_dict=True
+        )
+
+        if not po:
+            return send_response(
+                status="fail",
+                message=f"Purchase Order '{poId}' not found.",
+                data=[],
+                status_code=404,
+                http_status=404
+            )
+
+        items = frappe.get_all(
+            "Purchase Order Item",
+            filters={"parent": poId},
+            fields=[
+                "item_code",
+                "item_name",
+                "qty",
+                "rate",
+                "amount",
+                "warehouse"
+            ]
+        )
+
+        taxes = frappe.get_all(
+            "Purchase Taxes and Charges",
+            filters={"parent": poId},
+            fields=[
+                "charge_type",
+                "account_head",
+                "rate",
+                "tax_amount",
+                "total",
+                "description"
+            ]
+        )
+
+
+        def get_address_details(address_name):
+            if not address_name:
+                return None
+
+            addr = frappe.db.get_value(
+                "Address",
+                address_name,
+                [
+                    "name",
+                    "address_title",
+                    "address_type",
+                    "address_line1",
+                    "address_line2",
+                    "city",
+                    "state",
+                    "country",
+                    "pincode",
+                    "phone",
+                    "email_id"
+                ],
+                as_dict=True
+            )
+
+            if not addr:
+                return None
+
+            return {
+                "addressId": addr.name,
+                "addressTitle": addr.address_title,
+                "addressType": addr.address_type,
+                "addressLine1": addr.address_line1,
+                "addressLine2": addr.address_line2,
+                "city": addr.city,
+                "state": addr.state,
+                "country": addr.country,
+                "postalCode": addr.pincode,
+                "phone": addr.phone,
+                "email": addr.email_id
+            }
+
+        supplier_addr = get_address_details(po.supplier_address)
+        dispatch_addr = get_address_details(po.dispatch_address)
+        shipping_addr = get_address_details(po.shipping_address)
+        response_data = {
+            "poId": po.name,
+            "supplierName": po.supplier,
+            "poDate": str(po.transaction_date) if po.transaction_date else None,
+            "requiredBy": str(po.schedule_date) if po.schedule_date else None,
+            "currency": po.currency,
+            "status": po.status,
+            "grandTotal": po.grand_total,
+            "taxCategory": po.tax_category,
+            "placeOfSupply": po.custom_placeofsupply,
+            "remarks": po.custom_remarks,
+            "incoterm": po.incoterm,
+            "project": po.project,
+            "costCenter": po.cost_center,
+
+            "addresses": {
+                "supplierAddress": supplier_addr,
+                "dispatchAddress": dispatch_addr,
+                "shippingAddress": shipping_addr
+            },
+
+            "items": items,
+            "taxes": taxes
+        }
+
+        return send_response(
+            status="success",
+            message="Purchase order retrieved successfully",
+            data=response_data,
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get Purchase Order By ID API Error")
+        return send_response(
+            status="fail",
+            message="Failed to fetch purchase order",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
