@@ -174,12 +174,33 @@ def create_purchase_order():
         if vat_cd not in VAT_LIST:
             return send_response(status="fail", message=f"Invalid VAT code {vat_cd}", status_code=400)
 
-        if vat_cd == "C2" and not lpoNumber:
-            return send_response(status="fail", message="LPO number required for VAT C2", status_code=400)
-
+        if taxCategory == "LPO" and vat_cd != "C2":
+            return send_response(
+                status="fail",
+                message="vatCd must be 'C2' when taxCategory is 'LPO'",
+                status_code=400,
+                http_status=400
+            )
+            
         if vat_cd == "C1" and not destnCountryCd:
             return send_response(status="fail", message="Destination country required for VAT C1", status_code=400)
 
+        if taxCategory == "Export" and vat_cd != "C1":
+            return send_response(
+                status="fail",
+                message="vatCd must be 'C1' when taxCategory is 'Export'",
+                status_code=400,
+                http_status=400
+            )
+        
+        
+        if taxCategory == "Non-Export" and vat_cd != "A":
+            return send_response(
+                status="fail",
+                message="vatCd must be 'A' when taxCategory is 'Non-Export'",
+                status_code=400,
+                http_status=400
+            )
         if vat_cd == "A":
             if lpoNumber is not None or destnCountryCd is not None:
                 return send_response(
