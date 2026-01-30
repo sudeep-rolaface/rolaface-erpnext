@@ -101,7 +101,17 @@ def create_purchase_order():
             http_status=400
         )
         
-    costCenterName = ZRA_CLIENT_INSTANCE.GetOrCreateCostCenter("Cost Center", costCenter)
+    GetCostCenters = CUSTOM_FRAPPE_INSTANCE.GetAllCompanyCostCenter()
+    
+    if costCenter not in GetCostCenters:
+        return send_response(
+            status="fail",
+            message=f"Cost Center '{costCenter}' is not available in the company. Available {GetCostCenters}",
+            status_code=400,
+            http_status=400,
+            data=[]
+        )
+        
     projectName = ZRA_CLIENT_INSTANCE.GetOrCreateProject(project),
     
 
@@ -250,15 +260,6 @@ def create_purchase_order():
     tax_response = TAX_CALLER_INSTANCE.send_sale_data(sale_payload)
     print(tax_response)
     
-    # if tax_response:
-    #     return send_response(
-    #         status="fail",
-    #         message="test error",
-    #         data=[],
-    #         http_status=400,
-    #         status_code=400
-    #     )
-    
     supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier)
     dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier)
     shipping_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateShippingAddress(addresses, supplier)
@@ -268,7 +269,7 @@ def create_purchase_order():
         "doctype": "Purchase Order",
         "supplier": supplier,
         "currency": currency,
-        "cost_center": costCenterName,
+        "cost_center": costCenter,
         "project": projectName,
         "schedule_date": requiredBy,
         "incoterm": incotermName,
@@ -531,21 +532,26 @@ def get_purchase_order():
             filters={"parent": poId},
             fields=["item_code", "item_name", "qty",  "uom" ,"rate", "amount"]
         )
+        
+        total_quantity = sum(item.get("qty", 0) for item in items)
+        sub_total = sum(item.get("amount", 0) for item in items)
+        tax_total = po.custom_total_tax_amount or 0
+        grand_total = po.grand_total or 0
+        rounded_total = po.rounded_total or grand_total
+        rounding_adjustment = rounded_total - grand_total
+        
+        summary = {
+            "totalQuantity": total_quantity,
+            "subTotal": sub_total,
+            "taxTotal": po.custom_total_tax_amount,
+            "grandTotal": grand_total,
+            "roundingAdjustment": rounding_adjustment,
+            "roundedTotal": rounded_total
+        }
 
-        tax_rows = frappe.get_all(
-            "Purchase Taxes and Charges",
-            filters={"parent": poId},
-            fields=[
-                "charge_type",
-                "account_head",
-                "rate",
-                "tax_amount",
-                "total",
-            ]
-        )
+
 
         taxRate = None
-        taxCat = None
         
         if po.tax_category == "Non-Export":
             taxRate = "16%"
@@ -631,7 +637,6 @@ def get_purchase_order():
                 "postalCode": addr.pincode,
             }
 
-            # Only supplier address includes phone/email
             if include_contact:
                 data["phone"] = addr.phone
                 data["email"] = addr.email_id
@@ -665,6 +670,7 @@ def get_purchase_order():
             "terms": purchase_terms(),
             "items": items,
             "tax": taxes,
+            "summary": summary,
 
             "metadata": {
                 "createdBy": po.owner or "",
