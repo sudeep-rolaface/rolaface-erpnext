@@ -390,7 +390,7 @@ def get_purchase_order():
         if not poId:
             return send_response(
                 status="fail",
-                message="'poId' parameter is required.",
+                message="'id' parameter is required.",
                 data=[],
                 status_code=400,
                 http_status=400
@@ -435,16 +435,10 @@ def get_purchase_order():
         items = frappe.get_all(
             "Purchase Order Item",
             filters={"parent": poId},
-            fields=[
-                "item_code",
-                "item_name",
-                "qty",
-                "rate",
-                "amount",
-            ]
+            fields=["item_code", "item_name", "qty",  "uom" ,"rate", "amount"]
         )
 
-        taxes = frappe.get_all(
+        tax_rows = frappe.get_all(
             "Purchase Taxes and Charges",
             filters={"parent": poId},
             fields=[
@@ -453,10 +447,24 @@ def get_purchase_order():
                 "rate",
                 "tax_amount",
                 "total",
-                "description"
             ]
         )
-        
+
+        taxes = []
+        for t in tax_rows:
+            account_name = ""
+            if t.get("account_head"):
+                account_name = frappe.db.get_value("Account", t["account_head"], "account_name") or t["account_head"]
+
+            taxes.append({
+                "type": t.get("charge_type") or "",
+                "accountHead": account_name,
+                "taxRate": float(t.get("rate") or 0),
+                "taxableAmount": float(t.get("total") or 0),
+                "taxAmount": float(t.get("tax_amount") or 0),
+            })
+
+
         terms_doc = frappe.get_doc(
             "Sale Invoice Selling Terms",
             {"invoiceno": po.name}
@@ -493,33 +501,31 @@ def get_purchase_order():
                 }
             }
 
-        def get_address_details(address_name):
+        # include_contact=True => include phone/email
+        def get_address_details(address_name, include_contact=False):
             if not address_name:
                 return None
 
-            addr = frappe.db.get_value(
-                "Address",
-                address_name,
-                [
-                    "name",
-                    "address_title",
-                    "address_type",
-                    "address_line1",
-                    "address_line2",
-                    "city",
-                    "state",
-                    "country",
-                    "pincode",
-                    "phone",
-                    "email_id"
-                ],
-                as_dict=True
-            )
+            fields = [
+                "name",
+                "address_title",
+                "address_type",
+                "address_line1",
+                "address_line2",
+                "city",
+                "state",
+                "country",
+                "pincode",
+            ]
 
+            if include_contact:
+                fields += ["phone", "email_id"]
+
+            addr = frappe.db.get_value("Address", address_name, fields, as_dict=True)
             if not addr:
                 return None
 
-            return {
+            data = {
                 "addressId": addr.name,
                 "addressTitle": addr.address_title,
                 "addressType": addr.address_type,
@@ -529,13 +535,19 @@ def get_purchase_order():
                 "state": addr.state,
                 "country": addr.country,
                 "postalCode": addr.pincode,
-                "phone": addr.phone,
-                "email": addr.email_id
             }
 
-        supplier_addr = get_address_details(po.supplier_address)
-        dispatch_addr = get_address_details(po.dispatch_address)
-        shipping_addr = get_address_details(po.shipping_address)
+            # Only supplier address includes phone/email
+            if include_contact:
+                data["phone"] = addr.phone
+                data["email"] = addr.email_id
+
+            return data
+
+        supplier_addr = get_address_details(po.supplier_address, include_contact=True)
+        dispatch_addr = get_address_details(po.dispatch_address, include_contact=False)
+        shipping_addr = get_address_details(po.shipping_address, include_contact=False)
+
         response_data = {
             "poId": po.name,
             "supplierName": po.supplier,
@@ -555,17 +567,17 @@ def get_purchase_order():
                 "dispatchAddress": dispatch_addr,
                 "shippingAddress": shipping_addr
             },
-            "terms": purchase_terms(),
 
+            "terms": purchase_terms(),
             "items": items,
             "taxes": taxes,
+
             "metadata": {
                 "createdBy": po.owner or "",
                 "remarks": po.custom_remarks or "",
                 "createdAt": (po.creation.isoformat() + "Z") if po.creation else "",
                 "updatedAt": (po.modified.isoformat() + "Z") if po.modified else ""
-            
-            },
+            }
         }
 
         return send_response(
@@ -585,6 +597,7 @@ def get_purchase_order():
             status_code=500,
             http_status=500
         )
+
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
