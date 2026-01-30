@@ -1,6 +1,7 @@
 from erpnext.zra_client.generic_api import send_response, send_response_list
-from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
+from erpnext.zra_client.tax_calcalator.tax import TaxCaller
+from erpnext.zra_client.main import ZRAClient
 from frappe import _
 import frappe
 import random
@@ -9,6 +10,7 @@ import re
 
 ZRA_CLIENT_INSTANCE = ZRAClient()
 CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
+TAX_CALLER_INSTANCE = TaxCaller()
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
@@ -18,6 +20,8 @@ def create_purchase_order():
     requiredBy = data.get("requiredBy")
     currency = data.get("currency")
     status = data.get("status")
+    destnCountryCd = frappe.form_dict.get("destnCountryCd")
+    lpoNumber = frappe.form_dict.get("lpoNumber")
     costCenter = data.get("costCenter")
     project = data.get("project")
     taxCategory = data.get("taxCategory")
@@ -123,13 +127,13 @@ def create_purchase_order():
     incotermName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateIncoterm(incoterm)
     
     invoice_items = []
+    tax_items = []
     for i in items:
         print(i)
         itemCode = i.get("itemCode")
         quantity = i.get("quantity")
-        print(quantity)
-        
-        
+        vat_cd = i.get("vatCd")
+        rate = i.get("rate")
         if not itemCode:
             return send_response(
                 status="fail",
@@ -148,6 +152,15 @@ def create_purchase_order():
                 status_code=400,
                 http_status=400,
             )
+        
+        if not vat_cd:
+            return send_response(
+                status="fail",
+                message="Vat Category must not be null",
+                data=[],
+                status_code=400,
+                http_status=400
+            )
         item_details = CUSTOM_FRAPPE_INSTANCE.GetItemDetails(itemCode)
         if not item_details:
             return send_response(
@@ -156,9 +169,41 @@ def create_purchase_order():
                 status_code=404,
                 http_status=404
             )
+            
+        VAT_LIST = CUSTOM_FRAPPE_INSTANCE.GetValidTaxTypes()
+        if vat_cd not in VAT_LIST:
+            return send_response(status="fail", message=f"Invalid VAT code {vat_cd}", status_code=400)
+
+        if vat_cd == "C2" and not lpoNumber:
+            return send_response(status="fail", message="LPO number required for VAT C2", status_code=400)
+
+        if vat_cd == "C1" and not destnCountryCd:
+            return send_response(status="fail", message="Destination country required for VAT C1", status_code=400)
+
+        if vat_cd == "A":
+            if lpoNumber is not None or destnCountryCd is not None:
+                return send_response(
+                    status="fail",
+                    message="LPO number and destination country must not be provided when VAT code is 'A'.",
+                    status_code=400
+                )
 
         
-        
+        tax_items.append({
+            "itemCode": itemCode,
+            "itemName": item_details.get("itemName"),
+            "qty": quantity,
+            "itemClassCode": item_details.get("itemClassCd"),
+            "itemTypeCd": item_details.get("itemType"),
+            "packageUnitCode": item_details.get("itemPackingUnitCd"),
+            "price": rate,
+            "VatCd": vat_cd,
+            "unitOfMeasure": item_details.get("itemUnitCd"),
+    
+        })
+
+
+     
         invoice_items.append({
             "item_code": itemCode,
             "item_name": item_details.get("itemName"),
@@ -168,6 +213,30 @@ def create_purchase_order():
             "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
         
         })
+        
+    sale_payload = {
+            "name": 1,
+            "customerName": "Tax",
+            "customer_tpin": "Tax",
+            "destnCountryCd": destnCountryCd,
+            "lpoNumber": lpoNumber,
+            "currencyCd": "ZMK",
+            "exchangeRt": 1,
+            "created_by": "admin",
+            "items": tax_items
+        }
+    
+    tax_response = TAX_CALLER_INSTANCE.send_sale_data(sale_payload)
+    print(tax_response)
+    
+    # if tax_response:
+    #     return send_response(
+    #         status="fail",
+    #         message="test error",
+    #         data=[],
+    #         http_status=400,
+    #         status_code=400
+    #     )
     
     supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier)
     dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier)
@@ -186,6 +255,8 @@ def create_purchase_order():
         "custom_placeofsupply": placeOfSupply,
         "custom_remarks": remarks,
         "tax_category": taxCategory,
+        "custom_total_taxble_amount": tax_response.get("totTaxblAmt", 0),
+        "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items
     })
             
@@ -416,6 +487,8 @@ def get_purchase_order():
                 "incoterm",
                 "project",
                 "cost_center",
+                "custom_total_tax_amount",
+                "custom_total_taxble_amount",
                 "owner",
                 "creation",
                 "modified"
@@ -450,19 +523,19 @@ def get_purchase_order():
             ]
         )
 
-        taxes = []
-        for t in tax_rows:
-            account_name = ""
-            if t.get("account_head"):
-                account_name = frappe.db.get_value("Account", t["account_head"], "account_name") or t["account_head"]
-
-            taxes.append({
-                "type": t.get("charge_type") or "",
-                "accountHead": account_name,
-                "taxRate": float(t.get("rate") or 0),
-                "taxableAmount": float(t.get("total") or 0),
-                "taxAmount": float(t.get("tax_amount") or 0),
-            })
+        taxRate = None
+        taxCat = None
+        
+        if po.tax_category == "Non-Export":
+            taxRate = "16%"
+        else:
+            taxRate ="0%"
+        taxes =  {
+                "type": po.tax_category,
+                "taxRate": taxRate,
+                "taxableAmount": po.custom_total_taxble_amount,
+                "taxAmount": po.custom_total_tax_amount
+            }
 
 
         terms_doc = frappe.get_doc(
@@ -570,7 +643,7 @@ def get_purchase_order():
 
             "terms": purchase_terms(),
             "items": items,
-            "taxes": taxes,
+            "tax": taxes,
 
             "metadata": {
                 "createdBy": po.owner or "",

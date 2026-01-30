@@ -274,3 +274,7 @@ class CustomFrappeClient():
         tax_names = [tax["name"] for tax in tax_categories]
         
         return tax_names
+
+    def GetValidTaxTypes(self):
+        LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
+        return LIST
