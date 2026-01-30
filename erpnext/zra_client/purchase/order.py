@@ -1,6 +1,7 @@
 from erpnext.zra_client.generic_api import send_response, send_response_list
-from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
+from erpnext.zra_client.tax_calcalator.tax import TaxCaller
+from erpnext.zra_client.main import ZRAClient
 from frappe import _
 import frappe
 import random
@@ -9,6 +10,7 @@ import re
 
 ZRA_CLIENT_INSTANCE = ZRAClient()
 CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
+TAX_CALLER_INSTANCE = TaxCaller()
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
@@ -18,6 +20,8 @@ def create_purchase_order():
     requiredBy = data.get("requiredBy")
     currency = data.get("currency")
     status = data.get("status")
+    destnCountryCd = frappe.form_dict.get("destnCountryCd")
+    lpoNumber = frappe.form_dict.get("lpoNumber")
     costCenter = data.get("costCenter")
     project = data.get("project")
     taxCategory = data.get("taxCategory")
@@ -97,7 +101,17 @@ def create_purchase_order():
             http_status=400
         )
         
-    costCenterName = ZRA_CLIENT_INSTANCE.GetOrCreateCostCenter("Cost Center", costCenter)
+    GetCostCenters = CUSTOM_FRAPPE_INSTANCE.GetAllCompanyCostCenter()
+    
+    if costCenter not in GetCostCenters:
+        return send_response(
+            status="fail",
+            message=f"Cost Center '{costCenter}' is not available in the company. Available {GetCostCenters}",
+            status_code=400,
+            http_status=400,
+            data=[]
+        )
+        
     projectName = ZRA_CLIENT_INSTANCE.GetOrCreateProject(project),
     
 
@@ -123,13 +137,13 @@ def create_purchase_order():
     incotermName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateIncoterm(incoterm)
     
     invoice_items = []
+    tax_items = []
     for i in items:
         print(i)
         itemCode = i.get("itemCode")
         quantity = i.get("quantity")
-        print(quantity)
-        
-        
+        vat_cd = i.get("vatCd")
+        rate = i.get("rate")
         if not itemCode:
             return send_response(
                 status="fail",
@@ -148,6 +162,15 @@ def create_purchase_order():
                 status_code=400,
                 http_status=400,
             )
+        
+        if not vat_cd:
+            return send_response(
+                status="fail",
+                message="Vat Category must not be null",
+                data=[],
+                status_code=400,
+                http_status=400
+            )
         item_details = CUSTOM_FRAPPE_INSTANCE.GetItemDetails(itemCode)
         if not item_details:
             return send_response(
@@ -156,9 +179,62 @@ def create_purchase_order():
                 status_code=404,
                 http_status=404
             )
+            
+        VAT_LIST = CUSTOM_FRAPPE_INSTANCE.GetValidTaxTypes()
+        if vat_cd not in VAT_LIST:
+            return send_response(status="fail", message=f"Invalid VAT code {vat_cd}", status_code=400)
+
+        if taxCategory == "LPO" and vat_cd != "C2":
+            return send_response(
+                status="fail",
+                message="vatCd must be 'C2' when taxCategory is 'LPO'",
+                status_code=400,
+                http_status=400
+            )
+            
+        if vat_cd == "C1" and not destnCountryCd:
+            return send_response(status="fail", message="Destination country required for VAT C1", status_code=400)
+
+        if taxCategory == "Export" and vat_cd != "C1":
+            return send_response(
+                status="fail",
+                message="vatCd must be 'C1' when taxCategory is 'Export'",
+                status_code=400,
+                http_status=400
+            )
+        
+        
+        if taxCategory == "Non-Export" and vat_cd != "A":
+            return send_response(
+                status="fail",
+                message="vatCd must be 'A' when taxCategory is 'Non-Export'",
+                status_code=400,
+                http_status=400
+            )
+        if vat_cd == "A":
+            if lpoNumber is not None or destnCountryCd is not None:
+                return send_response(
+                    status="fail",
+                    message="LPO number and destination country must not be provided when VAT code is 'A'.",
+                    status_code=400
+                )
 
         
-        
+        tax_items.append({
+            "itemCode": itemCode,
+            "itemName": item_details.get("itemName"),
+            "qty": quantity,
+            "itemClassCode": item_details.get("itemClassCd"),
+            "itemTypeCd": item_details.get("itemType"),
+            "packageUnitCode": item_details.get("itemPackingUnitCd"),
+            "price": rate,
+            "VatCd": vat_cd,
+            "unitOfMeasure": item_details.get("itemUnitCd"),
+    
+        })
+
+
+     
         invoice_items.append({
             "item_code": itemCode,
             "item_name": item_details.get("itemName"),
@@ -168,6 +244,21 @@ def create_purchase_order():
             "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
         
         })
+        
+    sale_payload = {
+            "name": 1,
+            "customerName": "Tax",
+            "customer_tpin": "Tax",
+            "destnCountryCd": destnCountryCd,
+            "lpoNumber": lpoNumber,
+            "currencyCd": "ZMK",
+            "exchangeRt": 1,
+            "created_by": "admin",
+            "items": tax_items
+        }
+    
+    tax_response = TAX_CALLER_INSTANCE.send_sale_data(sale_payload)
+    print(tax_response)
     
     supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier)
     dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier)
@@ -178,7 +269,7 @@ def create_purchase_order():
         "doctype": "Purchase Order",
         "supplier": supplier,
         "currency": currency,
-        "cost_center": costCenterName,
+        "cost_center": costCenter,
         "project": projectName,
         "schedule_date": requiredBy,
         "incoterm": incotermName,
@@ -186,6 +277,8 @@ def create_purchase_order():
         "custom_placeofsupply": placeOfSupply,
         "custom_remarks": remarks,
         "tax_category": taxCategory,
+        "custom_total_taxble_amount": tax_response.get("totTaxblAmt", 0),
+        "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items
     })
             
@@ -390,7 +483,7 @@ def get_purchase_order():
         if not poId:
             return send_response(
                 status="fail",
-                message="'poId' parameter is required.",
+                message="'id' parameter is required.",
                 data=[],
                 status_code=400,
                 http_status=400
@@ -416,6 +509,8 @@ def get_purchase_order():
                 "incoterm",
                 "project",
                 "cost_center",
+                "custom_total_tax_amount",
+                "custom_total_taxble_amount",
                 "owner",
                 "creation",
                 "modified"
@@ -435,28 +530,41 @@ def get_purchase_order():
         items = frappe.get_all(
             "Purchase Order Item",
             filters={"parent": poId},
-            fields=[
-                "item_code",
-                "item_name",
-                "qty",
-                "rate",
-                "amount",
-            ]
-        )
-
-        taxes = frappe.get_all(
-            "Purchase Taxes and Charges",
-            filters={"parent": poId},
-            fields=[
-                "charge_type",
-                "account_head",
-                "rate",
-                "tax_amount",
-                "total",
-                "description"
-            ]
+            fields=["item_code", "item_name", "qty",  "uom" ,"rate", "amount"]
         )
         
+        total_quantity = sum(item.get("qty", 0) for item in items)
+        sub_total = sum(item.get("amount", 0) for item in items)
+        tax_total = po.custom_total_tax_amount or 0
+        grand_total = po.grand_total or 0
+        rounded_total = po.rounded_total or grand_total
+        rounding_adjustment = rounded_total - grand_total
+        
+        summary = {
+            "totalQuantity": total_quantity,
+            "subTotal": sub_total,
+            "taxTotal": po.custom_total_tax_amount,
+            "grandTotal": grand_total,
+            "roundingAdjustment": rounding_adjustment,
+            "roundedTotal": rounded_total
+        }
+
+
+
+        taxRate = None
+        
+        if po.tax_category == "Non-Export":
+            taxRate = "16%"
+        else:
+            taxRate ="0%"
+        taxes =  {
+                "type": po.tax_category,
+                "taxRate": taxRate,
+                "taxableAmount": po.custom_total_taxble_amount,
+                "taxAmount": po.custom_total_tax_amount
+            }
+
+
         terms_doc = frappe.get_doc(
             "Sale Invoice Selling Terms",
             {"invoiceno": po.name}
@@ -493,33 +601,31 @@ def get_purchase_order():
                 }
             }
 
-        def get_address_details(address_name):
+        # include_contact=True => include phone/email
+        def get_address_details(address_name, include_contact=False):
             if not address_name:
                 return None
 
-            addr = frappe.db.get_value(
-                "Address",
-                address_name,
-                [
-                    "name",
-                    "address_title",
-                    "address_type",
-                    "address_line1",
-                    "address_line2",
-                    "city",
-                    "state",
-                    "country",
-                    "pincode",
-                    "phone",
-                    "email_id"
-                ],
-                as_dict=True
-            )
+            fields = [
+                "name",
+                "address_title",
+                "address_type",
+                "address_line1",
+                "address_line2",
+                "city",
+                "state",
+                "country",
+                "pincode",
+            ]
 
+            if include_contact:
+                fields += ["phone", "email_id"]
+
+            addr = frappe.db.get_value("Address", address_name, fields, as_dict=True)
             if not addr:
                 return None
 
-            return {
+            data = {
                 "addressId": addr.name,
                 "addressTitle": addr.address_title,
                 "addressType": addr.address_type,
@@ -529,13 +635,18 @@ def get_purchase_order():
                 "state": addr.state,
                 "country": addr.country,
                 "postalCode": addr.pincode,
-                "phone": addr.phone,
-                "email": addr.email_id
             }
 
-        supplier_addr = get_address_details(po.supplier_address)
-        dispatch_addr = get_address_details(po.dispatch_address)
-        shipping_addr = get_address_details(po.shipping_address)
+            if include_contact:
+                data["phone"] = addr.phone
+                data["email"] = addr.email_id
+
+            return data
+
+        supplier_addr = get_address_details(po.supplier_address, include_contact=True)
+        dispatch_addr = get_address_details(po.dispatch_address, include_contact=False)
+        shipping_addr = get_address_details(po.shipping_address, include_contact=False)
+
         response_data = {
             "poId": po.name,
             "supplierName": po.supplier,
@@ -555,17 +666,18 @@ def get_purchase_order():
                 "dispatchAddress": dispatch_addr,
                 "shippingAddress": shipping_addr
             },
-            "terms": purchase_terms(),
 
+            "terms": purchase_terms(),
             "items": items,
-            "taxes": taxes,
+            "tax": taxes,
+            "summary": summary,
+
             "metadata": {
                 "createdBy": po.owner or "",
                 "remarks": po.custom_remarks or "",
                 "createdAt": (po.creation.isoformat() + "Z") if po.creation else "",
                 "updatedAt": (po.modified.isoformat() + "Z") if po.modified else ""
-            
-            },
+            }
         }
 
         return send_response(
@@ -585,6 +697,7 @@ def get_purchase_order():
             status_code=500,
             http_status=500
         )
+
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])

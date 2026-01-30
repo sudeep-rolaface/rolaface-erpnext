@@ -129,6 +129,9 @@ class CustomFrappeClient():
 
         return VALID_ACCOUNTS_HEAD
 
+    def getCurrentCompany(self):
+        COMPANY = "Izyane"
+        return COMPANY
 
     def GetTaxesChargesRate(self):
         RATES = ["Actual", "On Net Total", "On Previous Row Amount", "On Previous Row Total", "On Item Quantity"]
@@ -274,3 +277,25 @@ class CustomFrappeClient():
         tax_names = [tax["name"] for tax in tax_categories]
         
         return tax_names
+
+    def GetValidTaxTypes(self):
+        LIST = ["A", "B", "C1", "C2", "C3", "D", "E", "RVAT"]
+        return LIST
+    
+    def GetAllCompanyCostCenter(self):
+        company = self.getCurrentCompany()
+    
+        cost_centers = frappe.get_all(
+            "Cost Center",
+            filters={"company": company, "disabled": 0, "is_group": 0},
+            fields=["name"]
+        )
+    
+        cost_center_names = [cc["name"] for cc in cost_centers]
+        
+        print("Cost Centers: ", cost_center_names)
+        return cost_center_names
+
+        
+        
+        
