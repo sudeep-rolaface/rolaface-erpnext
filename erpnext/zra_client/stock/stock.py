@@ -97,7 +97,7 @@ def create_item_stock_api():
             item_code = item.get("item_code")
             qty = flt(item.get("qty", 0))
             price = flt(item.get("price", 0))
-
+            batch_no = item.get("batch_no")
             if not item_code or qty <= 0 or price <= 0:
                 return send_response("fail", f"Invalid data for item {i+1}", 400, 400)
 
@@ -144,7 +144,8 @@ def create_item_stock_api():
                 "basic_rate": price,
                 "custom_taxable_amount": taxblAmt,
                 "custom_tax_amount": vatAmount,
-                "custom_total_amount": totItemAmt
+                "custom_total_amount": totItemAmt,
+                "batch_no": batch_no
             })
 
         # Default values used when ZRA is disabled
