@@ -237,7 +237,7 @@ def get_all_quotations():
                 http_status=200
             )
 
-        paginated_quotations = all_quotations[start_index:end_index]
+        paginated_quotations = all_quotations
         total_pages = (total_quotations + page_size - 1) // page_size
 
         def to_camel_case(quotation):
