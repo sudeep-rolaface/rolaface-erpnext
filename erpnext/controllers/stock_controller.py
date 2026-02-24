@@ -1110,7 +1110,7 @@ class StockController(AccountsController):
 
 		for w in warehouses:
 			validate_disabled_warehouse(w)
-			validate_warehouse_company(w, self.company)
+			validate_warehouse_company(w,frappe.defaults.get_global_default("company"))
 
 	def update_billing_percentage(self, update_modified=True):
 		target_ref_field = "amount"

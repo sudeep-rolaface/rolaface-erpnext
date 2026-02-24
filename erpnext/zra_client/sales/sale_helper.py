@@ -301,7 +301,7 @@ class NormaSale(ZRAClient):
             "cust_name": customer_name,
             "cust_tpin": customer_tpin,
             "name": name,
-            "currencyCd": "ZMW",
+            "currencyCd": frappe.defaults.get_global_default("currency"),
             "exchangeRt": exchangeRt,
             "created_by": created_by,
             "currencyCd": currencyCd,
@@ -315,8 +315,13 @@ class NormaSale(ZRAClient):
         print("\n[START] Sending sale data...")
         self.reset_totals()
         payload = self.build_payload(items, base_data)
-        response = self.create_normal_sale_helper(payload)
-        response = response.json()
+        enable_zra = frappe.conf.get("enable_zra_sync", False)
+        if enable_zra:
+            response = self.create_normal_sale_helper(payload)
+            response = response.json()
+        else:
+            response = self.create_erpnext_normal_sale_helper(payload)
+
         apiCallerResponse = response
         print(response)
         print(f"Response from ZRA: {response}")
@@ -341,7 +346,7 @@ class NormaSale(ZRAClient):
             
             company_info = []
             company_info.append((
-                self.get_company_name(),
+                frappe.defaults.get_global_default("company"),
                 self.get_company_phone_no(),
                 self.get_company_email(),
                 self.get_tpin(),
@@ -469,6 +474,75 @@ class NormaSale(ZRAClient):
                 return
         print("Response returned 2")
         return response
+    def create_erpnext_normal_sale_helper(self, payload):
+        """
+        Create ERPNext Sales Invoice instead of ZRA invoice
+        """
 
-            
+        try:
+            company = frappe.defaults.get_global_default("company")
+            posting_date = datetime.strptime(payload["salesDt"], "%Y%m%d").date()
 
+            # 1️⃣ Ensure customer exists
+            customer_name = payload.get("custNm") or "Walk-in Customer"
+
+            if not frappe.db.exists("Customer", customer_name):
+                customer = frappe.get_doc({
+                    "doctype": "Customer",
+                    "customer_name": customer_name,
+                    "customer_type": "Individual",
+                    "territory": "All Territories"
+                })
+                customer.insert(ignore_permissions=True)
+            else:
+                customer = frappe.get_doc("Customer", customer_name)
+
+            # 2️⃣ Build items
+            items = []
+            for item in payload["itemList"]:
+                items.append({
+                    "item_code": item["itemCd"],
+                    "qty": item["qty"],
+                    "rate": item["prc"],
+                    "warehouse": "Finished Goods - RI",
+                })
+
+            # 3️⃣ Create Sales Invoice
+            invoice = frappe.get_doc({
+                "doctype": "Sales Invoice",
+                "customer": customer.name,
+                "company": company,
+                "posting_date": posting_date,
+                "due_date": posting_date,
+                "currency": payload.get("currencyTyCd", "INR"),
+                "items": items,
+                "remarks": payload.get("remark", ""),
+            })
+
+            invoice.insert(ignore_permissions=True)
+            invoice.submit()
+
+            # 4️⃣ Return ZRA-like response (to keep rest of code intact)
+            return {
+                "resultCd": "000",
+                "resultMsg": "Sales Invoice created successfully",
+                "data": {
+                    "invoice_no": invoice.name,
+                    "rcptNo": invoice.name,   # reuse invoice number
+                    "qrCodeUrl": None
+                }
+            }
+
+        except frappe.ValidationError as e:
+            frappe.clear_messages()
+            return {
+                "resultCd": "999",
+                "resultMsg": str(e)
+            }
+
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), "Sales Invoice Creation Failed")
+            return {
+                "resultCd": "999",
+                "resultMsg": "Failed to create Sales Invoice"
+            }

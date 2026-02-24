@@ -32,6 +32,7 @@ def generate_Quotation_number():
 
     return quotation_no
 
+
 def get_customer_details(customer_id):
     if not customer_id:
         return send_response(
@@ -50,7 +51,7 @@ def get_customer_details(customer_id):
                 status_code=404,
                 http_status=404
             )
-        
+
         customer_doc = frappe.get_doc("Customer", customer[0]["name"])
 
         def safe_attr(obj, attr):
@@ -62,7 +63,7 @@ def get_customer_details(customer_id):
             "customer_name": safe_attr(customer_doc, "customer_name"),
         }
         return data
-    
+
     except Exception as e:
         return send_response(
             status="fail",
@@ -76,10 +77,10 @@ def get_customer_details(customer_id):
 def get_all_quotations():
 
     try:
-
         args = frappe.request.args
         page = args.get("page")
         page_size = args.get("page_size")
+
         if not page:
             return send_response(
                 status="error",
@@ -101,7 +102,6 @@ def get_all_quotations():
                 http_status=400
             )
 
-
         if not page_size:
             return send_response(
                 status="error",
@@ -122,10 +122,88 @@ def get_all_quotations():
                 status_code=400,
                 http_status=400
             )
+
         start_index = (page - 1) * page_size
         end_index = start_index + page_size
+
+        filters = {}
+        or_filters = []
+
+        customer = args.get("customer")
+        if customer:
+            filters["customer_name"] = ["like", f"%{customer}%"]
+
+        id = args.get("id")
+        if id:
+            filters["name"] = ["like", f"%{id}%"]
+
+        invoice_type = args.get("invoiceType")
+        if invoice_type:
+            filters["custom_invoice_type"] = ["like", f"%{invoice_type}%"]
+
+        # FIX: currency filter was incorrectly filtering by name instead of currency
+        currency = args.get("currency")
+        if currency:
+            filters["currency"] = ["like", f"%{currency}%"]
+
+        industry = args.get("industryBase")
+        if industry:
+            filters["custom_industry_bases"] = industry
+
+        from_date = args.get("from_date")
+        to_date = args.get("to_date")
+        if from_date and to_date:
+            filters["transaction_date"] = ["between", [from_date, to_date]]
+        elif from_date:
+            filters["transaction_date"] = [">=", from_date]
+        elif to_date:
+            filters["transaction_date"] = ["<=", to_date]
+
+        min_amount = args.get("minAmount")
+        max_amount = args.get("maxAmount")
+
+        if min_amount and max_amount:
+            filters["grand_total"] = ["between", [float(min_amount), float(max_amount)]]
+        elif min_amount:
+            filters["grand_total"] = [">=", float(min_amount)]
+        elif max_amount:
+            filters["grand_total"] = ["<=", float(max_amount)]
+
+        search = args.get("search")
+        if search:
+            or_filters = [
+                ["name", "like", f"%{search}%"],
+                ["customer_name", "like", f"%{search}%"],
+            ]
+
+            customers = frappe.get_all(
+                "Customer",
+                filters={"tax_id": ["like", f"%{search}%"]},
+                pluck="name"
+            )
+            if customers:
+                or_filters.append(["customer_name", "in", customers])
+
+        allowed_sort_fields = {
+            "id": "name",
+            "customerName": "customer_name",
+            "transactionDate": "transaction_date",
+            "validTill": "valid_till",
+            "grandTotal": "grand_total",
+        }
+
+        sort_by = args.get("sortBy", "transactionDate")
+        sort_order = args.get("sortOrder", "desc").lower()
+
+        sort_field = allowed_sort_fields.get(sort_by, "transaction_date")
+        sort_order = "asc" if sort_order == "asc" else "desc"
+
+        order_by = f"{sort_field} {sort_order}"
+
         all_quotations = frappe.get_all(
             "Quotation",
+            filters=filters,
+            or_filters=or_filters,
             fields=[
                 "name",
                 "custom_industry_bases",
@@ -136,10 +214,19 @@ def get_all_quotations():
                 "grand_total",
                 "currency"
             ],
-            order_by="creation desc"
+            order_by=order_by,
+            start=start_index,
+            page_length=page_size
         )
 
-        total_quotations = len(all_quotations)
+        total_quotations = len(
+            frappe.get_all(
+                "Quotation",
+                filters=filters,
+                or_filters=or_filters,
+                pluck="name"
+            )
+        )
 
         if total_quotations == 0:
             return send_response(
@@ -152,6 +239,7 @@ def get_all_quotations():
 
         paginated_quotations = all_quotations[start_index:end_index]
         total_pages = (total_quotations + page_size - 1) // page_size
+
         def to_camel_case(quotation):
             customerTpin = frappe.db.get_value(
                 "Customer",
@@ -253,9 +341,10 @@ def get_quotation_by_id():
                 "quantity": item.qty,
                 "price": item.rate,
                 "discount": item.discount_amount,
-                "vatCode": item.get("custom_vat_code"),
+                # vatCode only shown for ZMW quotations
+                "vatCode": item.get("custom_vat_code") if quotation.currency == "ZMW" else None,
             })
-            
+
         terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": quotation_id}) \
             if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": quotation_id}) else None
 
@@ -269,22 +358,22 @@ def get_quotation_by_id():
         ) if frappe.db.exists("Sale Invoice Selling Payment Phases", {"invoiceno": quotation_id}) else []
 
         terms = {
-                "selling": {
-                    "general": getattr(terms_doc, "general", "") if terms_doc else "",
-                    "delivery": getattr(terms_doc, "delivery", "") if terms_doc else "",
-                    "cancellation": getattr(terms_doc, "cancellation", "") if terms_doc else "",
-                    "warranty": getattr(terms_doc, "warranty", "") if terms_doc else "",
-                    "liability": getattr(terms_doc, "liability", "") if terms_doc else "",
-                    "payment": {
-                        "dueDates": getattr(payment_doc, "duedates", "") if payment_doc else "",
-                        "lateCharges": getattr(payment_doc, "latecharges", "") if payment_doc else "",
-                        "taxes": getattr(payment_doc, "taxes", "") if payment_doc else "",
-                        "notes": getattr(payment_doc, "notes", "") if payment_doc else "",
-                        "phases": phases
-                    }
+            "selling": {
+                "general": getattr(terms_doc, "general", "") if terms_doc else "",
+                "delivery": getattr(terms_doc, "delivery", "") if terms_doc else "",
+                "cancellation": getattr(terms_doc, "cancellation", "") if terms_doc else "",
+                "warranty": getattr(terms_doc, "warranty", "") if terms_doc else "",
+                "liability": getattr(terms_doc, "liability", "") if terms_doc else "",
+                "payment": {
+                    "dueDates": getattr(payment_doc, "duedates", "") if payment_doc else "",
+                    "lateCharges": getattr(payment_doc, "latecharges", "") if payment_doc else "",
+                    "taxes": getattr(payment_doc, "taxes", "") if payment_doc else "",
+                    "notes": getattr(payment_doc, "notes", "") if payment_doc else "",
+                    "phases": phases
                 }
             }
-        
+        }
+
         response_data = {
             "id": quotation.name,
             "customerId": quotation.customer_name,
@@ -330,6 +419,7 @@ def get_quotation_by_id():
             http_status=500
         )
 
+
 @frappe.whitelist(allow_guest=False)
 def delete_quotation():
     data = frappe.local.form_dict
@@ -348,7 +438,7 @@ def delete_quotation():
         except frappe.DoesNotExistError:
             return send_response(
                 status="fail",
-                message=f"Quotation with id { quotation_id } not found",
+                message=f"Quotation with id {quotation_id} not found",
                 status_code=404,
                 http_status=404
             )
@@ -372,7 +462,6 @@ def delete_quotation():
         )
 
 
-
 @frappe.whitelist(allow_guest=False)
 def create_quotation():
     data = frappe.form_dict
@@ -385,23 +474,26 @@ def create_quotation():
     invoiceType = frappe.form_dict.get("invoiceType")
     validUntil = data.get("validUntil")
     industryBases = data.get("industryBases")
-    billingAddress = data.get("billingAddress")
+
+    billingAddress = data.get("billingAddress") or {}
     billingAddressLine1 = billingAddress.get("line1")
     billingAddressLine2 = billingAddress.get("line2")
     billingAddressPostalCode = billingAddress.get("postalCode")
     billingAddressCity = billingAddress.get("city")
     billingAddressState = billingAddress.get("state")
     billingAddressCountry = billingAddress.get("country")
-    
-    shippingAddress = data.get("shippingAddress")
+
+    shippingAddress = data.get("shippingAddress") or {}
     shippingAddressLine1 = shippingAddress.get("line1")
     shippingAddressLine2 = shippingAddress.get("line2")
     shippingAddressPostalCode = shippingAddress.get("postalCode")
     shippingAddressCity = shippingAddress.get("city")
     shippingAddressState = shippingAddress.get("state")
     shippingAddressCountry = shippingAddress.get("country")
+
     payment_info = data.get("paymentInformation")
 
+    # ── industryBases ──────────────────────────────────────────────────────────
     if not industryBases:
         return send_response(
             status="fail",
@@ -409,20 +501,23 @@ def create_quotation():
             status_code=400,
             http_status=400
         )
-        
+
+    # ── paymentInformation ─────────────────────────────────────────────────────
     if not payment_info or not isinstance(payment_info, dict):
         return send_response(
             status="error",
             message="paymentInformation is required and must be an object",
-            status_code=400
+            status_code=400,
+            http_status=400
         )
+
     payment_terms = payment_info.get("paymentTerms")
     payment_method = payment_info.get("paymentMethod")
     bank_name = payment_info.get("bankName")
     account_number = payment_info.get("accountNumber")
     routing_number = payment_info.get("routingNumber")
     swift_code = payment_info.get("swiftCode")
-    
+
     PAYMENT_METHOD_LIST = ["01", "02", "03", "04", "05", "06", "07", "08"]
 
     if not payment_method:
@@ -440,7 +535,26 @@ def create_quotation():
             status_code=400,
             http_status=400
         )
-    
+
+    required_payment_fields = {
+        "paymentTerms": payment_terms,
+        "paymentMethod": payment_method,
+        "bankName": bank_name,
+        "accountNumber": account_number,
+        "routingNumber": routing_number,
+        "swiftCode": swift_code,
+    }
+
+    missing_fields = [key for key, value in required_payment_fields.items() if not value]
+    if missing_fields:
+        return send_response(
+            status="error",
+            message=f"Missing paymentInformation fields: {', '.join(missing_fields)}",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── terms ──────────────────────────────────────────────────────────────────
     terms = data.get("terms") or {}
     selling = terms.get("selling") or {}
 
@@ -449,17 +563,18 @@ def create_quotation():
     cancellation = (selling.get("cancellation") or "").strip()
     warranty = (selling.get("warranty") or "").strip()
     liability = (selling.get("liability") or "").strip()
+
     payment_terms_data = selling.get("payment") or {}
     dueDates = payment_terms_data.get("dueDates", "")
     lateCharges = payment_terms_data.get("lateCharges", "")
     tax = payment_terms_data.get("taxes", "")
     notes = payment_terms_data.get("notes", "")
     phases = payment_terms_data.get("phases", [])
-    
+
+    # ── validUntil ─────────────────────────────────────────────────────────────
     today_date = getdate(today())
-    
-    due_date_str = data.get("validUntil")
-    if not due_date_str:
+
+    if not validUntil:
         return send_response(
             status="fail",
             message="validUntil is required",
@@ -468,7 +583,7 @@ def create_quotation():
             http_status=400
         )
 
-    due_date = getdate(due_date_str)
+    due_date = getdate(validUntil)
     if due_date < today_date:
         return send_response(
             status="fail",
@@ -478,27 +593,7 @@ def create_quotation():
             http_status=400
         )
 
-    required_fields = {
-        "paymentTerms": payment_terms,
-        "paymentMethod": payment_method,
-        "bankName": bank_name,
-        "accountNumber": account_number,
-        "routingNumber": routing_number,
-        "swiftCode": swift_code,
-    }
-
-    missing_fields = [key for key, value in required_fields.items() if not value]
-
-    if missing_fields:
-        return send_response(
-            status="error",
-            message=f"Missing paymentInformation fields: {', '.join(missing_fields)}",
-            status_code=400
-        )
-
-            
-    allowedInvoiceType = ZRA_INSTANCE.getTaxCategory()
-    
+    # ── customer ───────────────────────────────────────────────────────────────
     if not customer_id:
         return send_response(
             status="fail",
@@ -506,8 +601,8 @@ def create_quotation():
             status_code=400,
             http_status=400
         )
-    
 
+    # ── invoiceType ────────────────────────────────────────────────────────────
     if not invoiceType:
         return send_response(
             status="fail",
@@ -516,109 +611,71 @@ def create_quotation():
             http_status=400
         )
 
+    allowedInvoiceType = ZRA_INSTANCE.getTaxCategory()
     if invoiceType not in allowedInvoiceType:
         return send_response(
             status="fail",
-            message=f"Invalid custom_invoice_type. Allowed values are: {', '.join(allowedInvoiceType)}",
+            message=f"Invalid invoiceType. Allowed values are: {', '.join(allowedInvoiceType)}",
             status_code=400,
             http_status=400
         )
 
+    # ── invoiceStatus ──────────────────────────────────────────────────────────
     if not invoiceStatus:
-        send_response(
+        return send_response(
             status="fail",
-            message="Invoice status is required(invoiceStatus)",
+            message="Invoice status is required (invoiceStatus)",
             status_code=400,
             http_status=400
         )
-        return
-    allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
 
+    allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
     if invoiceStatus not in allowedInvoiceStatus:
-        send_response(
+        return send_response(
             status="fail",
             message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
             status_code=400,
             http_status=400
         )
-        return
 
+    # ── currency & exchange rate ───────────────────────────────────────────────
+    # FIX: use = (assignment), not == (comparison)
+    # FIX: default currency comes from ERPNext Global Defaults, not hardcoded ZMW
     if not currencyCd:
-        currencyCd == "ZMW"
-        exchangeRt == 1
+        currencyCd = frappe.db.get_single_value("Global Defaults", "default_currency") or "USD"
+        exchangeRt = 1.0
 
-    allowedCurrencies = ["ZMW", "USD", "ZRA", "GBP", "CNY", "EUR"]
+    # FIX: dynamically load all enabled currencies from ERPNext — works for any country
+    allowedCurrencies = frappe.get_all("Currency", filters={"enabled": 1}, pluck="name")
 
     if currencyCd not in allowedCurrencies:
-        send_response(
+        return send_response(
             status="fail",
-            message=f"Invalid currency. Allowed currencies are: {', '.join(allowedCurrencies)}",
+            message=f"Invalid currency '{currencyCd}'. Please use a valid ISO 4217 currency code.",
             status_code=400,
             http_status=400
         )
-        return
 
     if not exchangeRt:
-        send_response(
+        return send_response(
             status="fail",
-            message="Exchange rate must not be null",
+            message="Exchange rate is required and must not be null",
             status_code=400,
             http_status=400
         )
-        
-        return
 
+    # ── parse JSON payload for items ───────────────────────────────────────────
     try:
         payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
     except Exception as e:
         return send_response(
             status="fail",
             message=f"Invalid JSON payload: {str(e)}",
-            status_code=400
+            status_code=400,
+            http_status=400
         )
-    items = payload.get("items", [])
-    for i in items:
-        vatCd = i.get("vatCode")
-        VAT_LIST = ["A", "C1", "C2"]
 
-        if vatCd not in VAT_LIST:
-            send_response(
-                status="fail",
-                message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
-                status_code=400,
-                http_status=400
-            )
-            return
-        
-        if vatCd == "C2":
-            if not lpoNumber:
-                send_response(
-                    status="fail",
-                    message="Local Purchase Order number (LPO) is required for transactions with VatCd 'C2' and cannot be null.",
-                    status_code=400,
-                    http_status=400
-                )
-                return
-            
-        if vatCd == "C1":
-            if not destnCountryCd:
-                send_response(
-                    status="fail",
-                    message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions. ",
-                    status_code=400,
-                    http_status=400
-                )
-                return
-            
-        if vatCd == "A":
-            if lpoNumber or destnCountryCd:
-                return send_response(
-                    status="fail",
-                    message="For VatCd 'A', lpoNumber and destnCountryCd must NOT be provided.",
-                    status_code=400,
-                    http_status=400
-                )
-        
+    items = payload.get("items", [])
 
     if not items or not isinstance(items, list):
         return send_response(
@@ -628,21 +685,80 @@ def create_quotation():
             http_status=400
         )
 
+    # ── VAT / tax code validation ──────────────────────────────────────────────
+    # FIX: ZRA VAT rules (C1, C2, A) ONLY apply to ZMW currency.
+    #      For all other currencies, vatCode is completely optional.
+    for i in items:
+        vatCd = i.get("vatCode")
+
+        if currencyCd == "ZMW":
+            # ZMW: vatCode is REQUIRED and must follow ZRA rules
+            ZMW_VAT_LIST = ["A", "C1", "C2"]
+
+            if not vatCd:
+                return send_response(
+                    status="fail",
+                    message="'vatCode' is required for ZMW transactions.",
+                    status_code=400,
+                    http_status=400
+                )
+
+            if vatCd not in ZMW_VAT_LIST:
+                return send_response(
+                    status="fail",
+                    message=f"'vatCode' must be a valid ZRA VAT category: {', '.join(ZMW_VAT_LIST)}. Rejected value: [{vatCd}]",
+                    status_code=400,
+                    http_status=400
+                )
+
+            if vatCd == "C2":
+                if not lpoNumber:
+                    return send_response(
+                        status="fail",
+                        message="Local Purchase Order number (lpoNumber) is required for ZMW transactions with vatCode 'C2'.",
+                        status_code=400,
+                        http_status=400
+                    )
+
+            if vatCd == "C1":
+                if not destnCountryCd:
+                    return send_response(
+                        status="fail",
+                        message="Destination country (destnCountryCd) is required for ZMW transactions with vatCode 'C1'.",
+                        status_code=400,
+                        http_status=400
+                    )
+
+            if vatCd == "A":
+                if lpoNumber or destnCountryCd:
+                    return send_response(
+                        status="fail",
+                        message="For ZMW vatCode 'A', lpoNumber and destnCountryCd must NOT be provided.",
+                        status_code=400,
+                        http_status=400
+                    )
+
+        else:
+            # Non-ZMW: vatCode is OPTIONAL — no ZRA-specific rules enforced
+            # If provided, we simply store it; if absent, that is also fine
+            pass
+
+    # ── fetch customer ─────────────────────────────────────────────────────────
     customer_data = get_customer_details(customer_id)
     if not customer_data or customer_data.get("status") == "fail":
         return customer_data
 
-
     quotation_no = generate_Quotation_number()
 
+    # ── create quotation ───────────────────────────────────────────────────────
     try:
         quotation = frappe.get_doc({
             "doctype": "Quotation",
             "name": quotation_no,
             "customer": customer_data.get("name"),
             "customer_name": customer_data.get("customer_name"),
-            "currency": payload.get("currencyCode", "ZMW"),
-            "conversion_rate": float(payload.get("exchangeRt", 1)),
+            "currency": currencyCd,
+            "conversion_rate": exchangeRt,
             "valid_till": validUntil,
             "custom_destination_country_code": destnCountryCd,
             "custom_lpo_number": lpoNumber,
@@ -650,14 +766,14 @@ def create_quotation():
             "custom_billing_address_line_1": billingAddressLine1,
             "custom_billing_address_line_2": billingAddressLine2,
             "custom_billing_address_postal_code": billingAddressPostalCode,
-            "custom_billing_address_city":  billingAddressCity,
+            "custom_billing_address_city": billingAddressCity,
             "custom_billing_address_state": billingAddressState,
             "custom_billing_address_country": billingAddressCountry,
             "custom_shipping_address_line_1": shippingAddressLine1,
             "custom_shipping_address_line_2": shippingAddressLine2,
-            "custom_shipping_address_postal_code": shippingAddressPostalCode, 
-            "custom_shipping_address_city": shippingAddressCity, 
-            "custom_shipping_address_state": shippingAddressState, 
+            "custom_shipping_address_postal_code": shippingAddressPostalCode,
+            "custom_shipping_address_city": shippingAddressCity,
+            "custom_shipping_address_state": shippingAddressState,
             "custom_shipping_address_country": shippingAddressCountry,
             "custom_payment_method": payment_method,
             "custom_bank_name": bank_name,
@@ -678,9 +794,9 @@ def create_quotation():
             qty = float(item.get("quantity", 1))
             rate = float(item.get("price", 0))
             discount = float(item.get("discount", 0))
-            tax = float(item.get("tax", 0))
+            item_tax = float(item.get("tax", 0))
 
-            item_total = (qty * rate) - discount + tax
+            item_total = (qty * rate) - discount + item_tax
 
             quotation.append("items", {
                 "item_code": item.get("itemCode"),
@@ -690,7 +806,9 @@ def create_quotation():
                 "rate": rate,
                 "discount_amount": discount,
                 "amount": item_total,
-                "custom_vat_code": item.get("vatCode")
+                # FIX: vatCode stored for all currencies but only validated for ZMW
+                # defaults to empty string if not provided (safe for non-ZMW)
+                "custom_vat_code": item.get("vatCode") or ""
             })
 
             total_qty += qty
@@ -701,7 +819,8 @@ def create_quotation():
 
         quotation.insert(ignore_permissions=True)
         frappe.db.commit()
-        
+
+        # ── selling terms ──────────────────────────────────────────────────────
         terms_doc = frappe.get_doc({
             "doctype": "Sale Invoice Selling Terms",
             "invoiceno": quotation_no,
@@ -713,26 +832,28 @@ def create_quotation():
         })
         terms_doc.insert()
         frappe.db.commit()
-        
+
+        # ── payment terms ──────────────────────────────────────────────────────
         if payment_terms_data:
             payment_doc = frappe.get_doc({
                 "doctype": "Sale Invoice Selling Payment",
                 "invoiceno": quotation_no,
-                "duedates": dueDates,     
-                "latecharges": lateCharges, 
+                "duedates": dueDates,
+                "latecharges": lateCharges,
                 "taxes": tax,
                 "notes": notes
             })
             payment_doc.insert()
             frappe.db.commit()
+
+        # ── payment phases ─────────────────────────────────────────────────────
         if phases:
             for phase in phases:
-                
-                random_id = "{:06d}".format(random.randint(0, 999999)) 
+                random_id = "{:06d}".format(random.randint(0, 999999))
                 phase_doc = frappe.get_doc({
                     "doctype": "Sale Invoice Selling Payment Phases",
                     "id": random_id,
-                    "invoiceno": quotation_no, 
+                    "invoiceno": quotation_no,
                     "phase_name": phase.get("name"),
                     "percentage": phase.get("percentage", ""),
                     "condition": phase.get("condition", "")
@@ -740,14 +861,24 @@ def create_quotation():
                 phase_doc.insert()
                 frappe.db.commit()
 
-        return send_response(status="success", message="Quotation created successfully", status_code=200)
+        return send_response(
+            status="success",
+            message="Quotation created successfully",
+            status_code=200,
+            http_status=200
+        )
 
     except Exception as e:
         frappe.db.rollback()
         frappe.log_error(frappe.get_traceback(), "Create Quotation API Error")
-        return send_response("fail", str(e), 500)
+        return send_response(
+            status="fail",
+            message=str(e),
+            status_code=500,
+            http_status=500
+        )
 
-        
+
 @frappe.whitelist(allow_guest=False)
 def update_quotation():
     data = frappe.local.form_dict
@@ -779,7 +910,6 @@ def update_quotation():
             http_status=400,
         )
 
-
     optional_fields = [
         "customer",
         "transaction_date",
@@ -798,8 +928,9 @@ def update_quotation():
     for field in optional_fields:
         if field in data:
             quotation.set(field, data.get(field))
+
     if "items" in data:
-        quotation.items = []   
+        quotation.items = []
         for item in data.get("items"):
             quotation.append("items", {
                 "item_code": item.get("item_code"),
@@ -847,7 +978,6 @@ def update_quotation_status():
             http_status=400,
         )
 
-
     allowed_status = ZRA_INSTANCE.AllowedInvoiceStatuses()
 
     if new_status not in allowed_status:
@@ -883,7 +1013,6 @@ def update_quotation_status():
             WHERE `name` = %s
         """, (new_status, quotation_id))
 
-        frappe.db.commit()
         frappe.db.commit()
 
         return send_response(

@@ -105,7 +105,7 @@ def validate_customer_type(customer_type):
     return True
 
 def validate_currency(currency):
-    valid_currencies = ["ZMW", "USD", "EUR", "GBP"]
+    valid_currencies = ["ZMW", "USD", "EUR", "GBP","INR"]
     if currency not in valid_currencies:
         send_response(
             status="fail",
@@ -119,29 +119,29 @@ def validate_currency(currency):
 
 
 def generate_customer_id():
-    print("Fetching existing customer IDs from the database...")
+    frappe.logger().debug("Fetching existing customer IDs from the database...")
     last_ids = frappe.db.sql("""
         SELECT custom_id FROM `tabCustomer`
         WHERE custom_id LIKE 'CUST-%'
     """, as_dict=True)
     
-    print(f"Found {len(last_ids)} existing customer IDs.")
+    frappe.logger().debug(f"Found {len(last_ids)} existing customer IDs.")
 
     max_num = 0
     for row in last_ids:
-        print(f"Processing row: {row}")
+        frappe.logger().debug(f"Processing row: {row}")
         try:
             num = int(row["custom_id"].split("-")[-1])
-            print(f"Extracted numeric part: {num}")
+            frappe.logger().debug(f"Extracted numeric part: {num}")
             if num > max_num:
-                print(f"Updating max_num: {max_num} -> {num}")
+                frappe.logger().debug(f"Updating max_num: {max_num} -> {num}")
                 max_num = num
         except (ValueError, IndexError) as e:
-            print(f"Skipping row due to error: {e}")
+            frappe.logger().debug(f"Skipping row due to error: {e}")
             continue  
 
     new_id = f"CUST-{max_num + 1}"
-    print(f"Generated new customer ID: {new_id}")
+    frappe.logger().debug(f"Generated new customer ID: {new_id}")
     return new_id
 
 
@@ -224,19 +224,12 @@ def create_customer_api():
     phases = payment_terms_data.get("phases", [])
 
     
-    print("TERMS:", terms)
-    print("GENERAL:", general)
-    print("DELIVERY:", delivery)
-    print("CANCELLATION:", cancellation)
-    print("WARRANTY:", warranty)
-    print("LIABILITY:", liability)
-    
-    send_response(
-        status="fail",
-        message="Doing validate. please wait",
-        status_code=400,
-        http_status=400
-    )
+    frappe.logger().debug(f"TERMS: {terms}")
+    frappe.logger().debug(f"GENERAL: {general}")
+    frappe.logger().debug(f"DELIVERY: {delivery}")
+    frappe.logger().debug(f"CANCELLATION: {cancellation}")
+    frappe.logger().debug(f"WARRANTY: {warranty}")
+    frappe.logger().debug(f"LIABILITY: {liability}")
     
     if not mobile_no.isdigit() or len(mobile_no) != 10:
         send_response(status="fail", message="Mobile number must be 10 digits only", status_code=400, http_status=400)
@@ -321,35 +314,41 @@ def create_customer_api():
         return 
     
     try:
-        payload = {
-            "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
-            "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
-            "custNo": mobile_no,
-            "custTpin": tpin,
-            "custNm": customer_name,
-            "useYn": "Y",
-            "regrNm": frappe.session.user,
-            "regrId": frappe.session.user,
-            "modrNm": frappe.session.user,
-            "modrId": frappe.session.user,
-        }
-        print(json.dumps(payload, indent=4))
+        # Try to sync with ZRA, but don't fail if it's unavailable
+        zra_sync_success = False
+        zra_sync_message = ""
+        
+        try:
+            payload = {
+                "tpin": ZRA_CLIENT_INSTANCE.get_tpin(),
+                "bhfId": ZRA_CLIENT_INSTANCE.get_branch_code(),
+                "custNo": mobile_no,
+                "custTpin": tpin,
+                "custNm": customer_name,
+                "useYn": "Y",
+                "regrNm": frappe.session.user,
+                "regrId": frappe.session.user,
+                "modrNm": frappe.session.user,
+                "modrId": frappe.session.user,
+            }
+            frappe.logger().debug(f"ZRA Payload: {json.dumps(payload, indent=4)}")
 
-        result = ZRA_CLIENT_INSTANCE.create_customer(payload)
+            result = ZRA_CLIENT_INSTANCE.create_customer(payload)
 
-        print("Printing result ui", result)
-        data = result.json()  
-        print("Printing json results",data)
+            frappe.logger().debug(f"ZRA API result: {result}")
+            data = result.json()  
+            frappe.logger().debug(f"ZRA API json results: {data}")
 
-        if data.get("resultCd") != "000":
-            send_response(
-                status="fail",
-                message=data.get("resultMsg", "Customer Sync Failed"),
-                status_code=400,
-                data=None,
-                http_status=400
-            )
-            return
+            if data.get("resultCd") == "000":
+                zra_sync_success = True
+                zra_sync_message = "Customer synced with ZRA successfully"
+            else:
+                zra_sync_message = f"ZRA sync failed: {data.get('resultMsg', 'Unknown error')}"
+                frappe.logger().warning(zra_sync_message)
+        except Exception as zra_error:
+            zra_sync_message = f"ZRA API unavailable: {str(zra_error)}"
+            frappe.logger().warning(f"ZRA sync failed but continuing: {zra_sync_message}")
+            # Continue with customer creation even if ZRA fails
 
         customer = frappe.get_doc({
             "doctype": "Customer",
@@ -380,7 +379,6 @@ def create_customer_api():
         })
 
         customer.insert()
-        customer = frappe.form_dict.get("customer")
 
         terms_doc = frappe.get_doc({
             "doctype": "Customer Terms",
@@ -449,11 +447,17 @@ def create_customer_api():
             "shippingCity": safe_attr(customer, "custom_shipping_address_city"),
             "shippingState": safe_attr(customer, "custom_shipping_address_state"),
             "shippingCountry": safe_attr(customer, "custom_shipping_address_country"),
+            "zra_sync_status": "success" if zra_sync_success else "failed",
+            "zra_sync_message": zra_sync_message
         }
+
+        message = "Customer created successfully."
+        if not zra_sync_success:
+            message += f" (Warning: {zra_sync_message})"
 
         send_response(
             status="success",
-            message="Customer created successfully.",
+            message=message,
             data = data,
             status_code=201,
             http_status=200
@@ -461,7 +465,7 @@ def create_customer_api():
         return
 
     except Exception as e:
-        send_response(status="error", message=f"API call failed: {str(e)}", data=None, http_status=500)
+        send_response(status="error", message=f"Failed to create customer: {str(e)}", data=None, http_status=500)
         return
     
     
@@ -495,9 +499,15 @@ def get_all_customers_api():
 
         start = (page - 1) * page_size
         end = start + page_size
+        
+        tax_category_filter = args.get("taxCategory") 
+        filters = {}
+        if tax_category_filter:
+            filters["tax_category"] = tax_category_filter
 
         all_customers = frappe.get_all(
             "Customer",
+            filters=filters,
             fields=[
                 "custom_id", 
                 "customer_name", 
@@ -517,7 +527,7 @@ def get_all_customers_api():
 
         total_customers = len(all_customers)
         if not all_customers:
-            send_response(status="success", message="No customers found.", status_code=200, data=[], http_status=200)
+            send_response(status="success", message="No customers found.", status_code=404, data=[], http_status=404)
             return
 
         customers = all_customers[start:end]
@@ -604,7 +614,7 @@ def get_customer_by_id(custom_id):
             )
 
             phases_list = []
-            print("Phase list :", phases_docs)
+            frappe.logger().debug(f"Phase list: {phases_docs}")
             for p in phases_docs:
                 phases_list.append({
                     "id": p.get("id"),
@@ -928,4 +938,3 @@ def delete_customer_by_id():
             http_status=500
         )
         return
-

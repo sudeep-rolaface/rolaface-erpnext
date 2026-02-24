@@ -1,3 +1,4 @@
+from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 from erpnext.zra_client.generic_api import send_response, send_response_list, send_response_list_sale
 from erpnext.zra_client.main import ZRAClient
@@ -15,6 +16,7 @@ CREDIT_NOTE_SALE_INSTANCE = CreditNoteSale()
 DEBIT_NOTE_INSTANCE = DebitNoteSale()
 NORMAL_SALE_INSTANCE = NormaSale()
 ZRA_CLIENT_INSTANCE = ZRAClient()
+CUSTOM_FRAPPE_MAIN_INSTANCE = CustomFrappeClient()
 
 def ensure_account(account_name, account_type="Expense", company="Izyane"):
     """Create account if it doesn't exist"""
@@ -230,9 +232,6 @@ def get_sales_item_codes(sales_invoice_no=None, item_code=None):
         )
 
 
-
-
-
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_sales_invoice():
     data = frappe.form_dict
@@ -377,48 +376,36 @@ def create_sales_invoice():
         )
 
     if not invoiceStatus:
-        send_response(
+        return send_response(
             status="fail",
             message="Invoice status is required(invoiceStatus)",
             status_code=400,
             http_status=400
         )
-        return
+
     allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
 
     if invoiceStatus not in allowedInvoiceStatus:
-        send_response(
+        return send_response(
             status="fail",
             message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
             status_code=400,
             http_status=400
         )
-        return
 
+    # ✅ FIX: Use proper assignment (=) instead of comparison (==)
+    # and remove the currency restriction — accept any currency
     if not currencyCd:
-        currencyCd == "ZMW"
-        exchangeRt == 1
-
-    allowedCurrencies = ["ZMW", "USD", "ZRA", "GBP", "CNY", "EUR"]
-
-    if currencyCd not in allowedCurrencies:
-        send_response(
-            status="fail",
-            message=f"Invalid currency. Allowed currencies are: {', '.join(allowedCurrencies)}",
-            status_code=400,
-            http_status=400
-        )
-        return
+        currencyCd = "ZMW"
+        exchangeRt = 1
 
     if not exchangeRt:
-        send_response(
+        return send_response(
             status="fail",
             message="Exchange rate must not be null",
             status_code=400,
             http_status=400
         )
-        
-        return
 
     try:
         payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
@@ -457,25 +444,57 @@ def create_sales_invoice():
         description = item.get("description")
         validatedDiscount = discount if discount else 0
         if not description:
-            send_response(
+            return send_response(
                 status="fail",
                 message="Item description is required",
                 status_code=400,
                 http_status=400
             )
-            return
         
-        VAT_LIST = ["A", "C1", "C2"]
+        # ZRA-specific validations are only required for ZMW currency
+        is_zmw = (currencyCd or "").upper() == "ZMW"
 
-        if vatCd not in VAT_LIST:
-            send_response(
-                status="fail",
-                message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
-                status_code=400,
-                http_status=400
-            )
-            return
-        
+        if is_zmw:
+            VAT_LIST = ["A", "C1", "C2"]
+
+            if not vatCd or vatCd not in VAT_LIST:
+                return send_response(
+                    status="fail",
+                    message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
+                    status_code=400,
+                    http_status=400
+                )
+
+            if vatCd == "C2":
+                if not lpoNumber:
+                    return send_response(
+                        status="fail",
+                        message="Local Purchase Order number (LPO) is required for transactions with VatCd 'C2' and cannot be null.",
+                        status_code=400,
+                        http_status=400
+                    )
+            if vatCd == "C1":
+                if not destnCountryCd:
+                    return send_response(
+                        status="fail",
+                        message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions.",
+                        status_code=400,
+                        http_status=400
+                    )
+            if vatCd == "A":
+                if lpoNumber or destnCountryCd:
+                    return send_response(
+                        status="fail",
+                        message="For VatCd 'A', lpoNumber and destnCountryCd must NOT be provided.",
+                        status_code=400,
+                        http_status=400
+                    )
+        else:
+            # For non-ZMW currencies, ZRA codes are not required — default to empty
+            vatCd = vatCd or ""
+            iplCd = iplCd or ""
+            tlCd = tlCd or ""
+
         checkStockResponse, checkStockStatusCode = (
             ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
         )
@@ -488,44 +507,6 @@ def create_sales_invoice():
                 status_code=checkStockStatusCode,
                 http_status=checkStockStatusCode
             )
-            
-        ALLOWED_VAT_CODES = ["A", "C1", "C2"]
-        if vatCd not in ALLOWED_VAT_CODES:
-            return send_response(
-                status="fail",
-                message=f"Invalid VatCd '{vatCd}'. Allowed values are A, C1, C2.",
-                status_code=400,
-                http_status=400
-            )
-            
-
-        if vatCd == "C2":
-            if not lpoNumber:
-                send_response(
-                    status="fail",
-                    message="Local Purchase Order number (LPO) is required for transactions with VatCd 'C2' and cannot be null.",
-                    status_code=400,
-                    http_status=400
-                )
-                return
-        if vatCd == "C1":
-            if not destnCountryCd:
-                send_response(
-                    status="fail",
-                    message="Destination country (destnCountryCd) is required for VatCd 'C1' transactions. ",
-                    status_code=400,
-                    http_status=400
-                )
-                return
-            
-        if vatCd == "A":
-            if lpoNumber or destnCountryCd:
-                return send_response(
-                    status="fail",
-                    message="For VatCd 'A', lpoNumber and destnCountryCd must NOT be provided.",
-                    status_code=400,
-                    http_status=400
-                )
 
         if not item_code:
             return send_response(
@@ -555,16 +536,15 @@ def create_sales_invoice():
         invoice_items.append({
             "item_code": item_code,
             "item_name": item_details.get("itemName"),
-            "warehouse": "Finished Goods - Izyane",
+            "warehouse": "Finished Goods - RI",
             "qty": qty,
             "rate": rate,
             "discount_amount": validatedDiscount,
             "custom_vatcd": vatCd,
             "custom_iplcd": iplCd,
-            "custom_tlcd":tlCd,
+            "custom_tlcd": tlCd,
             "description": description,
-            "expense_account": "Stock Difference - Izyane - I",
-        
+            "expense_account": CUSTOM_FRAPPE_MAIN_INSTANCE.getDefaultExpenseAccount(frappe.defaults.get_global_default("company")),
         })
     
         sale_payload_items.append({
@@ -580,7 +560,6 @@ def create_sales_invoice():
             "IplCd": iplCd,
             "TlCd": tlCd,
             "discountRate": validatedDiscount
-            
         })
 
     new_invoice_name = SalesInvoice.get_next_invoice_name()
@@ -688,7 +667,6 @@ def create_sales_invoice():
             frappe.db.commit()
         if phases:
             for phase in phases:
-                
                 random_id = "{:06d}".format(random.randint(0, 999999)) 
                 phase_doc = frappe.get_doc({
                     "doctype": "Sale Invoice Selling Payment Phases",
@@ -728,8 +706,6 @@ def create_sales_invoice():
             message=f"Unexpected Error: {str(e)}",
             status_code=500
         )
-
-
 
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
@@ -867,7 +843,7 @@ def get_sales_invoice():
 
         total_pages = (total_invoices + page_size - 1) // page_size
 
-        pagination ={
+        pagination = {
             "page": page,
             "page_size": page_size,
             "total": total_invoices,
@@ -958,7 +934,7 @@ def get_sales_invoice_by_id():
             })
         def get_address(field_prefix):
             return {
-                "line1":getattr(parent_doc, "custom_billing_address_line_1", ""),
+                "line1": getattr(parent_doc, "custom_billing_address_line_1", ""),
                 "line2": getattr(parent_doc, "custom_billing_address_line_2", ""),
                 "postalCode": getattr(doc, f"{field_prefix}_postal_code", None) or getattr(parent_doc, f"{field_prefix}_postal_code", ""),
                 "city": getattr(doc, f"{field_prefix}_city", None) or getattr(parent_doc, f"{field_prefix}_city", ""),
@@ -1030,7 +1006,6 @@ def get_sales_invoice_by_id():
             status_code=500,
             http_status=500
         )
-
 
 
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
@@ -1109,16 +1084,14 @@ def create_credit_note_from_sales_invoice():
             http_status=400
         )
 
-
     if not invcAdjustReason:
         return send_response(
             status="fail",
             message="Invoice adjustment reason (invcAdjustReason) is required.",
             status_code=400,
-            http_status= 400
+            http_status=400
         )
 
-    
     if not CreditNoteReasonCode:
         return send_response(
             status="fail",
@@ -1129,14 +1102,14 @@ def create_credit_note_from_sales_invoice():
     ALLOWED_CREDIT_REASON_CODE = ["01", "02", "03", "04", "05", "06", "07"]
     if CreditNoteReasonCode not in ALLOWED_CREDIT_REASON_CODE:
         return send_response(
-        status="fail",
-        message=(
-            f"Invalid Credit Note Reason Code '{CreditNoteReasonCode}'. "
-            f"Allowed values are: {', '.join(ALLOWED_CREDIT_REASON_CODE)}."
-        ),
-        status_code=400,
-        http_status=400
-    )
+            status="fail",
+            message=(
+                f"Invalid Credit Note Reason Code '{CreditNoteReasonCode}'. "
+                f"Allowed values are: {', '.join(ALLOWED_CREDIT_REASON_CODE)}."
+            ),
+            status_code=400,
+            http_status=400
+        )
 
     if not original_invoice_no:
         return send_response(
@@ -1380,16 +1353,14 @@ def create_debit_note_from_invoice():
             http_status=400
         )
 
-
     if not invcAdjustReason:
         return send_response(
             status="fail",
             message="Invoice adjustment reason (invcAdjustReason) is required.",
             status_code=400,
-            http_status= 400
+            http_status=400
         )
 
-    
     if not DebitNoteReasonCode:
         return send_response(
             status="fail",
@@ -1400,14 +1371,14 @@ def create_debit_note_from_invoice():
     ALLOWED_DEBIT_REASON_CODE = ["01", "02", "03", "04"]
     if DebitNoteReasonCode not in ALLOWED_DEBIT_REASON_CODE:
         return send_response(
-        status="fail",
-        message=(
-            f"Invalid Credit Note Reason Code '{DebitNoteReasonCode}'. "
-            f"Allowed values are: {', '.join(ALLOWED_DEBIT_REASON_CODE)}."
-        ),
-        status_code=400,
-        http_status=400
-    )
+            status="fail",
+            message=(
+                f"Invalid Credit Note Reason Code '{DebitNoteReasonCode}'. "
+                f"Allowed values are: {', '.join(ALLOWED_DEBIT_REASON_CODE)}."
+            ),
+            status_code=400,
+            http_status=400
+        )
     req_items = payload.get("items", [])
 
     if not sales_invoice_no:
@@ -1596,7 +1567,6 @@ def create_debit_note_from_invoice():
         return send_response(status="fail", message=f"Unexpected Error: {str(e)}", status_code=500)
 
 
-
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_invoice_status():
     try:
@@ -1670,7 +1640,6 @@ def update_invoice_status():
             message=f"Unexpected Error: {str(e)}",
             status_code=500
         )
-
 
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
@@ -1805,7 +1774,6 @@ def get_debit_notes():
             "Sales Invoice",
             filters={
                 "is_debit_note": 1,
-                
             },
             fields=[
                 "name",
@@ -1830,7 +1798,6 @@ def get_debit_notes():
             "Sales Invoice",
             {
                 "is_debit_note": 1,
-                
             }
         )
 

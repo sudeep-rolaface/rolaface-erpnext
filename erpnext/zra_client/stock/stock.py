@@ -5,6 +5,9 @@ from frappe.utils.data import flt
 from datetime import datetime
 import frappe
 
+from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
+CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
+
 ZRA_CLIENT = ZRAClient()
 
 def get_item_details(item_code):
@@ -72,13 +75,17 @@ def create_item_stock_api():
         items_data = data.get("items", [])
 
         if not warehouse:
-            return send_response("fail", "Warehouse is required", 400, 400)
+            warehouse = "Finished Goods - RI"
+	    #return send_response("fail", "Warehouse is required", 400, 400)
 
         if not frappe.db.exists("Warehouse", warehouse):
             return send_response("fail", f"Warehouse '{warehouse}' does not exist", 404, 404)
 
         if not items_data:
             return send_response("fail", "No items provided", 400, 400)
+
+        # Read ZRA flag from site_config.json
+        enable_zra = frappe.conf.get("enable_zra_sync", False)
 
         today = datetime.today().strftime('%Y%m%d')
 
@@ -94,7 +101,6 @@ def create_item_stock_api():
             if not item_code or qty <= 0 or price <= 0:
                 return send_response("fail", f"Invalid data for item {i+1}", 400, 400)
 
-
             item_details = get_item_details(item_code)
             if not item_details:
                 return send_response(
@@ -103,7 +109,6 @@ def create_item_stock_api():
                     status_code=404,
                     http_status=404
                 )
-
 
             splyAmt = round(price * qty, 4)
             taxblAmt = round(splyAmt / 1.16, 4)
@@ -142,50 +147,62 @@ def create_item_stock_api():
                 "custom_total_amount": totItemAmt
             })
 
-        PAYLOAD = {
-            "tpin": ZRA_CLIENT.get_tpin(),
-            "bhfId": ZRA_CLIENT.get_branch_code(),
-            "sarNo": 1,
-            "orgSarNo": 0,
-            "regTyCd": "M",
-            "sarTyCd": "04",
-            "ocrnDt": today,
-            "totItemCnt": len(itemList),
-            "totTaxblAmt": round(totTaxblAmt, 4),
-            "totTaxAmt": round(totTaxAmt, 4),
-            "totAmt": round(totAmt, 4),
-            "regrId": frappe.session.user,
-            "regrNm": frappe.session.user,
-            "modrNm": frappe.session.user,
-            "modrId": frappe.session.user,
-            "itemList": itemList
-        }
+        # Default values used when ZRA is disabled
+        org_sar_no = 0
+        reg_ty_cd = "M"
+        sar_ty_cd = "04"
 
-        print(json.dumps(PAYLOAD, indent=4))
+        # ── ZRA Sync (only when enable_zra_sync = true in site_config.json) ──
+        if enable_zra:
+            PAYLOAD = {
+                "tpin": ZRA_CLIENT.get_tpin(),
+                "bhfId": ZRA_CLIENT.get_branch_code(),
+                "sarNo": 1,
+                "orgSarNo": 0,
+                "regTyCd": reg_ty_cd,
+                "sarTyCd": sar_ty_cd,
+                "ocrnDt": today,
+                "totItemCnt": len(itemList),
+                "totTaxblAmt": round(totTaxblAmt, 4),
+                "totTaxAmt": round(totTaxAmt, 4),
+                "totAmt": round(totAmt, 4),
+                "regrId": frappe.session.user,
+                "regrNm": frappe.session.user,
+                "modrNm": frappe.session.user,
+                "modrId": frappe.session.user,
+                "itemList": itemList
+            }
 
+            print(json.dumps(PAYLOAD, indent=4))
 
-        result = ZRA_CLIENT.create_item_stock_zra_client(PAYLOAD)
-        data_result = result.json()
-        print(data_result)
+            org_sar_no = 0
+            if frappe.conf.get("enable_zra_sync", False):
+                result = ZRA_CLIENT.create_item_stock_zra_client(PAYLOAD)
+                data_result = result.json()
+                print(data_result)
+                if data_result.get("resultCd") != "000":
+                    return send_response(
+                        status="fail",
+                        message=data_result.get("resultMsg", "ZRA Stock Sync Failed"),
+                        status_code=400,
+                        data=None,
+                        http_status=400
+                    )
 
-        if data_result.get("resultCd") != "000":
-            return send_response(
-                status="fail",
-                message=data_result.get("resultMsg", "Customer Sync Failed"),
-                status_code=400,
-                data=None,
-                http_status=400
-            )
-        company = "Izyane"
+                org_sar_no = data_result.get("orgSarNo", 0)
+
+        # ── Create Stock Entry (always runs, ZRA or not) ───────────────────────
+        company = frappe.defaults.get_global_default("company")
+
         stock_entry = frappe.get_doc({
             "doctype": "Stock Entry",
-            "company": company,  
+            "company": company,
             "stock_entry_type": "Material Receipt",
-            "custom_original_sar_no": data_result.get("orgSarNo", 0),
-            "custom_registration_type_code": PAYLOAD.get("regTyCd"),
-            "custom_sar_type_code": PAYLOAD.get("sarTyCd"),
+            "custom_original_sar_no": org_sar_no,
+            "custom_registration_type_code": reg_ty_cd,
+            "custom_sar_type_code": sar_ty_cd,
             "custom_total_taxable_amount": round(totTaxblAmt, 4),
-            "difference_account": "Stock Adjustment - " + company, 
+            "difference_account": "Stock Adjustment - " + company,
             "items": stock_items
         })
 
@@ -200,7 +217,6 @@ def create_item_stock_api():
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Create Item Stock API Error")
         return send_response("error", f"Failed to create stock: {str(e)}", 500, 500)
-
 
 
 @frappe.whitelist(allow_guest=False)
@@ -269,8 +285,6 @@ def get_all_stock_entries():
         )
 
 
-
-
 @frappe.whitelist(allow_guest=False)
 def get_stock_by_id(bin_id=None):
     if not bin_id:
@@ -310,7 +324,7 @@ def delete_stock_entry(stock_entry_id=None):
     try:
         se_doc = frappe.get_doc("Stock Entry", stock_entry_id)
 
-        if se_doc.docstatus == 1:  
+        if se_doc.docstatus == 1:
             se_doc.cancel()
         se_doc.delete()
         frappe.db.commit()

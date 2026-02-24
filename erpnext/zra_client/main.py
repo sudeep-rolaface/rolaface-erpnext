@@ -30,7 +30,7 @@ CURRENT_SITE = "erpnext.localhost"
 BRANCH_CODE = "000"
 TPIN = "2484778002"
 ORIGIN_SCD_ID = "SDC0010002709"
-COMPANY_NAME = "IZYANE INOVSOLUTIONS LIMITED"
+COMPANY_NAME = frappe.defaults.get_global_default("company")
 COMPANY_PHONE_NO = "+260 777 123456"
 COMPANY_EMAIL = "info@izyane.com"
 SET_USER = "Administrator"
@@ -38,8 +38,8 @@ SET_USER = "Administrator"
 class ZRAClient:
     def __init__(self):
         self.base_url = ZRA_LOCAL_BASE_URL
-        self.internal_base_url = INTERNAL_URL 
-        self.create_item_url  = f"{self.base_url}{ZRA_CREATE_ITEM}" 
+        self.internal_base_url = INTERNAL_URL
+        self.create_item_url  = f"{self.base_url}{ZRA_CREATE_ITEM}"
         self.update_url = f"{self.base_url}{ZRA_UPDATE_ITEM}"
         self.save_stock_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
         self.save_stock_master_url = f"{self.base_url}{ZRA_SAVE_STOCK_MASTER}"
@@ -57,14 +57,14 @@ class ZRAClient:
         self.company_phone_number = COMPANY_PHONE_NO
         self.company_email = COMPANY_EMAIL
         self.admin_user = SET_USER
-        
+
 
     def get_tpin(self):
         return self.tpin
-    
+
     def get_current_user(self):
         return self.admin_user
-    
+
     def get_current_site(self):
         return self.site_url
 
@@ -76,7 +76,7 @@ class ZRAClient:
 
     def get_company_phone_no(self):
         return self.company_phone_number
-    
+
     def get_company_email(self):
         return self.company_email
 
@@ -94,17 +94,17 @@ class ZRAClient:
         response = requests.post(url=self.save_stock_url, json=payload, timeout=300)
         response.raise_for_status()
         return response
-    
-    def create_item_zra_client(self, payload):    
+
+    def create_item_zra_client(self, payload):
         response = requests.post(url=self.create_item_url, json=payload, timeout=300)
-        response.raise_for_status() 
-        return response 
-    
+        response.raise_for_status()
+        return response
+
     def create_customer(self, payload):
         response = requests.post(self.create_customer_url, json=payload, timeout=300)
-        response.raise_for_status() 
+        response.raise_for_status()
         return response
-    
+
     def update_item_zra_client(self, payload):
         response = requests.post(self.update_url, json=payload, timeout=300)
         response.raise_for_status()
@@ -116,7 +116,7 @@ class ZRAClient:
         return response
 
     def update_stock_zra_client(self, payload):
-        response = requests.post(url= self.save_stock_url, json=payload, timeout=300)
+        response = requests.post(url=self.save_stock_url, json=payload, timeout=300)
         response.raise_for_status()
         return response.json()
 
@@ -124,18 +124,26 @@ class ZRAClient:
         response = requests.post(url=self.save_stock_master_url, json=payload, timeout=300)
         response.raise_for_status()
         return response.json()
-    
+
+    def create_purchase_invoice(self, payload):
+        print("************ call purchase *********")
+        response = requests.post(url=self.save_purchase_url, json=payload, timeout=300)
+        response.raise_for_status()
+        print("purchase response: ", response.json())
+        return response.json()
+
+
     def get_next_sales_invoice_name(self):
         from datetime import datetime
         year = datetime.now().year
         prefix = "ACC-SINV"
-        
+
         invoices = frappe.db.get_all(
             "Sales Invoice",
             filters={"name": ["like", f"{prefix}-{year}-%"]},
             fields=["name"]
         )
-    
+
         numbers = []
         for inv in invoices:
             try:
@@ -143,10 +151,10 @@ class ZRAClient:
                 numbers.append(number)
             except ValueError:
                 continue
-    
+
         next_number = max(numbers) + 1 if numbers else 1
         next_number_str = str(next_number).zfill(5)
-        
+
         return f"{prefix}-{year}-{next_number_str}"
 
 
@@ -168,13 +176,13 @@ class ZRAClient:
                 print(f"Exception in background stock update task: {e}")
 
         thread = threading.Thread(target=background_task)
-        thread.daemon = True  
+        thread.daemon = True
         thread.start()
-        
+
 
     def update_sales_rcptno_by_inv_no(self, sales_inv_no, rcptNo, site="erpnext.localhost"):
         def worker():
-            site_to_use = "erpnext.localhost" 
+            site_to_use = "erpnext.localhost"
 
             try:
                 frappe.init(site=site_to_use)
@@ -182,7 +190,7 @@ class ZRAClient:
                 frappe.set_user("Administrator")
 
                 print(f"Waiting 40 seconds before updating Sales Invoice '{sales_inv_no}'...")
-                time.sleep(40) 
+                time.sleep(40)
 
                 sales_list = frappe.get_all("Sales Invoice", filters={"name": sales_inv_no}, limit=1)
                 if not sales_list:
@@ -202,7 +210,7 @@ class ZRAClient:
                 frappe.destroy()
 
         threading.Thread(target=worker, daemon=False).start()
-        
+
     def get_sales_rcptno_by_inv_no(self, sales_inv_no, site="erpnext.localhost"):
         try:
             frappe.init(site=site)
@@ -220,6 +228,7 @@ class ZRAClient:
                 status_code=404,
                 http_status=404
             )
+
     def get_sales_rcptno_by_inv_no_c(self, invoice_no):
         if not invoice_no:
             return None
@@ -232,7 +241,7 @@ class ZRAClient:
             LIMIT 1
         """
         result = frappe.db.sql(query, (invoice_no,), as_dict=True)
-        print(f"[DEBUG] SQL result: {result}") 
+        print(f"[DEBUG] SQL result: {result}")
 
         if result and result[0].get("custom_rcptno"):
             rcpt_no = result[0]["custom_rcptno"]
@@ -241,10 +250,10 @@ class ZRAClient:
 
         print(f"[WARN] No receipt number found for invoice '{invoice_no}'")
         return None
-    
+
 
     def check_stock(self, item_code, required_qty):
-        warehouse = "Finished Goods - Izyane"
+        warehouse = "Finished Goods - RI"
 
         try:
             required_qty = float(required_qty)
@@ -319,7 +328,7 @@ class ZRAClient:
             }
         }, 200
 
-        
+
     def canItemStockBeUpdate(self, item_code):
         if not item_code:
             return False
@@ -338,13 +347,13 @@ class ZRAClient:
         item_type = items[0].get("custom_itemtycd")
 
         try:
-            item_type = int(item_type)  
+            item_type = int(item_type)
         except (ValueError, TypeError):
             return False
 
         return item_type in (1, 2)
 
-    
+
     def get_customer_details(self, customer_id):
         if not customer_id:
             return send_response(
@@ -363,7 +372,7 @@ class ZRAClient:
                     status_code=404,
                     http_status=404
                 )
-            
+
             customer_doc = frappe.get_doc("Customer", customer[0]["name"])
 
             def safe_attr(obj, attr):
@@ -393,7 +402,7 @@ class ZRAClient:
                 status_code=400,
                 http_status=400
             )
-        
+
         try:
             item = frappe.get_doc("Item", item_code)
         except frappe.DoesNotExistError:
@@ -410,7 +419,7 @@ class ZRAClient:
                 status_code=400,
                 http_status=400
             )
-        
+
         itemName = item.item_name
         itemClassCd = getattr(item, "custom_itemclscd", None)
         itemPackingUnitCd = getattr(item, "custom_pkgunitcd", None)
@@ -428,7 +437,7 @@ class ZRAClient:
             "itemIplCd": itemIplCd,
             "itemTlCd": itemTlCd
         }
-        
+
     def get_sales_item_codes(sales_invoice_no=None, item_code=None):
         if not sales_invoice_no:
             return send_response(
@@ -456,7 +465,6 @@ class ZRAClient:
                         "tlCd": item.custom_tlcd or ""
                     }
                     print("**** item codes", data)
-
                     return data
 
             return send_response(
@@ -476,23 +484,21 @@ class ZRAClient:
 
         except Exception as e:
             frappe.log_error(frappe.get_traceback(), "get_sales_item_codes Error")
-
             return send_response(
                 status="fail",
                 message=f"Unexpected error: {str(e)}",
                 status_code=500,
                 http_status=500
             )
+
     def getTaxCategory(self):
-        VALID_TAX_CATEGORY =  ["Non-Export", "Export", "LPO"]
+        VALID_TAX_CATEGORY = ["Non-Export", "Export", "LPO"]
         return VALID_TAX_CATEGORY
-    
-    
+
     def AllowedInvoiceStatuses(self):
         ALLOWED_STATUSES = ["Draft", "Sent", "Paid", "Overdue"]
         return ALLOWED_STATUSES
-    
-    
+
     def GetTopLevelCostCenter(self, company):
         parent = frappe.db.get_value("Cost Center", {"company": company, "is_group": 1})
         if parent:
@@ -511,11 +517,9 @@ class ZRAClient:
             return parent
         return doc.name
 
-
     def getCurrentCompany(self):
         COMPANY = "Izyane"
         return COMPANY
-
 
     def GetOrCreateCostCenter(self, doctype, name):
         print("CALLS: ", doctype, name)
@@ -543,8 +547,7 @@ class ZRAClient:
             existing = frappe.db.exists(doctype, name)
             return existing
         return doc.name
-    
-    
+
     def GetOrCreateLink(self, doctype, name):
         if not name:
             return None
@@ -558,36 +561,43 @@ class ZRAClient:
         except frappe.DuplicateEntryError:
             existing = frappe.db.exists(doctype, name)
             return existing
-        return doc.nam
-    
+        return doc.name
 
-    def GetOrCreateProject(self, project_name):
+    def GetOrCreateProject(self, project_name, company=None):
         if not project_name:
             return None
 
-        existing = frappe.db.get_value("Project", {"project_name": project_name}, "name")
-        if existing:
-            return existing
+        # Fetch existing project along with its current company
+        existing = frappe.db.get_value(
+            "Project",
+            {"project_name": project_name},
+            ["name", "company"],
+            as_dict=True
+        )
 
+        if existing:
+            # ✅ If company is wrong, auto-correct it before returning
+            if company and existing.company != company:
+                frappe.db.set_value("Project", existing.name, "company", company)
+                frappe.db.commit()
+            return existing.name
+
+        # Project does not exist — create it under the correct company
         doc = frappe.get_doc({
             "doctype": "Project",
             "project_name": project_name,
-            "company": self.getCurrentCompany()
+            "company": company or self.getCurrentCompany()
         })
         try:
             doc.insert(ignore_permissions=True)
             frappe.db.commit()
         except frappe.DuplicateEntryError:
-            existing = frappe.db.get_value("Project", {"project_name": project_name}, "name")
-            return existing
+            return frappe.db.get_value("Project", {"project_name": project_name}, "name")
         except frappe.UniqueValidationError:
-            existing = frappe.db.get_value("Project", {"project_name": project_name}, "name")
-            return existing
+            return frappe.db.get_value("Project", {"project_name": project_name}, "name")
 
         return doc.name
-    
-    
-    
+
     def GetOrCreateParentExpenseAccount(self):
         """Ensure a top-level 'Expenses' account exists, create if missing"""
         company = self.getCurrentCompany()
@@ -595,7 +605,6 @@ class ZRAClient:
         if parent:
             return parent
 
-        # Create top-level Expenses account
         doc = frappe.get_doc({
             "doctype": "Account",
             "account_name": "Expenses",
@@ -619,7 +628,7 @@ class ZRAClient:
         doc = frappe.get_doc({
             "doctype": "Account",
             "account_name": "Shipping Expense",
-            "account_type": "Expense Account",  # Correct type
+            "account_type": "Expense Account",
             "company": company,
             "parent_account": parent,
             "is_group": 0
@@ -633,14 +642,12 @@ class ZRAClient:
         if not shipping_rule_name:
             return None
 
-        # Ensure we have a valid cost center
         if not cost_center_name:
             frappe.throw("Cost Center is required for Shipping Rule")
 
         if not account:
             account = self.GetOrCreateExpenseAccount()
 
-        # Check if already exists
         existing = frappe.db.get_value("Shipping Rule", {"label": shipping_rule_name}, "name")
         if existing:
             return existing
@@ -648,18 +655,10 @@ class ZRAClient:
         doc = frappe.get_doc({
             "doctype": "Shipping Rule",
             "label": shipping_rule_name,
-            "cost_center": cost_center_name,  # must be db 'name'
+            "cost_center": cost_center_name,
             "account": account,
             "company": self.getCurrentCompany()
         })
         doc.insert(ignore_permissions=True)
         frappe.db.commit()
         return doc.name
-
-
-
-    
-    
-
-        
-        

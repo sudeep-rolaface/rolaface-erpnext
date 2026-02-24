@@ -1,4 +1,6 @@
+from datetime import datetime
 import random
+import re
 from erpnext.zra_client.generic_api import send_response
 import frappe
 
@@ -21,6 +23,39 @@ class CustomFrappeClient():
         except Exception as e:
             frappe.log_error(f"Failed to create Incoterm {incoterm_code}: {str(e)}")
             return None
+        
+    def GetOrCreateProject(self, project_name, company=None):
+        if not project_name:
+            return None
+
+        existing = frappe.db.get_value(
+            "Project",
+            {"project_name": project_name},
+            ["name", "company"],
+            as_dict=True
+        )
+
+        if existing:
+            # Auto-correct company if wrong
+            if company and existing.company != company:
+                frappe.db.set_value("Project", existing.name, "company", company)
+                frappe.db.commit()
+            return existing.name
+
+        doc = frappe.get_doc({
+            "doctype": "Project",
+            "project_name": project_name,
+            "company": company or self.getCurrentCompany()
+        })
+        try:
+            doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+        except frappe.DuplicateEntryError:
+            return frappe.db.get_value("Project", {"project_name": project_name}, "name")
+        except frappe.UniqueValidationError:
+            return frappe.db.get_value("Project", {"project_name": project_name}, "name")
+
+        return doc.name
         
     def GetItemDetails(self, item_code):
         if not item_code:
@@ -50,16 +85,63 @@ class CustomFrappeClient():
                 http_status=400
             )
             
-    def GetDefaultWareHouse(self):
-        WARE_HOUSE = "Finished Goods - Izyane"
-        return WARE_HOUSE
+    def GetDefaultWareHouse(self, company=None):
+        if company:
+            # Try to find "Finished Goods" warehouse for the given company first
+            result = frappe.db.sql(
+                """SELECT name FROM `tabWarehouse`
+                   WHERE company = %s AND is_group = 0
+                   AND name LIKE 'Finished Goods%%'
+                   LIMIT 1""",
+                (company,)
+            )
+            if result:
+                return result[0][0]
+            # Fallback: any non-group warehouse for this company
+            result = frappe.db.sql(
+                "SELECT name FROM `tabWarehouse` WHERE company = %s AND is_group = 0 LIMIT 1",
+                (company,)
+            )
+            if result:
+                return result[0][0]
+        # Original fallback
+        return "Finished Goods - Izyane"
     
-    
-    def getDefaultExpenseAccount(self):
-        ACCOUNT = "Stock Difference - Izyane - I"
-        return ACCOUNT
-    
-    
+    def getDefaultExpenseAccount(self, company=None):
+        if company:
+            # Try to find "Stock Difference" account for the given company first
+            result = frappe.db.sql(
+                """SELECT name FROM `tabAccount`
+                   WHERE company = %s
+                   AND account_type = 'Stock Adjustment'
+                   AND is_group = 0
+                   LIMIT 1""",
+                (company,)
+            )
+            if result:
+                return result[0][0]
+            # Fallback: any expense account for this company
+            result = frappe.db.sql(
+                """SELECT name FROM `tabAccount`
+                   WHERE company = %s
+                   AND account_type IN ('Expense Account', 'Stock Adjustment')
+                   AND is_group = 0
+                   LIMIT 1""",
+                (company,)
+            )
+            if result:
+                return result[0][0]
+        # Original fallback
+        return "Stock Difference - Izyane - I"
+
+    def getStockReceivedButNotBilledAccount(self):
+        company = self.getCurrentCompany()
+        return frappe.get_cached_value(
+            "Company",
+            company,
+            "stock_received_but_not_billed"
+        )
+
     def createInvoiceTermsAndPayments(self, new_invoice_name, terms):
         
         terms_data = terms
@@ -76,7 +158,6 @@ class CustomFrappeClient():
         tax = payment_terms_data.get("taxes", "")
         notes = payment_terms_data.get("notes", "")
         phases = payment_terms_data.get("phases", [])
-        
         
         print("dueDate: ", dueDates, "lateCharges :", lateCharges, "tax: ", tax)
 
@@ -126,7 +207,6 @@ class CustomFrappeClient():
             "Marketing Expenses - I",
             "Miscellaneous Expenses - I"
         ]
-
         return VALID_ACCOUNTS_HEAD
 
     def getCurrentCompany(self):
@@ -135,15 +215,11 @@ class CustomFrappeClient():
 
     def GetTaxesChargesRate(self):
         RATES = ["Actual", "On Net Total", "On Previous Row Amount", "On Previous Row Total", "On Item Quantity"]
-        
         return RATES
     
     def GetTaxAccountHeads(self):
         ACCOUNTS = []
         return ACCOUNTS
-
-    
-    
 
     def CreateSupplierAddress(self, addresses, supplier):
         """
@@ -173,7 +249,6 @@ class CustomFrappeClient():
                 "email_id": supplierAddress.get("email"),
             })
 
-            # Link to Supplier
             doc.append("links", {
                 "link_doctype": "Supplier",
                 "link_name": supplier
@@ -187,7 +262,6 @@ class CustomFrappeClient():
             frappe.log_error(frappe.get_traceback(), "Create Supplier Address Error")
             print(f"Error creating Supplier Address: {str(e)}")
             return None
-
 
     def CreateDispatchAddress(self, addresses, supplier):
         """
@@ -217,7 +291,6 @@ class CustomFrappeClient():
                 "email_id": dispatchAddress.get("email"),
             })
 
-            # Link to Supplier
             doc.append("links", {
                 "link_doctype": "Supplier",
                 "link_name": supplier
@@ -231,7 +304,6 @@ class CustomFrappeClient():
             frappe.log_error(frappe.get_traceback(), "Create Dispatch Address Error")
             print(f"Error creating Dispatch Address: {str(e)}")
             return None
-
 
     def CreateShippingAddress(self, addresses, supplier):
         shippingAddress = addresses.get("shippingAddress", {})
@@ -271,11 +343,9 @@ class CustomFrappeClient():
             print(f"Error creating Shipping Address: {str(e)}")
             return None
     
-    
     def GetAvailableTaxCategory(self):
         tax_categories = frappe.get_all("Tax Category", fields=["name"])
         tax_names = [tax["name"] for tax in tax_categories]
-        
         return tax_names
 
     def GetValidTaxTypes(self):
@@ -296,6 +366,132 @@ class CustomFrappeClient():
         print("Cost Centers: ", cost_center_names)
         return cost_center_names
 
+    def GetItemInfo(self, item_code):
+        if not item_code:
+            return send_response(
+                status="fail",
+                message="Item code is required.",
+                status_code=400,
+                http_status=400
+            )
         
+        try:
+            item = frappe.get_doc("Item", item_code)
+        except frappe.DoesNotExistError:
+            return send_response(
+                status="fail",
+                message="Item not found",
+                status_code=404,
+                http_status=404
+            )
+        except Exception as e:
+            return send_response(
+                status="fail",
+                message=f"Cannot proceed: {str(e)}",
+                status_code=400,
+                http_status=400
+            )
         
-        
+        itemName = item.item_name
+        itemClassCd = getattr(item, "custom_itemclscd", None)
+        itemPackingUnitCd = getattr(item, "custom_pkgunitcd", None)
+        itemUnitCd = getattr(item, "stock_uom", None)
+        itemVatCd = getattr(item, "custom_vatcd", None)
+        itemIplCd = getattr(item, "custom_iplcd", None)
+        itemTlCd = getattr(item, "custom_tlcd", None)
+
+        return {
+            "itemName": itemName,
+            "itemClassCd": itemClassCd,
+            "itemPackingUnitCd": itemPackingUnitCd,
+            "itemUnitCd": itemUnitCd,
+            "itemVatCd": itemVatCd,
+            "itemIplCd": itemIplCd,
+            "itemTlCd": itemTlCd
+        }
+    
+    def GetLogedInUser(self):
+        username = "Timothy"
+        return username
+    
+    def GetPaymentMethodsCodes(self):
+        PAYMENT_METHOD_LIST_CODE = ["01", "02", "03", "04", "05", "06", "07", "08"]
+        return PAYMENT_METHOD_LIST_CODE
+
+    def GetPaymentMethodsName(self):
+        PAYMENT_METHOD_LIST_NAME = [
+            "CASH",
+            "CREDIT",
+            "CASH/CREDIT",
+            "BANK CHECK",
+            "DEBIT & CREDIT CARD",
+            "MOBILE MONEY",
+            "Bank transfer",
+            "OTHER"
+        ]
+        return PAYMENT_METHOD_LIST_NAME
+    
+    def GetTransactionProgressCodes(self):
+        TRANSACTION_PROGRESS_CODES = ["02", "05", "06", "04"]
+        return TRANSACTION_PROGRESS_CODES
+
+    def GetTransactionProgressNames(self):
+        TRANSACTION_PROGRESS_NAMES = [
+            "APPROVED",
+            "REFUNDED",
+            "TRANSFERRED",
+            "REJECTED"
+        ]
+        return TRANSACTION_PROGRESS_NAMES
+    
+    def getNextCisInvoiceNo(self):
+        last_purchase = frappe.get_all(
+            "Purchase Invoice",
+            fields=["name"],
+            order_by="creation desc",
+            limit=1
+        )
+
+        current_year = datetime.now().year
+
+        if last_purchase:
+            last_name = last_purchase[0]["name"]
+            match = re.search(r'(\d+)$', last_name)
+            last_no = int(match.group(1)) if match else 0
+        else:
+            last_no = 0
+        next_no = last_no + 1
+
+        next_no_str = f"{next_no:05d}"
+        next_invoice_name = f"ACC-PINV-{current_year}-{next_no_str}"
+
+        return next_invoice_name
+    
+    def PurchaseInvoiceStatuses(self):
+        LIST = [
+            "Return",
+            "Submitted",
+            "Paid",
+            "Party Paid",
+            "Cancelled",
+            "Internal Transfer",
+            "Debit Note Issued"
+        ]
+        return LIST
+    
+    def GetNextCustomSupplierId(self):
+        last = frappe.db.sql(
+            """
+            SELECT custom_supplier_id
+            FROM `tabSupplier`
+            WHERE custom_supplier_id IS NOT NULL AND custom_supplier_id != ''
+            ORDER BY CAST(custom_supplier_id AS UNSIGNED) DESC
+            LIMIT 1
+            """,
+            as_dict=True
+        )
+
+        if last:
+            return str(int(last[0].custom_supplier_id) + 1)
+        else:
+            return "1"

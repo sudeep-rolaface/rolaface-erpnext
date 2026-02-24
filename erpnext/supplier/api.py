@@ -1,5 +1,8 @@
+from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
 from erpnext.zra_client.generic_api import send_response
 import frappe
+
+CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
 
 def get_next_custom_supplier_id():
     last = frappe.db.sql(
@@ -58,6 +61,7 @@ def get_suppliers():
             "mobile_no",
             "email_id",
             "custom_supplier_code",
+            "tax_category",
         ],
         limit_start=start,
         limit_page_length=page_size,
@@ -71,6 +75,7 @@ def get_suppliers():
         i["emailId"] = i.pop("email_id")
         i["phoneNo"] = i.pop("mobile_no")
         i["tpin"] = i.pop("tax_id")
+        i["taxCategory"] = i.pop("tax_category")
         i["status"] = i.pop("custom_status")
 
     send_response(
@@ -158,6 +163,7 @@ def get_supplier_details_id():
         "emailId": supplier.email_id,
         "billingCountry": supplier.country,
         "tpin": supplier.tax_id,
+        "taxCategory": supplier.tax_category,
         "status": supplier.custom_status,
         "createdAt": supplier.creation,
         "updatedAt": supplier.modified
@@ -177,6 +183,7 @@ def create_supplier():
     data = frappe.form_dict
 
     custom_suppliers_account_holder_name = data.get("accountHolder")
+    taxCategory = data.get("taxCategory")
     custom_supplier_date_of_addition = data.get("dateOfAddition")
     custom_supplier_opening_balance = data.get("openingBalance")
     custom_supplier_payment_terms = data.get("paymentTerms")
@@ -266,6 +273,16 @@ def create_supplier():
             http_status=400
         )
 
+    TAX_CAT = CUSTOM_FRAPPE_INSTANCE.GetAvailableTaxCategory()
+
+    if taxCategory not in TAX_CAT:
+        return send_response(
+            status="fail",
+            message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories : {TAX_CAT}",
+            data=[],
+            status_code=400,
+            http_status=400
+        ) 
     supplier_id = get_next_custom_supplier_id()
 
     try:
@@ -291,6 +308,7 @@ def create_supplier():
             "custom_supplier_city": custom_supplier_city,
             "default_currency": default_currency,
             "custom_supplier_id": supplier_id,
+            "tax_category": taxCategory,
             "mobile_no": mobile_no,
             "email_id": email_id,
             "custom_bank_account": bankAccount,
@@ -372,6 +390,7 @@ def update_supplier():
     email_id = data.get("emailId")
     bank_account = data.get("bankAccount")
     country = data.get("billingCountry")
+    taxCategory = data.get("taxCategory")
     status = data.get("status")
     
     print('Mobile No:', mobile_no)
@@ -414,6 +433,16 @@ def update_supplier():
                 status_code=400,
                 http_status=400
             )
+    
+    TAX_CAT = CUSTOM_FRAPPE_INSTANCE.GetAvailableTaxCategory()    
+    if taxCategory not in TAX_CAT:
+        return send_response(
+            status="fail",
+            message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories : {TAX_CAT}",
+            data=[],
+            status_code=400,
+            http_status=400
+        ) 
 
     if custom_suppliers_account_holder_name is not None:
         supplier.custom_suppliers_account_holder_name = custom_suppliers_account_holder_name
@@ -477,6 +506,9 @@ def update_supplier():
 
     if status is not None:
         supplier.custom_status = status
+        
+    if taxCategory is not None:
+        supplier.tax_category = taxCategory
         
 
     if tax_id is not None:
