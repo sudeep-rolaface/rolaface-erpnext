@@ -215,13 +215,13 @@ def create_supplier():
     if not tax_id:
         return send_response(status="fail", message="Supplier TPIN is required", status_code=400, http_status=400)
     
-    if tax_id and len(tax_id) != 10:
-        return send_response(
-            status="fail",
-            message="Supplier TPIN must be exactly 10 characters long",
-            status_code=400,
-            http_status=400
-        )
+    # if tax_id and len(tax_id) != 10:
+    #     return send_response(
+    #         status="fail",
+    #         message="Supplier TPIN must be exactly 10 characters long",
+    #         status_code=400,
+    #         http_status=400
+    #     )
         
     if tax_id and not tax_id.isalnum():
         return send_response(
