@@ -463,7 +463,8 @@ def get_company_api():
                 "branchaddress",
                 "currency",
                 "dateadded",
-                "openingbalance"
+                "openingbalance",
+                "default"
             ]
         )
         company_list = frappe.get_list(
@@ -489,7 +490,8 @@ def get_company_api():
                 "branchAddress": b.get("branchaddress"),
                 "currency": b.get("currency"),
                 "dateAdded": str(b.get("dateadded")) if b.get("dateadded") else None,
-                "openingBalance": b.get("openingbalance") or 0.0
+                "openingBalance": b.get("openingbalance") or 0.0,
+                "dafault": b.get("default") or 0
             }
             for b in bank_accounts_docs
         ]
