@@ -491,7 +491,7 @@ def get_company_api():
                 "currency": b.get("currency"),
                 "dateAdded": str(b.get("dateadded")) if b.get("dateadded") else None,
                 "openingBalance": b.get("openingbalance") or 0.0,
-                "dafault": b.get("default") or 0
+                "default": b.get("default") or 0
             }
             for b in bank_accounts_docs
         ]
