@@ -1032,17 +1032,17 @@ def create_item_group_api():
     if not item_group_name:
         return send_response(status="fail", message="groupName is required", status_code=400, http_status=400)
 
-    if not custom_description:
-        return send_response(status="fail", message="description is required", status_code=400, http_status=400)
+    # if not custom_description:
+    #     return send_response(status="fail", message="description is required", status_code=400, http_status=400)
 
-    if not custom_sales_account:
-        return send_response(status="fail", message="salesAccount is required", status_code=400, http_status=400)
+    # if not custom_sales_account:
+    #     return send_response(status="fail", message="salesAccount is required", status_code=400, http_status=400)
 
-    if not custom_selling_price:
-        return send_response(status="fail", message="sellingPrice is required", status_code=400, http_status=400)
+    # if not custom_selling_price:
+    #     return send_response(status="fail", message="sellingPrice is required", status_code=400, http_status=400)
 
-    if not custom_unit_of_measurement:
-        return send_response(status="fail", message="unitOfMeasurement is required", status_code=400, http_status=400)
+    # if not custom_unit_of_measurement:
+    #     return send_response(status="fail", message="unitOfMeasurement is required", status_code=400, http_status=400)
 
     if frappe.db.exists("Item Group", {"item_group_name": item_group_name}):
         return send_response(status="fail", message=f"Item Group '{item_group_name}' already exists", status_code=409, http_status=409)
