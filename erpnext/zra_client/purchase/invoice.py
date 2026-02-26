@@ -216,6 +216,7 @@ def create_purchase_invoice():
         vat_cd = i.get("vatCd")
         rate = i.get("rate")
         vat_rate = i.get("vatRate", 0)  # ✅ capture vatRate for local tax calculation
+        item_required_by = i.get("requiredBy")
 
         if not itemCode:
             return send_response(
@@ -325,6 +326,7 @@ def create_purchase_invoice():
             "price": rate,
             "VatCd": vat_cd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
+            "schedule_date": item_required_by
         })
 
         invoice_items_to_be_saved.append({
@@ -334,6 +336,7 @@ def create_purchase_invoice():
             "custom_vat": vat_cd,
             "qty": quantity,
             "rate": rate,
+            "schedule_date": item_required_by
         })
 
     supplierName = supplier.supplier_name
