@@ -1254,6 +1254,21 @@ def update_company_api():
         set_if_present(acc_doc, "currency", account.get("currency"))
         set_if_present(acc_doc, "dateadded", account.get("dateAdded"))
         set_if_present(acc_doc, "openingbalance", account.get("openingBalance"))
+        is_default = int(account.get("default"))
+        acc_doc.default = is_default
+        if is_default:
+            other_defaults = frappe.get_all(
+                "Company Accounts",
+                filters={"company_id": custom_company_id, "default": 1},
+                fields=["name"]
+            )
+
+            for other in other_defaults:
+                if other.name == acc_doc.name:
+                    continue
+                old_default = frappe.get_doc("Company Accounts", other.name)
+                old_default.default = 0
+                old_default.save(ignore_permissions=True) 
 
         if account_id and account_id in existing_ids:
             acc_doc.save(ignore_permissions=True)
