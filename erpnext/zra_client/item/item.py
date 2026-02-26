@@ -121,7 +121,8 @@ def create_item_api():
     custom_dimensionlength = data.get("dimensionLength") or ""
     custom_dimensionwidth  = data.get("dimensionWidth") or ""
     custom_dimensionheight = data.get("dimensionHeight") or ""
-
+    pakingunit             = data.get("pakingunit", None)
+    packingsize            = data.get("packingsize", None)
     # ── Vendor info (nested preferred, flat fallback) ─────────────────────────
     custom_vendor           = vendor_info.get("preferredVendor")  or data.get("preferredVendor") or ""
     custom_sales_account    = vendor_info.get("salesAccount")     or data.get("salesAccount") or ""
@@ -268,6 +269,8 @@ def create_item_api():
             "stock_uom":            unit_of_measure_cd,
             "description":          description,
             "brand":                brand,
+            "packing_size":          packingsize,
+            "paking_unit":           pakingunit,
             # ZRA
             "custom_itemclscd":     custom_itemclscd or "",
             "custom_itemtycd":      custom_itemtycd or "",
@@ -390,6 +393,8 @@ def get_all_items_api():
                 # Core
                 "item_code", "item_name", "item_group", "stock_uom",
                 "standard_rate", "custom_buying_price", "brand", "description",
+                "packing_size", "paking_unit"
+                ""
                 # Classification
                 "custom_itemclscd", "custom_itemtycd", "custom_orgnnatcd", "custom_pkgunitcd",
                 "custom_svcchargeyn", "custom_isrcaplcbyn",
@@ -471,7 +476,8 @@ def get_all_items_api():
                 "dimensionLength":  it.get("custom_dimensionlength", ""),
                 "dimensionWidth":   it.get("custom_dimensionwidth", ""),
                 "dimensionHeight":  it.get("custom_dimensionheight", ""),
-
+                "pakingUnit":       it.get("paking_unit"),
+                "packingSize":      it.get("packing_size"),   
                 # Vendor
                 "vendorInfo": {
                     "preferredVendor":  it.get("custom_vendor", ""),
@@ -547,7 +553,7 @@ def get_item_by_id_api():
             fields=[
                 # Core
                 "name", "item_code", "item_name", "item_group", "stock_uom",
-                "standard_rate", "description", "brand",
+                "standard_rate", "description", "brand", "packing_size", "paking_unit",
                 # ZRA / Classification
                 "custom_itemclscd", "custom_itemtycd", "custom_orgnnatcd",
                 "custom_pkgunitcd", "custom_svcchargeyn", "custom_isrcaplcbyn",
@@ -632,6 +638,8 @@ def get_item_by_id_api():
             "dimensionLength":   it.get("custom_dimensionlength", ""),
             "dimensionWidth":    it.get("custom_dimensionwidth", ""),
             "dimensionHeight":   it.get("custom_dimensionheight", ""),
+            "pakingUnit":        it.get("paking_unit", None),
+            "packingSize":       it.get("packing_size", None),
 
             # Vendor
             "vendorInfo": {
@@ -754,6 +762,8 @@ def update_item_api():
     custom_dimensionlength = data.get("dimensionLength") or item.custom_dimensionlength
     custom_dimensionwidth  = data.get("dimensionWidth")  or item.custom_dimensionwidth
     custom_dimensionheight = data.get("dimensionHeight") or item.custom_dimensionheight
+    packing_size           = (data.get("packingSize")     or item.packingSize or None).strip()
+    paking_unit            = (data.get("pakingUnit")      or item.pakingUnit or None).strip()
 
     # ── Vendor info (nested preferred, flat fallback) ─────────────────────────
     custom_vendor           = vendor_info.get("preferredVendor")  or data.get("preferredVendor")  or item.custom_vendor or ""
@@ -854,6 +864,9 @@ def update_item_api():
             "stock_uom":            unit_of_measure_cd,
             "brand":                brand,
             "description":          description,
+            "paking_unit":          paking_unit,
+            "packing_size":         packing_size,
+
             # ZRA
             "custom_itemclscd":     custom_itemclscd,
             "custom_itemtycd":      custom_itemtycd or "",
@@ -960,7 +973,7 @@ def get_all_item_groups_api():
             group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
             group["sellingPrice"] = group.pop("custom_selling_price")
             group["salesAccount"] = group.pop("custom_sales_account")
-            group["item_type"] = group.pop("item_type")
+            group["itemType"] = group.pop("item_type")
 
         if total_groups == 0:
             return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
@@ -1011,7 +1024,7 @@ def get_item_group_by_id_api():
             "unitOfMeasurement": doc.custom_unit_of_measurement,
             "sellingPrice": doc.custom_selling_price,
             "salesAccount": doc.custom_sales_account,
-            "item_type": doc.item_type
+            "itemType": doc.item_type
         }
 
         return send_response(status="success", message="Item Group fetched successfully", data=filtered_data, status_code=200, http_status=200)
