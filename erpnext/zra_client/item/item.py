@@ -945,7 +945,8 @@ def get_all_item_groups_api():
             "Item Group",
             fields=[
                 "custom_id", "item_group_name", "custom_description",
-                "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account"
+                "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account",
+                "item_type"
             ],
             order_by="item_group_name asc",
             filters={"is_group": 0}
