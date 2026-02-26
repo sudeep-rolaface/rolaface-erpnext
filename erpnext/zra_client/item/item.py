@@ -959,7 +959,7 @@ def get_all_item_groups_api():
             group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
             group["sellingPrice"] = group.pop("custom_selling_price")
             group["salesAccount"] = group.pop("custom_sales_account")
-            group["item_type"] = group.pop("custom_item_type")
+            group["item_type"] = group.pop("item_type")
 
         if total_groups == 0:
             return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
