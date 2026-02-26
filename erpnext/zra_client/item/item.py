@@ -393,8 +393,7 @@ def get_all_items_api():
                 # Core
                 "item_code", "item_name", "item_group", "stock_uom",
                 "standard_rate", "custom_buying_price", "brand", "description",
-                "packing_size", "paking_unit"
-                ""
+                "packing_size", "paking_unit",
                 # Classification
                 "custom_itemclscd", "custom_itemtycd", "custom_orgnnatcd", "custom_pkgunitcd",
                 "custom_svcchargeyn", "custom_isrcaplcbyn",
