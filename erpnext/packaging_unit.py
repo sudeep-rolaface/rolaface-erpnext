@@ -13,16 +13,29 @@ def get_all_packaging_units():
     return {"status": "success", "data": data}
 
 
-@frappe.whitelist(allow_guest=True)
-def get_packaging_unit(code, standard=None):
-    filters = {"code": code}
-    if standard:
-        filters["standard"] = standard
+# @frappe.whitelist(allow_guest=True)
+# def get_packaging_unit(code, standard=None):
+#     filters = {"code": code}
+#     if standard:
+#         filters["standard"] = standard
 
+#     doc = frappe.db.get_value(
+#         "Packaging Unit",
+#         filters,
+#         ["code", "code_name", "code_description", "standard"],
+#         as_dict=True
+#     )
+#     if not doc:
+#         frappe.throw(_("Code '{0}' not found").format(code), frappe.DoesNotExistError)
+#     return {"status": "success", "data": doc}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_packaging_unit(code):
     doc = frappe.db.get_value(
         "Packaging Unit",
-        filters,
-        ["code", "code_name", "code_description", "standard"],
+        {"code": code, "standard": "GLOBAL"},
+        ["code", "code_name", "code_description"],
         as_dict=True
     )
     if not doc:
