@@ -959,6 +959,7 @@ def get_all_item_groups_api():
             group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
             group["sellingPrice"] = group.pop("custom_selling_price")
             group["salesAccount"] = group.pop("custom_sales_account")
+            group["item_type"] = group.pop("custom_item_type")
 
         if total_groups == 0:
             return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
@@ -1009,6 +1010,7 @@ def get_item_group_by_id_api():
             "unitOfMeasurement": doc.custom_unit_of_measurement,
             "sellingPrice": doc.custom_selling_price,
             "salesAccount": doc.custom_sales_account,
+            "item_type": doc.item_type
         }
 
         return send_response(status="success", message="Item Group fetched successfully", data=filtered_data, status_code=200, http_status=200)
@@ -1027,7 +1029,7 @@ def create_item_group_api():
     custom_sales_account = data.get("salesAccount")
     custom_selling_price = data.get("sellingPrice")
     custom_unit_of_measurement = data.get("unitOfMeasurement")
-
+    item_type = data.get("itemType")
     # ── Validation ────────────────────────────────────────────────────────────
     if not item_group_name:
         return send_response(status="fail", message="groupName is required", status_code=400, http_status=400)
@@ -1066,7 +1068,8 @@ def create_item_group_api():
             "custom_selling_price": custom_selling_price,
             "custom_unit_of_measurement": custom_unit_of_measurement,
             "parent_item_group": "All Item Groups",
-            "is_group": is_group or 0
+            "is_group": is_group or 0,
+            "item_type": item_type
         })
         item_group.insert(ignore_permissions=True)
         frappe.db.commit()
@@ -1078,7 +1081,8 @@ def create_item_group_api():
                 "id": custom_id,
                 "name": item_group.name,
                 "item_group_name": item_group.item_group_name,
-                "parent_item_group": item_group.parent_item_group
+                "parent_item_group": item_group.parent_item_group,
+                "item_type": item_group.item_type
             },
             status_code=201,
             http_status=201
