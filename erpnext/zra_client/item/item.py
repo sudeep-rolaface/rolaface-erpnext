@@ -1112,25 +1112,33 @@ def get_all_item_groups_api():
         groups = all_groups[start:start + page_size]
         total_pages = (total_groups + page_size - 1) // page_size
 
-        response_data = {
-            "data": groups,
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total": total_groups,
-                "total_pages": total_pages,
-                "has_next": page < total_pages,
-                "has_prev": page > 1
-            }
-        }
+        # response_data = {
+        #     "data": groups,
+        #     "pagination": {
+        #         "page": page,
+        #         "page_size": page_size,
+        #         "total": total_groups,
+        #         "total_pages": total_pages,
+        #         "has_next": page < total_pages,
+        #         "has_prev": page > 1
+        #     }
+        # }
 
         return send_response_list(
-            status="success",
-            message="Item groups fetched successfully",
-            status_code=200,
-            http_status=200,
-            data=response_data
-        )
+                status="success",
+                message="Item groups fetched successfully",
+                status_code=200,
+                http_status=200,
+                data=groups,  # ✅ Pass groups directly, not wrapped in response_data
+                pagination={  # ✅ Pass pagination separately
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total_groups,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
+)
 
     except Exception as e:
         frappe.log_error(message=str(e), title="Get All Item Groups API Error")
