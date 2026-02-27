@@ -926,6 +926,81 @@ def update_item_api():
         return send_response(status="fail", message="Failed to update item in ERPNext", data={"error": str(e)}, status_code=500, http_status=500)
 
 
+# @frappe.whitelist(allow_guest=False)
+# def get_all_item_groups_api():
+#     try:
+#         args = frappe.request.args
+#         page = args.get("page")
+#         if not page:
+#             return send_response(status="error", message="'page' parameter is required.", data=None, status_code=400, http_status=400)
+#         try:
+#             page = int(page)
+#             if page < 1:
+#                 raise ValueError
+#         except ValueError:
+#             return send_response(status="error", message="'page' must be a positive integer.", data=None, status_code=400, http_status=400)
+
+#         page_size = args.get("page_size")
+#         if not page_size:
+#             return send_response(status="error", message="'page_size' parameter is required.", data=None, status_code=400, http_status=400)
+#         try:
+#             page_size = int(page_size)
+#             if page_size < 1:
+#                 raise ValueError
+#         except ValueError:
+#             return send_response(status="error", message="'page_size' must be a positive integer.", data=None, status_code=400, http_status=400)
+
+#         start = (page - 1) * page_size
+#         end = start + page_size
+
+#         all_groups = frappe.get_all(
+#             "Item Group",
+#             fields=[
+#                 "custom_id", "item_group_name", "custom_description",
+#                 "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account",
+#                 "item_type"
+#             ],
+#             order_by="item_group_name asc",
+#             filters={"is_group": 0}
+#         )
+
+#         total_groups = len(all_groups)
+#         for group in all_groups:
+#             group["id"] = group.pop("custom_id")
+#             group["groupName"] = group.pop("item_group_name")
+#             group["description"] = group.pop("custom_description")
+#             group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
+#             group["sellingPrice"] = group.pop("custom_selling_price")
+#             group["salesAccount"] = group.pop("custom_sales_account")
+#             group["itemType"] = group.pop("item_type")
+
+#         if total_groups == 0:
+#             return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
+
+#         groups = all_groups[start:end]
+#         total_pages = (total_groups + page_size - 1) // page_size
+
+#         response_data = {
+#             "success": True,
+#             "message": "Item groups fetched successfully",
+#             "data": groups,
+#             "pagination": {
+#                 "page": page,
+#                 "page_size": page_size,
+#                 "total": total_groups,
+#                 "total_pages": total_pages,
+#                 "has_next": page < total_pages,
+#                 "has_prev": page > 1
+#             }
+#         }
+
+#         return send_response_list(status="success", message="Item groups fetched successfully", status_code=200, http_status=200, data=response_data)
+
+#     except Exception as e:
+#         frappe.log_error(message=str(e), title="Get All Item Groups API Error")
+#         return send_response(status="fail", message="Failed to fetch item groups", data={"error": str(e)}, status_code=500, http_status=500)
+
+
 @frappe.whitelist(allow_guest=False)
 def get_all_item_groups_api():
     try:
@@ -950,21 +1025,45 @@ def get_all_item_groups_api():
         except ValueError:
             return send_response(status="error", message="'page_size' must be a positive integer.", data=None, status_code=400, http_status=400)
 
+        # ✅ Get and validate item_type filter
+        item_type = args.get("item_type")
+        if item_type is not None:
+            if item_type not in ["1", "2", "3"]:
+                return send_response(
+                    status="error",
+                    message="'item_type' must be 1, 2, or 3.",
+                    data=None,
+                    status_code=400,
+                    http_status=400
+                )
+
+        # ✅ Build filters dynamically
+        filters = {"is_group": 0}
+        if item_type:
+            filters["custom_item_type"] = item_type
+
         start = (page - 1) * page_size
-        end = start + page_size
 
         all_groups = frappe.get_all(
             "Item Group",
             fields=[
-                "custom_id", "item_group_name", "custom_description",
-                "custom_unit_of_measurement", "custom_selling_price", "custom_sales_account",
-                "item_type"
+                "custom_id",
+                "item_group_name",
+                "custom_description",
+                "custom_unit_of_measurement",
+                "custom_selling_price",
+                "custom_sales_account",
+                "custom_item_type",
             ],
             order_by="item_group_name asc",
-            filters={"is_group": 0}
+            filters=filters  # ✅ Dynamic filters applied here
         )
 
         total_groups = len(all_groups)
+
+        if total_groups == 0:
+            return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
+
         for group in all_groups:
             group["id"] = group.pop("custom_id")
             group["groupName"] = group.pop("item_group_name")
@@ -972,12 +1071,9 @@ def get_all_item_groups_api():
             group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
             group["sellingPrice"] = group.pop("custom_selling_price")
             group["salesAccount"] = group.pop("custom_sales_account")
-            group["itemType"] = group.pop("item_type")
+            group["itemType"] = group.pop("custom_item_type")
 
-        if total_groups == 0:
-            return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
-
-        groups = all_groups[start:end]
+        groups = all_groups[start:start + page_size]
         total_pages = (total_groups + page_size - 1) // page_size
 
         response_data = {
