@@ -1055,10 +1055,10 @@ def get_all_item_groups_api():
         # Validate itemType (optional)
         item_type = args.get("itemType")
         if item_type is not None:
-            if item_type not in ["1", "2"]:
+            if item_type not in ["1", "2", "3"]:
                 return send_response(
                     status="error",
-                    message="'itemType' must be 1 or 2. (1 = Raw Material, 2 = Finished Goods)",
+                    message="'itemType' must be 1, 2, or 3. (1 = Raw Material, 2 = Finished Goods, 3 = Services)",
                     data=None,
                     status_code=400,
                     http_status=400

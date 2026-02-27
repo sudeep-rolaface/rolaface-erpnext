@@ -231,9 +231,9 @@ def create_customer_api():
     frappe.logger().debug(f"WARRANTY: {warranty}")
     frappe.logger().debug(f"LIABILITY: {liability}")
     
-    if not mobile_no.isdigit():
-        send_response(status="fail", message="Mobile number must be 10 digits only", status_code=400, http_status=400)
-        return
+    # if not mobile_no.isdigit():
+    #     send_response(status="fail", message="Mobile number must be 10 digits only", status_code=400, http_status=400)
+    #     return
 
     
     if not billing_address_line_1:
