@@ -1005,45 +1005,73 @@ def update_item_api():
 def get_all_item_groups_api():
     try:
         args = frappe.request.args
+
+        # Validate page
         page = args.get("page")
         if not page:
-            return send_response(status="error", message="'page' parameter is required.", data=None, status_code=400, http_status=400)
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
         try:
             page = int(page)
             if page < 1:
                 raise ValueError
         except ValueError:
-            return send_response(status="error", message="'page' must be a positive integer.", data=None, status_code=400, http_status=400)
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
 
+        # Validate page_size
         page_size = args.get("page_size")
         if not page_size:
-            return send_response(status="error", message="'page_size' parameter is required.", data=None, status_code=400, http_status=400)
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
         try:
             page_size = int(page_size)
             if page_size < 1:
                 raise ValueError
         except ValueError:
-            return send_response(status="error", message="'page_size' must be a positive integer.", data=None, status_code=400, http_status=400)
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
 
-        # ✅ Get and validate itemType filter
+        # Validate itemType (optional)
         item_type = args.get("itemType")
         if item_type is not None:
-            if item_type not in ["1", "2", "3"]:
+            if item_type not in ["1", "2"]:
                 return send_response(
                     status="error",
-                    message="'itemType' must be 1, 2, or 3.",
+                    message="'itemType' must be 1 or 2. (1 = Raw Material, 2 = Finished Goods)",
                     data=None,
                     status_code=400,
                     http_status=400
                 )
 
-        # ✅ Build filters dynamically
+        # Build filters dynamically
         filters = {"is_group": 0}
         if item_type:
-            filters["custom_item_type"] = item_type
+            filters["item_type"] = item_type
 
         start = (page - 1) * page_size
 
+        # Fetch item groups
         all_groups = frappe.get_all(
             "Item Group",
             fields=[
@@ -1053,17 +1081,24 @@ def get_all_item_groups_api():
                 "custom_unit_of_measurement",
                 "custom_selling_price",
                 "custom_sales_account",
-                "custom_item_type",
+                "item_type",
             ],
             order_by="item_group_name asc",
-            filters=filters  # ✅ Dynamic filters applied here
+            filters=filters
         )
 
         total_groups = len(all_groups)
 
         if total_groups == 0:
-            return send_response(status="success", message="No item groups found.", data=[], status_code=200, http_status=200)
+            return send_response(
+                status="success",
+                message="No item groups found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
 
+        # Rename keys
         for group in all_groups:
             group["id"] = group.pop("custom_id")
             group["groupName"] = group.pop("item_group_name")
@@ -1071,14 +1106,13 @@ def get_all_item_groups_api():
             group["unitOfMeasurement"] = group.pop("custom_unit_of_measurement")
             group["sellingPrice"] = group.pop("custom_selling_price")
             group["salesAccount"] = group.pop("custom_sales_account")
-            group["itemType"] = group.pop("custom_item_type")
+            group["itemType"] = group.pop("item_type")
 
+        # Paginate
         groups = all_groups[start:start + page_size]
         total_pages = (total_groups + page_size - 1) // page_size
 
         response_data = {
-            "success": True,
-            "message": "Item groups fetched successfully",
             "data": groups,
             "pagination": {
                 "page": page,
@@ -1090,11 +1124,23 @@ def get_all_item_groups_api():
             }
         }
 
-        return send_response_list(status="success", message="Item groups fetched successfully", status_code=200, http_status=200, data=response_data)
+        return send_response_list(
+            status="success",
+            message="Item groups fetched successfully",
+            status_code=200,
+            http_status=200,
+            data=response_data
+        )
 
     except Exception as e:
         frappe.log_error(message=str(e), title="Get All Item Groups API Error")
-        return send_response(status="fail", message="Failed to fetch item groups", data={"error": str(e)}, status_code=500, http_status=500)
+        return send_response(
+            status="fail",
+            message="Failed to fetch item groups",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
 
 
 @frappe.whitelist(allow_guest=False)
