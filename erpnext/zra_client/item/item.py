@@ -1025,13 +1025,13 @@ def get_all_item_groups_api():
         except ValueError:
             return send_response(status="error", message="'page_size' must be a positive integer.", data=None, status_code=400, http_status=400)
 
-        # ✅ Get and validate item_type filter
-        item_type = args.get("item_type")
+        # ✅ Get and validate itemType filter
+        item_type = args.get("itemType")
         if item_type is not None:
             if item_type not in ["1", "2", "3"]:
                 return send_response(
                     status="error",
-                    message="'item_type' must be 1, 2, or 3.",
+                    message="'itemType' must be 1, 2, or 3.",
                     data=None,
                     status_code=400,
                     http_status=400
