@@ -1491,3 +1491,73 @@ def update_company_files():
     frappe.db.commit()
 
     return send_response(status="success", message=f"Files for company '{company.company_name}' updated successfully", status_code=200)
+
+
+@frappe.whitelist(allow_guest=False, methods=["DELETE"])
+def delete_company_bank_account():
+    try:
+        data = frappe.form_dict
+
+        company_id = data.get("companyId")
+        account_id = data.get("accountId")
+
+        # --- Validation ---
+        if not company_id:
+            return send_response(
+                status="fail",
+                message="'companyId' is required",
+                status_code=400,
+                http_status=400
+            )
+
+        if not account_id:
+            return send_response(
+                status="fail",
+                message="'accountId' is required",
+                status_code=400,
+                http_status=400
+            )
+
+        # --- Check company exists ---
+        if not frappe.db.exists("Company", {"custom_company_id": company_id}):
+            return send_response(
+                status="fail",
+                message=f"Company with ID '{company_id}' not found",
+                status_code=404,
+                http_status=404
+            )
+
+        # --- Check bank account exists and belongs to this company ---
+        bank_account = frappe.db.get_value(
+            "Company Accounts",
+            {"id": account_id, "company_id": company_id},
+            "name"
+        )
+
+        if not bank_account:
+            return send_response(
+                status="fail",
+                message=f"Bank account '{account_id}' not found for company '{company_id}'",
+                status_code=404,
+                http_status=404
+            )
+
+        # --- Delete ---
+        frappe.delete_doc("Company Accounts", bank_account, ignore_permissions=True)
+        frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message="Bank account deleted successfully",
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Delete Company Bank Account API Error")
+        return send_response(
+            status="fail",
+            message=str(e),
+            status_code=500,
+            http_status=500
+        )
