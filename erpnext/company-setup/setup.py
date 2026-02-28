@@ -1453,33 +1453,70 @@ def update_company_api():
 
         buy_payment_doc.save(ignore_permissions=True)
 
-        if buying_phases:
-            updated_ids = set()
+        # ── Buying Payment Phases (WITH AUTO-DELETE) ──────────────────────────────
+        if buying_phases is not None:
+            # Get all existing phases for this company
+            existing_phases = frappe.get_all(
+                "Company Buying Payments Phases",
+                filters={"company": custom_company_id},
+                fields=["name", "id"]
+            )
+            
+            # Create mapping: custom_id → frappe_name
+            existing_phase_map = {phase["id"]: phase["name"] for phase in existing_phases}
+            existing_phase_ids = set(existing_phase_map.keys())
+            
+            # Collect incoming phase IDs (excluding deleted ones)
+            incoming_phase_ids = set()
+            
             for p in buying_phases:
                 phase_id = p.get("id")
                 is_delete = p.get("isDelete", 0)
-
+                
+                # Skip explicitly deleted phases
                 if phase_id and is_delete == 1:
-                    if frappe.db.exists("Company Buying Payments Phases", {"id": phase_id}):
-                        frappe.delete_doc("Company Buying Payments Phases", phase_id, ignore_permissions=True)
+                    if phase_id in existing_phase_map:
+                        frappe.delete_doc(
+                            "Company Buying Payments Phases",
+                            existing_phase_map[phase_id],
+                            ignore_permissions=True
+                        )
                     continue
-
-                if phase_id and frappe.db.exists("Company Buying Payments Phases", {"id": phase_id}):
-                    phase_doc = frappe.get_doc("Company Buying Payments Phases", {"id": phase_id})
+                
+                # Update existing phase
+                if phase_id and phase_id in existing_phase_map:
+                    phase_doc = frappe.get_doc(
+                        "Company Buying Payments Phases",
+                        existing_phase_map[phase_id]
+                    )
                     phase_doc.phase_name = p.get("name")
                     phase_doc.percentage = p.get("percentage")
                     phase_doc.condition = p.get("condition")
                     phase_doc.save(ignore_permissions=True)
-                    updated_ids.add(phase_id)
+                    incoming_phase_ids.add(phase_id)
+                
+                # Create new phase
                 else:
                     phase_doc = frappe.new_doc("Company Buying Payments Phases")
-                    phase_doc.id = "{:08d}".format(random.randint(0, 99999999))
+                    new_id = "{:08d}".format(random.randint(0, 99999999))
+                    phase_doc.id = new_id
                     phase_doc.company = custom_company_id
                     phase_doc.phase_name = p.get("name")
                     phase_doc.percentage = p.get("percentage")
                     phase_doc.condition = p.get("condition")
                     phase_doc.insert(ignore_permissions=True)
-                    updated_ids.add(phase_doc.name)
+                    incoming_phase_ids.add(new_id)
+            
+            # ── DELETE PHASES NOT IN INCOMING ARRAY ──────────────────────────────
+            phases_to_delete = existing_phase_ids - incoming_phase_ids
+            
+            for phase_id in phases_to_delete:
+                if phase_id in existing_phase_map:
+                    frappe.delete_doc(
+                        "Company Buying Payments Phases",
+                        existing_phase_map[phase_id],
+                        ignore_permissions=True
+                    )
 
     company.save(ignore_permissions=True)
     frappe.db.commit()
