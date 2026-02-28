@@ -775,7 +775,7 @@ def get_purchase_order():
         items = frappe.get_all(
             "Purchase Order Item",
             filters={"parent": poId},
-            fields=["item_code", "item_name", "qty", "uom", "rate", "amount"],
+            fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date"],
         )
 
         total_quantity = sum(item.get("qty", 0) for item in items)
@@ -831,7 +831,7 @@ def get_purchase_order():
         def purchase_terms():
             return {
                 "terms": {
-                    "selling": {
+                    "buying": {
                         "general": getattr(terms_doc, "general", ""),
                         "delivery": getattr(terms_doc, "delivery", ""),
                         "cancellation": getattr(terms_doc, "cancellation", ""),
