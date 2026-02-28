@@ -360,25 +360,25 @@ def create_purchase_invoice():
             status_code=400
         )
 
-    if not requiredBy:
-        return send_response(
-            status="fail",
-            message="Required By date must not be null.",
-            data=[],
-            status_code=400,
-        )
+    # if not requiredBy:
+    #     return send_response(
+    #         status="fail",
+    #         message="Required By date must not be null.",
+    #         data=[],
+    #         status_code=400,
+    #     )
+    if requiredBy:
+        requiredBy = datetime.strptime(requiredBy, "%Y-%m-%d").date()
+        today = date.today()
 
-    requiredBy = datetime.strptime(requiredBy, "%Y-%m-%d").date()
-    today = date.today()
-
-    if requiredBy < today:
-        return send_response(
-            status="fail",
-            message=f"Required By '{requiredBy}' cannot be before today's date '{today}'.",
-            data=[],
-            status_code=400,
-            http_status=400
-        )
+        if requiredBy < today:
+            return send_response(
+                status="fail",
+                message=f"Required By '{requiredBy}' cannot be before today's date '{today}'.",
+                data=[],
+                status_code=400,
+                http_status=400
+            )
 
     incotermName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateIncoterm(incoterm)
     supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier_check)
@@ -935,10 +935,10 @@ def get_automatic_purchase_invoice():
         supplier_doc = frappe.get_doc({
             "doctype": "Supplier",
             "supplier_name": spplrNm,
-            "default_currency": "ZMW",
+            "default_currency": frappe.defaults.get_global_default("currency"),
             "custom_supplier_id": newSupplierId,
             "tax_category": "Non-Export",
-            "country": "Zambia",
+            "country": frappe.defaults.get_global_default("country"),
             "tax_id": spplrTpin,
             "custom_status": "Active"
         })
@@ -948,14 +948,14 @@ def get_automatic_purchase_invoice():
     purchase_invoice = frappe.get_doc({
         "doctype": "Purchase Invoice",
         "supplier": supplier_name,
-        "currency": "ZMW",
+        "currency": frappe.defaults.get_global_default("currency"),
         "tax_category": "Non-Export",
         "custom_total_taxble_amount": totTaxblAmt,
         "custom_total_tax_amount": totTaxAmt,
         "remarks": remark,
         "bill_no": spplrInvcNo,
         "custom_sync_status": "0",
-        "custom_place_of_supply": "Zambia",
+        "custom_place_of_supply": frappe.defaults.get_global_default("country"),
         "custom_registration_type": "Automatic",
         "custom_payment_method": "CASH",
     })
