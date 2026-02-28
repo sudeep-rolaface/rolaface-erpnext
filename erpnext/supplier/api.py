@@ -156,7 +156,7 @@ def get_supplier_details_id():
         "accountNumber": supplier.custom_account_no,
         "billingCity": supplier.custom_supplier_city,
         "currency": supplier.default_currency,
-        "contactPerson": supplier.supplier_primary_contact,
+        "contactPerson": supplier.custom_supplier_contact_name,
         "billingAddressLine1": supplier.custom_supplier_address_line_2,
         "billingAddressLine2": supplier.custom_supplier_address_line_1,
         "phoneNo": supplier.mobile_no,
