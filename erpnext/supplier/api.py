@@ -407,10 +407,12 @@ def update_supplier():
                 http_status=400
             )
     if tax_id:
-        if len(tax_id) != 10 or not tax_id.isalnum():
+        tax_id = tax_id.strip()
+
+        if not tax_id.isdigit():
             return send_response(
                 status="fail",
-                message="Supplier TPIN must be exactly 10 alphanumeric characters",
+                message="Supplier TPIN must be numeric digits",
                 status_code=400,
                 http_status=400
             )
