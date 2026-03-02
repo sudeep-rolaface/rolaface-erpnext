@@ -786,7 +786,7 @@ def get_purchase_order():
         items = frappe.get_all(
             "Purchase Order Item",
             filters={"parent": poId},
-            fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date"
+            fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date",
                     "mfg_date", "paking_unit", "packing_size", "batch_no"],
         )
 
