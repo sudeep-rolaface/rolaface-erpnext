@@ -656,13 +656,13 @@ def create_quotation():
             http_status=400
         )
 
-    if not exchangeRt:
-        return send_response(
-            status="fail",
-            message="Exchange rate is required and must not be null",
-            status_code=400,
-            http_status=400
-        )
+    # if not exchangeRt:
+    #     return send_response(
+    #         status="fail",
+    #         message="Exchange rate is required and must not be null",
+    #         status_code=400,
+    #         http_status=400
+    #     )
 
     # ── parse JSON payload for items ───────────────────────────────────────────
     try:
