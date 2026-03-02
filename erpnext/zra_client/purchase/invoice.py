@@ -24,6 +24,43 @@ def is_zra_enabled():
     return frappe.conf.get("enable_zra_sync", False)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPER: Get or Create Batch
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_or_create_batch(item_code, batch_no, company):
+    """
+    If batch exists  → return it (stock will update when PI is approved).
+    If batch missing → create it and return the new batch name.
+    """
+    existing_batch = frappe.db.exists("Batch", {"name": batch_no, "item": item_code})
+
+    if existing_batch:
+        frappe.logger().info(
+            f"[BATCH] Existing batch '{batch_no}' found for item '{item_code}'."
+        )
+        return batch_no
+
+    frappe.logger().info(
+        f"[BATCH] Batch '{batch_no}' not found. Creating new batch for item '{item_code}'."
+    )
+
+    new_batch = frappe.get_doc({
+        "doctype": "Batch",
+        "batch_id": batch_no,
+        "item": item_code,
+        "company": company,
+    })
+    new_batch.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    return new_batch.name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CREATE PURCHASE INVOICE
+# ─────────────────────────────────────────────────────────────────────────────
+
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_purchase_invoice():
     data = frappe.form_dict
@@ -217,6 +254,7 @@ def create_purchase_invoice():
         rate = i.get("rate")
         vat_rate = i.get("vatRate", 0)  # ✅ capture vatRate for local tax calculation
         item_required_by = i.get("requiredBy")
+        batch_no = i.get("batchNo")     # ✅ capture batchNo from payload
 
         if not itemCode:
             return send_response(
@@ -317,6 +355,21 @@ def create_purchase_invoice():
                         status_code=400
                     )
 
+        # ── Batch Handling — Create if not exists ─────────────────────────────
+        resolved_batch_no = None
+
+        if item_details.get("has_batch_no"):
+            if not batch_no:
+                return send_response(
+                    status="fail",
+                    message=f"Item '{itemCode}' requires a batch number (batchNo).",
+                    data=[],
+                    status_code=400,
+                    http_status=400
+                )
+            # ✅ Reuse existing batch or create a new one
+            resolved_batch_no = get_or_create_batch(itemCode, batch_no, company_name)
+
         purchase_invoice_items.append({
             "itemCode": itemCode,
             "itemName": item_details.get("itemName"),
@@ -337,7 +390,8 @@ def create_purchase_invoice():
             "custom_vat": vat_cd,
             "qty": quantity,
             "rate": rate,
-            "schedule_date": item_required_by
+            "schedule_date": item_required_by,
+            "batch_no": resolved_batch_no,  # ✅ None if item doesn't use batches
         })
 
     supplierName = supplier.supplier_name
@@ -444,7 +498,7 @@ def create_purchase_invoice():
         )
 
     # ------------------------------------------------------------------ #
-    #  Save the Purchase Invoice                                           #
+    #  Save the Purchase Invoice (Draft — NO stock movement yet)           #
     # ------------------------------------------------------------------ #
     purchase_invoice = frappe.get_doc({
         "doctype": "Purchase Invoice",
@@ -462,7 +516,7 @@ def create_purchase_invoice():
         "items": invoice_items_to_be_saved,
         "remarks": remarks,
         "bill_no": spplrInvcNo,
-        "update_stock": 1,
+        "update_stock": 0,              # ✅ stock moves only on approval (approve endpoint)
         "supplier_address": supplier_addr_name,
         "dispatch_address": dispatch_addr_name,
         "shipping_address": shipping_addr_name,
@@ -487,6 +541,91 @@ def create_purchase_invoice():
         http_status=201
     )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  APPROVE PURCHASE INVOICE — sets update_stock=1 then submits
+# ─────────────────────────────────────────────────────────────────────────────
+
+@frappe.whitelist(allow_guest=False, methods=["PATCH"])
+def approve_purchase_invoice():
+    data = frappe.form_dict
+    invoice_name = data.get("invoiceName")
+
+    if not invoice_name:
+        return send_response(
+            status="fail",
+            message="invoiceName is required.",
+            status_code=400,
+            http_status=400
+        )
+
+    if not frappe.db.exists("Purchase Invoice", invoice_name):
+        return send_response(
+            status="fail",
+            message=f"Purchase Invoice '{invoice_name}' does not exist.",
+            status_code=404,
+            http_status=404
+        )
+
+    pi = frappe.get_doc("Purchase Invoice", invoice_name)
+
+    if pi.docstatus == 1:
+        return send_response(
+            status="fail",
+            message=f"Purchase Invoice '{invoice_name}' is already submitted.",
+            status_code=400,
+            http_status=400
+        )
+
+    if pi.docstatus == 2:
+        return send_response(
+            status="fail",
+            message=f"Purchase Invoice '{invoice_name}' is cancelled and cannot be approved.",
+            status_code=400,
+            http_status=400
+        )
+
+    # ✅ Validate batch items before approving
+    for item in pi.items:
+        item_has_batch = frappe.db.get_value("Item", item.item_code, "has_batch_no")
+
+        if item_has_batch and not item.batch_no:
+            return send_response(
+                status="fail",
+                message=f"Item '{item.item_code}' requires a batch number before approval.",
+                status_code=400,
+                http_status=400
+            )
+
+        if item.batch_no and not frappe.db.exists("Batch", {"name": item.batch_no, "item": item.item_code}):
+            return send_response(
+                status="fail",
+                message=f"Batch '{item.batch_no}' no longer exists for item '{item.item_code}'.",
+                status_code=400,
+                http_status=400
+            )
+
+    # ✅ Enable stock update then submit — inventory hits here
+    pi.update_stock = 1
+    pi.save(ignore_permissions=True)
+    pi.submit()
+    frappe.db.commit()
+
+    frappe.logger().info(
+        f"[PI APPROVE] '{invoice_name}' submitted. update_stock=1 → inventory updated."
+    )
+
+    return send_response(
+        status="success",
+        message="Purchase invoice approved and inventory updated successfully.",
+        status_code=200,
+        http_status=200
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GET ALL PURCHASE INVOICES
+# ─────────────────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_all_purchase_invoices():
@@ -622,6 +761,10 @@ def get_all_purchase_invoices():
             http_status=500
         )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GET PURCHASE INVOICE BY ID
+# ─────────────────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_purchase_invoice_by_id():
@@ -854,6 +997,10 @@ def get_purchase_invoice_by_id():
         )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  DELETE PURCHASE INVOICE
+# ─────────────────────────────────────────────────────────────────────────────
+
 @frappe.whitelist(allow_guest=False, methods=["DELETE"])
 def delete_purchase_invoice():
     try:
@@ -914,6 +1061,10 @@ def delete_purchase_invoice():
             http_status=500
         )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GET AUTOMATIC PURCHASE INVOICE
+# ─────────────────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=False, methods=["PUT"])
 def get_automatic_purchase_invoice():
@@ -1022,6 +1173,10 @@ def get_automatic_purchase_invoice():
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  UPDATE PURCHASE INVOICE STATUS
+# ─────────────────────────────────────────────────────────────────────────────
+
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_purchase_invoices_status():
     data = frappe.form_dict
@@ -1059,6 +1214,10 @@ def update_purchase_invoices_status():
 
     return send_response(status="success", message="The purchase invoice status was updated successfully.", data=[], status_code=200, http_status=200)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SYNC AUTO PURCHASE INVOICES
+# ─────────────────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def sync_auto_purchase_invoices():
