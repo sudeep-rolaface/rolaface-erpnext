@@ -648,6 +648,495 @@ def get_or_create_batch(item_code, batch_no, company):
 #  CREATE PURCHASE INVOICE
 # ─────────────────────────────────────────────────────────────────────────────
 
+# @frappe.whitelist(allow_guest=False, methods=["POST"])
+# def create_purchase_invoice():
+#     data = frappe.form_dict
+#     supplierId = data.get("supplierId")
+#     taxCategory = data.get("taxCategory")
+#     destnCountryCd = data.get("destnCountryCd")
+#     lpoNumber = data.get("lpoNumber")
+#     requiredBy = data.get("requiredBy")
+#     spplrInvcNo = data.get("spplrInvcNo")
+#     pmtType = data.get("paymentType")
+#     pchsSttsCd = data.get("transactionProgress")
+#     currency = data.get("currency")
+#     status = data.get("status")
+#     costCenter = data.get("costCenter")
+#     project = data.get("project")
+#     shippingRule = data.get("shippingRule")
+#     incoterm = data.get("incoterm")
+#     placeOfSupply = data.get("placeOfSupply")
+#     addresses = data.get("addresses", {})
+#     terms = data.get("terms")
+
+#     items = data.get("items", [])
+#     metadata = data.get("metadata", {})
+#     remarks = metadata.get("remarks", "")
+
+#     if not supplierId:
+#         return send_response(
+#             status="fail",
+#             message="Supplier id must not be null",
+#             data=[],
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     supplier_check = frappe.db.get_value(
+#         "Supplier",
+#         {"custom_supplier_id": supplierId},
+#         "name"
+#     )
+
+#     if not supplier_check:
+#         return send_response(
+#             status="fail",
+#             message="Supplier not found",
+#             data=[],
+#             http_status=404,
+#         )
+
+#     supplier = frappe.get_doc("Supplier", supplier_check)
+
+#     if not taxCategory:
+#         return send_response(
+#             status="fail",
+#             message="Tax category must not be null",
+#             data=[],
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     # ZRA-specific: validate taxCategory against ZRA list
+#     if is_zra_enabled():
+#         TAX_CAT = CUSTOM_FRAPPE_INSTANCE.GetAvailableTaxCategory()
+#         if taxCategory not in TAX_CAT:
+#             return send_response(
+#                 status="fail",
+#                 message=f"Tax Category '{taxCategory}' does not exist.  Available Tax Categories : {TAX_CAT}",
+#                 data=[],
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#     if not pchsSttsCd:
+#         return send_response(status="fail", message="Transaction Progress is required.", status_code=400, http_status=400)
+
+#     trx_names = CUSTOM_FRAPPE_INSTANCE.GetTransactionProgressNames()
+#     trx_codes = CUSTOM_FRAPPE_INSTANCE.GetTransactionProgressCodes()
+
+#     if pchsSttsCd not in trx_names:
+#         return send_response(
+#             status="fail",
+#             message=f"Invalid transaction progress: {pchsSttsCd}. Available : {trx_names}",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     index = trx_names.index(pchsSttsCd)
+#     trxProgCd = trx_codes[index]
+
+#     if not pmtType:
+#         return send_response(status="fail", message="paymentType is required.", status_code=400, http_status=400)
+
+#     payment_names = CUSTOM_FRAPPE_INSTANCE.GetPaymentMethodsName()
+#     payment_codes = CUSTOM_FRAPPE_INSTANCE.GetPaymentMethodsCodes()
+
+#     if pmtType not in payment_names:
+#         return send_response(
+#             status="fail",
+#             message=f"Invalid payment method: {pmtType}. Available: {payment_names}",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     index = payment_names.index(pmtType)
+#     pmtTyCd = payment_codes[index]
+
+#     if not spplrInvcNo:
+#         return send_response(status="fail", message="spplier Invoice No must not be null", status_code=400, http_status=400)
+
+#     if not spplrInvcNo.isdigit():
+#         return send_response(
+#             status="fail",
+#             message="Supplier Invoice No must contain numbers only",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     invoice_exists = frappe.db.exists(
+#         "Purchase Invoice",
+#         {
+#             "supplier": supplier_check,
+#             "bill_no": spplrInvcNo,
+#             "docstatus": ["!=", 2]
+#         }
+#     )
+
+#     if invoice_exists:
+#         return send_response(status="fail", message=f"Supplier Invoice No '{spplrInvcNo}' already exists for this supplier", status_code=400, http_status=400)
+
+#     if not costCenter:
+#         return send_response(
+#             status="fail",
+#             message="Cost center must not be null",
+#             data=[],
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     if not project:
+#         return send_response(
+#             status="fail",
+#             message="Project name must not null",
+#             data=[],
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     # ------------------------------------------------------------------ #
+#     #  Resolve company + currency directly from the cost center            #
+#     #  (bypasses all Frappe/Redis caching via raw SQL)                     #
+#     # ------------------------------------------------------------------ #
+#     cost_center_exists = frappe.db.sql(
+#         "SELECT name FROM `tabCost Center` WHERE name = %s LIMIT 1",
+#         (costCenter,)
+#     )
+#     if not cost_center_exists:
+#         return send_response(
+#             status="fail",
+#             message=f"Cost Center '{costCenter}' does not exist.",
+#             status_code=400,
+#             http_status=400,
+#             data=[]
+#         )
+
+#     company_name, company_currency = get_company_and_currency(costCenter)
+
+#     frappe.logger().info(
+#         f"[PI] costCenter='{costCenter}' -> company='{company_name}', "
+#         f"company_currency='{company_currency}', requested_currency='{currency}'"
+#     )
+
+#     if not company_name:
+#         return send_response(
+#             status="fail",
+#             message=f"Could not determine the company for cost center '{costCenter}'.",
+#             data=[],
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     # ✅ company_name resolved — safe to create project under correct company
+#     projectName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateProject(project, company_name)
+
+#     purchase_invoice_items = []
+#     invoice_items_to_be_saved = []
+
+#     for i in items:
+#         print(i)
+#         itemCode = i.get("itemCode")
+#         quantity = i.get("quantity")
+#         vat_cd = i.get("vatCd")
+#         rate = i.get("rate")
+#         vat_rate = i.get("vatRate", 0)  # ✅ capture vatRate for local tax calculation
+#         item_required_by = i.get("requiredBy")
+#         batch_no = i.get("batchNo")     # ✅ capture batchNo from payload
+
+#         if not itemCode:
+#             return send_response(
+#                 status="fail",
+#                 message="Item code must not null",
+#                 data=[],
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         if not rate:
+#             return send_response(
+#                 status="fail",
+#                 message=f"Item code {itemCode} rate must not be null",
+#                 status_code=400,
+#                 http_status=400,
+#                 data=[],
+#             )
+
+#         if rate <= 0:
+#             return send_response(
+#                 status="fail",
+#                 message=(
+#                     f"Invalid rate for item Code: {itemCode}. "
+#                     "Rate must be a positive number greater than 0."
+#                 ),
+#                 status_code=400,
+#                 http_status=400,
+#                 data=[],
+#             )
+
+#         if not quantity:
+#             return send_response(
+#                 status="fail",
+#                 message="Item quantity must not be null",
+#                 data=[],
+#                 status_code=400,
+#                 http_status=400,
+#             )
+
+#         if not vat_cd:
+#             return send_response(
+#                 status="fail",
+#                 message="Vat Category must not be null",
+#                 data=[],
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         item_details = CUSTOM_FRAPPE_INSTANCE.GetItemInfo(itemCode)
+
+#         if not item_details:
+#             return send_response(
+#                 status="fail",
+#                 message=f"Item '{itemCode}' does not exist",
+#                 status_code=404,
+#                 http_status=404
+#             )
+
+#         # ✅ ZRA-specific VAT validations — only when ZRA is enabled
+#         if is_zra_enabled():
+#             VAT_LIST = CUSTOM_FRAPPE_INSTANCE.GetValidTaxTypes()
+#             if vat_cd not in VAT_LIST:
+#                 return send_response(status="fail", message=f"Invalid VAT code {vat_cd}", status_code=400)
+
+#             if taxCategory == "LPO" and vat_cd != "C2":
+#                 return send_response(
+#                     status="fail",
+#                     message="vatCd must be 'C2' when taxCategory is 'LPO'",
+#                     status_code=400,
+#                     http_status=400
+#                 )
+
+#             if vat_cd == "C1" and not destnCountryCd:
+#                 return send_response(status="fail", message="Destination country required for VAT C1", status_code=400)
+
+#             if taxCategory == "Export" and vat_cd != "C1":
+#                 return send_response(
+#                     status="fail",
+#                     message="vatCd must be 'C1' when taxCategory is 'Export'",
+#                     status_code=400,
+#                     http_status=400
+#                 )
+
+#             if taxCategory == "Non-Export" and vat_cd != "A":
+#                 return send_response(
+#                     status="fail",
+#                     message="vatCd must be 'A' when taxCategory is 'Non-Export'",
+#                     status_code=400,
+#                     http_status=400
+#                 )
+
+#             if vat_cd == "A":
+#                 if lpoNumber is not None or destnCountryCd is not None:
+#                     return send_response(
+#                         status="fail",
+#                         message="LPO number and destination country must not be provided when VAT code is 'A'.",
+#                         status_code=400
+#                     )
+
+#         # ── Batch Handling — Create if not exists ─────────────────────────────
+#         resolved_batch_no = None
+
+#         if item_details.get("has_batch_no"):
+#             if not batch_no:
+#                 return send_response(
+#                     status="fail",
+#                     message=f"Item '{itemCode}' requires a batch number (batchNo).",
+#                     data=[],
+#                     status_code=400,
+#                     http_status=400
+#                 )
+#             # ✅ Reuse existing batch or create a new one
+#             resolved_batch_no = get_or_create_batch(itemCode, batch_no, company_name)
+
+#         purchase_invoice_items.append({
+#             "itemCode": itemCode,
+#             "itemName": item_details.get("itemName"),
+#             "qty": quantity,
+#             "itemClassCode": item_details.get("itemClassCd"),
+#             "packageUnitCode": item_details.get("itemPackingUnitCd"),
+#             "price": rate,
+#             "VatCd": vat_cd,
+#             "unitOfMeasure": item_details.get("itemUnitCd"),
+#             "schedule_date": item_required_by,
+#             "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name)
+#         })
+
+#         invoice_items_to_be_saved.append({
+#             "item_code": itemCode,
+#             "item_name": item_details.get("itemName"),
+#             "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
+#             "custom_vat": vat_cd,
+#             "qty": quantity,
+#             "rate": rate,
+#             "schedule_date": item_required_by,
+#             "batch_no": resolved_batch_no,  # ✅ None if item doesn't use batches
+#         })
+
+#     supplierName = supplier.supplier_name
+#     supplierTpin = supplier.tax_id
+
+#     if not shippingRule:
+#         return send_response(
+#             status="fail",
+#             message="Shipping rule must not be null",
+#             data=[],
+#             http_status=400,
+#             status_code=400,
+#         )
+
+#     if not incoterm:
+#         return send_response(
+#             status="fail",
+#             message="Incoterm must not be null",
+#             data=[],
+#             http_status=400,
+#             status_code=400
+#         )
+
+#     # if not requiredBy:
+#     #     return send_response(
+#     #         status="fail",
+#     #         message="Required By date must not be null.",
+#     #         data=[],
+#     #         status_code=400,
+#     #     )
+#     if requiredBy:
+#         requiredBy = datetime.strptime(requiredBy, "%Y-%m-%d").date()
+#         today = date.today()
+
+#         if requiredBy < today:
+#             return send_response(
+#                 status="fail",
+#                 message=f"Required By '{requiredBy}' cannot be before today's date '{today}'.",
+#                 data=[],
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#     incotermName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateIncoterm(incoterm)
+#     supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier_check)
+#     dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier_check)
+#     shipping_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateShippingAddress(addresses, supplier_check)
+#     print(supplier_addr_name, dispatch_addr_name, shipping_addr_name)
+
+#     # ------------------------------------------------------------------ #
+#     #  ZRA sync OR local tax calculation                                   #
+#     # ------------------------------------------------------------------ #
+#     if is_zra_enabled():
+#         purchase_invoice_payload = {
+#             "supplierName": supplierName,
+#             "supplierTpin": supplierTpin,
+#             "supplierId": supplierId,
+#             "spplrInvcNo": spplrInvcNo,
+#             "pmtTyCd": pmtTyCd,
+#             "pchsSttsCd": trxProgCd,
+#             "items": purchase_invoice_items
+#         }
+
+#         results = PURCHASE_HELPER_INSTANCE.send_purchase_data(purchase_invoice_payload)
+#         print("Results: ", results)
+#         resultCd = results.get("resultCd")
+#         resultMsg = results.get("resultMsg")
+#         payload = results.get("payload")
+
+#         if resultCd != "000":
+#             return send_response(
+#                 status="fail",
+#                 message=resultMsg,
+#                 data=[],
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         total_taxable_amount = payload.get("totTaxblAmt", 0)
+#         total_tax_amount = payload.get("totTaxAmt", 0)
+
+#     else:
+#         # ✅ ZRA disabled — calculate tax locally using vatRate from each item
+#         total_taxable_amount = 0
+#         total_tax_amount = 0
+
+#         for i in items:
+#             qty = i.get("quantity", 0)
+#             rate = i.get("rate", 0)
+#             vat_rate = i.get("vatRate", 0)
+
+#             line_total = qty * rate
+#             line_tax = round(line_total * vat_rate / 100, 2)
+
+#             total_taxable_amount += line_total
+#             total_tax_amount += line_tax
+
+#         total_taxable_amount = round(total_taxable_amount, 2)
+#         total_tax_amount = round(total_tax_amount, 2)
+
+#         frappe.logger().info(
+#             f"[PI] ZRA disabled — local tax calc: "
+#             f"taxable={total_taxable_amount}, tax={total_tax_amount}"
+#         )
+
+#     # ------------------------------------------------------------------ #
+#     #  Save the Purchase Invoice (Draft — NO stock movement yet)           #
+#     # ------------------------------------------------------------------ #
+#     purchase_invoice = frappe.get_doc({
+#         "doctype": "Purchase Invoice",
+#         "supplier": supplier_check,
+#         "company": company_name,
+#         "currency": currency or company_currency,
+#         "cost_center": costCenter,
+#         "project": projectName,
+#         "schedule_date": requiredBy,
+#         "incoterm": incotermName,
+#         "status": status,
+#         "tax_category": taxCategory,
+#         "custom_total_taxble_amount": total_taxable_amount,
+#         "custom_total_tax_amount": total_tax_amount,
+#         "items": invoice_items_to_be_saved,
+#         "remarks": remarks,
+#         "bill_no": spplrInvcNo,
+#         "update_stock": 0,              # ✅ stock moves only on approval (approve endpoint)
+#         "supplier_address": supplier_addr_name,
+#         "dispatch_address": dispatch_addr_name,
+#         "shipping_address": shipping_addr_name,
+#         "custom_place_of_supply": placeOfSupply,
+#         "custom_registration_type": "Manual",
+#         "custom_payment_method": pmtType,
+#         "custom_transaction_progress": pchsSttsCd,
+#         "custom_destncountrycd": destnCountryCd,
+#         "custom_lpo_number": lpoNumber
+#     })
+
+#     purchase_invoice.insert(ignore_permissions=True)
+#     purchase_invoice.save(ignore_permissions=True)
+#     frappe.db.commit()
+
+#     CUSTOM_FRAPPE_INSTANCE.createInvoiceTermsAndPayments(purchase_invoice.name, terms)
+
+#     return send_response(
+#         status="success",
+#         message="Purchase invoice created sucessfully",
+#         status_code=201,
+#         http_status=201
+#     )
+
+
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CREATE PURCHASE INVOICE
+# ─────────────────────────────────────────────────────────────────────────────
+
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_purchase_invoice():
     data = frappe.form_dict
@@ -1133,6 +1622,97 @@ def create_purchase_invoice():
 #  APPROVE PURCHASE INVOICE — sets update_stock=1 then submits
 # ─────────────────────────────────────────────────────────────────────────────
 
+# @frappe.whitelist(allow_guest=False, methods=["PATCH"])
+# def approve_purchase_invoice():
+#     data = frappe.form_dict
+#     invoice_name = data.get("invoiceName")
+
+#     if not invoice_name:
+#         return send_response(
+#             status="fail",
+#             message="invoiceName is required.",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     if not frappe.db.exists("Purchase Invoice", invoice_name):
+#         return send_response(
+#             status="fail",
+#             message=f"Purchase Invoice '{invoice_name}' does not exist.",
+#             status_code=404,
+#             http_status=404
+#         )
+
+#     pi = frappe.get_doc("Purchase Invoice", invoice_name)
+
+#     if pi.docstatus == 1:
+#         return send_response(
+#             status="fail",
+#             message=f"Purchase Invoice '{invoice_name}' is already submitted.",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     if pi.docstatus == 2:
+#         return send_response(
+#             status="fail",
+#             message=f"Purchase Invoice '{invoice_name}' is cancelled and cannot be approved.",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     # ✅ Batch was already validated and created during create_purchase_invoice
+#     # ✅ Only verify batch still exists if batch_no is assigned on the PI item
+#     for item in pi.items:
+#         if item.batch_no:
+#             if not frappe.db.exists("Batch", {"name": item.batch_no, "item": item.item_code}):
+#                 return send_response(
+#                     status="fail",
+#                     message=f"Batch '{item.batch_no}' no longer exists for item '{item.item_code}'.",
+#                     status_code=400,
+#                     http_status=400
+#                 )
+
+#     try:
+#         # ✅ Step 1: Write update_stock=1 directly to DB — bypasses Frappe cache
+#         frappe.db.set_value("Purchase Invoice", invoice_name, "update_stock", 1, update_modified=False)
+#         frappe.db.commit()
+
+#         # ✅ Step 2: Fresh reload from DB — guaranteed to pick up update_stock=1
+#         pi = frappe.get_doc("Purchase Invoice", invoice_name)
+
+#         frappe.logger().info(
+#             f"[PI APPROVE] '{invoice_name}' update_stock={pi.update_stock} — submitting."
+#         )
+
+#         # ✅ Step 3: Submit — Stock Ledger Entry created, inventory updated
+#         pi.submit()
+#         frappe.db.commit()
+
+#         frappe.logger().info(
+#             f"[PI APPROVE] '{invoice_name}' submitted successfully. Inventory updated."
+#         )
+
+#     except Exception as e:
+#         frappe.db.rollback()
+#         frappe.log_error(frappe.get_traceback(), "Approve Purchase Invoice Error")
+#         return send_response(
+#             status="fail",
+#             message=f"Failed to approve invoice: {str(e)}",
+#             status_code=500,
+#             http_status=500
+#         )
+
+#     return send_response(
+#         status="success",
+#         message="Purchase invoice approved and inventory updated successfully.",
+#         status_code=200,
+#         http_status=200
+#     )
+
+
+
+
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def approve_purchase_invoice():
     data = frappe.form_dict
@@ -1189,14 +1769,48 @@ def approve_purchase_invoice():
         frappe.db.set_value("Purchase Invoice", invoice_name, "update_stock", 1, update_modified=False)
         frappe.db.commit()
 
-        # ✅ Step 2: Fresh reload from DB — guaranteed to pick up update_stock=1
+        # ✅ Step 2: Ensure batch_no is saved on each PI item in DB
+        # ERPNext drops batch_no on PI items when update_stock=0 at creation
+        # We must restore it before submit so ERPNext can track batch stock
+        pi_items = frappe.get_all(
+            "Purchase Invoice Item",
+            filters={"parent": invoice_name},
+            fields=["name", "item_code", "batch_no"]
+        )
+
+        for pi_item in pi_items:
+            if not pi_item.get("batch_no"):
+                item_has_batch = frappe.db.get_value("Item", pi_item["item_code"], "has_batch_no")
+                if item_has_batch:
+                    # Find the latest batch for this item
+                    batch = frappe.db.get_value(
+                        "Batch",
+                        {"item": pi_item["item_code"], "disabled": 0},
+                        "name",
+                        order_by="creation desc"
+                    )
+                    if batch:
+                        frappe.db.set_value(
+                            "Purchase Invoice Item",
+                            pi_item["name"],
+                            "batch_no",
+                            batch,
+                            update_modified=False
+                        )
+                        frappe.logger().info(
+                            f"[PI APPROVE] Set batch_no='{batch}' on item '{pi_item['item_code']}'"
+                        )
+
+        frappe.db.commit()
+
+        # ✅ Step 3: Fresh reload from DB — guaranteed to pick up update_stock=1 + batch_no
         pi = frappe.get_doc("Purchase Invoice", invoice_name)
 
         frappe.logger().info(
             f"[PI APPROVE] '{invoice_name}' update_stock={pi.update_stock} — submitting."
         )
 
-        # ✅ Step 3: Submit — Stock Ledger Entry created, inventory updated
+        # ✅ Step 4: Submit — Stock Ledger Entry created, inventory updated
         pi.submit()
         frappe.db.commit()
 
@@ -1220,6 +1834,8 @@ def approve_purchase_invoice():
         status_code=200,
         http_status=200
     )
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
