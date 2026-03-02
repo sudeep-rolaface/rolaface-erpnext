@@ -417,7 +417,7 @@ def create_purchase_order():
             "itemTypeCd": item_details.get("itemType"),
             "packageUnitCode": item_details.get("itemPackingUnitCd"),
             "price": rate,
-            "VatCd": vat_cd,
+            "custom_vat_cd": vat_cd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "schedule_date": item_required_by,
             "mfg_date": mfg_date,
@@ -437,7 +437,8 @@ def create_purchase_order():
             "mfg_date": mfg_date,
             "packing_unit": packing_unit,
             "packing_size": packing_size,
-            "batch_no": batch_no
+            "batch_no": batch_no,
+            "custom_vat_cd": vat_cd,
         })
 
     # ------------------------------------------------------------------ #
@@ -788,7 +789,7 @@ def get_purchase_order():
             filters={"parent": poId},
             fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date",
                     "mfg_date as mfgDate", "packing_unit as packingUnit", "packing_size as packingSize",
-                    "batch_no as batchNo"  ],
+                    "batch_no as batchNo", "custom_vat_cd as vatCd"],
         )
 
         total_quantity = sum(item.get("qty", 0) for item in items)
