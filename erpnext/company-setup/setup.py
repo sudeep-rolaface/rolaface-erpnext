@@ -516,7 +516,7 @@ def get_company_api():
             )
 
             phases_list = [
-                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "condition": p.get("condition")}
+                {"id": p.get("id"), "name": p.get("phase_name"), "percentage": p.get("percentage"), "condition": p.get("condition")}
                 for p in phases_docs
             ]
 
@@ -559,7 +559,7 @@ def get_company_api():
             )
 
             phases_list = [
-                {"id": p.get("id"), "phase": p.get("phase_name"), "percentage": p.get("percentage"), "condition": p.get("condition")}
+                {"id": p.get("id"), "name": p.get("phase_name"), "percentage": p.get("percentage"), "condition": p.get("condition")}
                 for p in phases_docs
             ]
 
