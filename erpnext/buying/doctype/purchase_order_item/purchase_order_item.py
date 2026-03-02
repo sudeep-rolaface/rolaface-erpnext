@@ -65,8 +65,8 @@ class PurchaseOrderItem(Document):
 		net_amount: DF.Currency
 		net_rate: DF.Currency
 		packing_size: DF.Data | None
+		packing_unit: DF.Data | None
 		page_break: DF.Check
-		paking_unit: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

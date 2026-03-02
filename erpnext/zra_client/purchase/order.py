@@ -318,7 +318,7 @@ def create_purchase_order():
         vat_cd = i.get("vatCd")
         rate = i.get("rate")
         item_required_by = i.get("requiredBy")
-        paking_unit =  i.get("pakingUnit"),
+        packing_unit =  i.get("packingUnit"),
         packing_size = i.get("packingSize"),  
         batch_no = i.get("batchNo")
         mfg_date = i.get("mfgDate")
@@ -421,7 +421,7 @@ def create_purchase_order():
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "schedule_date": item_required_by,
             "mfg_date": mfg_date,
-            "paking_unit": paking_unit,
+            "packing_unit": packing_unit,
             "packing_size": packing_size,
             "batch_no": batch_no
         })
@@ -435,7 +435,7 @@ def create_purchase_order():
             "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
             "schedule_date": item_required_by,
             "mfg_date": mfg_date,
-            "paking_unit": paking_unit,
+            "packing_unit": packing_unit,
             "packing_size": packing_size,
             "batch_no": batch_no
         })
@@ -787,7 +787,8 @@ def get_purchase_order():
             "Purchase Order Item",
             filters={"parent": poId},
             fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date",
-                    "mfg_date", "paking_unit", "packing_size", "batch_no"],
+                    "mfg_date as mfgDate", "packing_unit as packingUnit", "packing_size as packingSize",
+                    "batch_no as batchNo"  ],
         )
 
         total_quantity = sum(item.get("qty", 0) for item in items)
