@@ -1789,17 +1789,26 @@ def approve_purchase_invoice():
                         "name",
                         order_by="creation desc"
                     )
-                    if batch:
-                        frappe.db.set_value(
-                            "Purchase Invoice Item",
-                            pi_item["name"],
-                            "batch_no",
-                            batch,
-                            update_modified=False
-                        )
+                    
+                    # If no batch found, create a new one
+                    if not batch:
                         frappe.logger().info(
-                            f"[PI APPROVE] Set batch_no='{batch}' on item '{pi_item['item_code']}'"
+                            f"[PI APPROVE] No active batch found for item '{pi_item['item_code']}'. Creating new batch."
                         )
+                        # Generate a unique batch number
+                        batch_id = f"BATCH-{pi_item['item_code']}-{frappe.utils.now_datetime().strftime('%Y%m%d%H%M%S')}"
+                        batch = get_or_create_batch(pi_item['item_code'], batch_id, pi.company)
+                    
+                    frappe.db.set_value(
+                        "Purchase Invoice Item",
+                        pi_item["name"],
+                        "batch_no",
+                        batch,
+                        update_modified=False
+                    )
+                    frappe.logger().info(
+                        f"[PI APPROVE] Set batch_no='{batch}' on item '{pi_item['item_code']}'"
+                    )
 
         frappe.db.commit()
 
@@ -2931,30 +2940,33 @@ def update_purchase_invoices_status():
                     if not pi_item.get("batch_no"):
                         item_has_batch = frappe.db.get_value("Item", pi_item["item_code"], "has_batch_no")
                         if item_has_batch:
+                            # Try to find existing active batch
                             batch = frappe.db.get_value(
                                 "Batch",
                                 {"item": pi_item["item_code"], "disabled": 0},
                                 "name",
                                 order_by="creation desc"
                             )
-                            if batch:
-                                frappe.db.set_value(
-                                    "Purchase Invoice Item",
-                                    pi_item["name"],
-                                    "batch_no",
-                                    batch,
-                                    update_modified=False
-                                )
+                            
+                            # If no batch found, create a new one
+                            if not batch:
                                 frappe.logger().info(
-                                    f"[PI STATUS] Restored batch_no='{batch}' on item '{pi_item['item_code']}'"
+                                    f"[PI STATUS] No active batch found for item '{pi_item['item_code']}'. Creating new batch."
                                 )
-                            else:
-                                return send_response(
-                                    status="fail",
-                                    message=f"No active batch found for item '{pi_item['item_code']}'. Cannot approve.",
-                                    status_code=400,
-                                    http_status=400
-                                )
+                                # Generate a unique batch number
+                                batch_id = f"BATCH-{pi_item['item_code']}-{frappe.utils.now_datetime().strftime('%Y%m%d%H%M%S')}"
+                                batch = get_or_create_batch(pi_item['item_code'], batch_id, pi_doc.company)
+                            
+                            frappe.db.set_value(
+                                "Purchase Invoice Item",
+                                pi_item["name"],
+                                "batch_no",
+                                batch,
+                                update_modified=False
+                            )
+                            frappe.logger().info(
+                                f"[PI STATUS] Restored batch_no='{batch}' on item '{pi_item['item_code']}'"
+                            )
 
                 frappe.db.commit()
 
