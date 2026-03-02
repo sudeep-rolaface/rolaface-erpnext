@@ -326,7 +326,8 @@ def create_purchase_invoice():
             "price": rate,
             "VatCd": vat_cd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
-            "schedule_date": item_required_by
+            "schedule_date": item_required_by,
+            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name)
         })
 
         invoice_items_to_be_saved.append({
@@ -461,6 +462,7 @@ def create_purchase_invoice():
         "items": invoice_items_to_be_saved,
         "remarks": remarks,
         "bill_no": spplrInvcNo,
+        "update_stock": 1,
         "supplier_address": supplier_addr_name,
         "dispatch_address": dispatch_addr_name,
         "shipping_address": shipping_addr_name,

@@ -318,6 +318,10 @@ def create_purchase_order():
         vat_cd = i.get("vatCd")
         rate = i.get("rate")
         item_required_by = i.get("requiredBy")
+        paking_unit =  i.get("pakingUnit"),
+        packing_size = i.get("packingSize"),  
+        batch_no = i.get("batchNo")
+        mfg_date = i.get("mfgDate")
         if not itemCode:
             return send_response(
                 status="fail",
@@ -415,7 +419,11 @@ def create_purchase_order():
             "price": rate,
             "VatCd": vat_cd,
             "unitOfMeasure": item_details.get("itemUnitCd"),
-            "schedule_date": item_required_by
+            "schedule_date": item_required_by,
+            "mfg_date": mfg_date,
+            "paking_unit": paking_unit,
+            "packing_size": packing_size,
+            "batch_no": batch_no
         })
 
         invoice_items.append({
@@ -425,8 +433,11 @@ def create_purchase_order():
             "qty": quantity,
             "rate": rate if rate is not None else item_details.get("standardRate", 0),
             "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
-            "schedule_date": item_required_by
-
+            "schedule_date": item_required_by,
+            "mfg_date": mfg_date,
+            "paking_unit": paking_unit,
+            "packing_size": packing_size,
+            "batch_no": batch_no
         })
 
     # ------------------------------------------------------------------ #
@@ -775,7 +786,8 @@ def get_purchase_order():
         items = frappe.get_all(
             "Purchase Order Item",
             filters={"parent": poId},
-            fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date"],
+            fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date"
+                    "mfg_date", "paking_unit", "packing_size", "batch_no"],
         )
 
         total_quantity = sum(item.get("qty", 0) for item in items)

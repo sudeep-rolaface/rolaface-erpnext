@@ -25,6 +25,7 @@ class PurchaseOrderItem(Document):
 		base_price_list_rate: DF.Currency
 		base_rate: DF.Currency
 		base_rate_with_margin: DF.Currency
+		batch_no: DF.Data | None
 		billed_amt: DF.Currency
 		blanket_order: DF.Link | None
 		blanket_order_rate: DF.Currency
@@ -60,9 +61,12 @@ class PurchaseOrderItem(Document):
 		margin_type: DF.Literal["", "Percentage", "Amount"]
 		material_request: DF.Link | None
 		material_request_item: DF.Data | None
+		mfg_date: DF.Date | None
 		net_amount: DF.Currency
 		net_rate: DF.Currency
+		packing_size: DF.Data | None
 		page_break: DF.Check
+		paking_unit: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
