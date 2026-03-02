@@ -597,59 +597,67 @@ def get_customer_by_id(custom_id):
         if tax_cat not in VALID_TAX_CATEGORY:
             tax_cat = ""
         
-        try:
-            terms_doc = frappe.get_doc("Customer Terms", {"customer": custom_id})
-
-
-            payment_phases_docs = frappe.get_all(
-                "Payment Terms",
-                filters={"customer": custom_id},
-                fields=["dueDates", "lateCharges", "tax", "notes"]
+        def get_selling_terms():
+            """Fetch selling terms from Company settings"""
+            
+            # Get default company for this customer
+            company_name = safe_attr(customer, "default_company") or frappe.defaults.get_defaults().get("company")
+            
+            if not company_name:
+                return {}
+            
+            # Get custom_company_id from Company
+            custom_company_id = frappe.db.get_value(
+                "Company",
+                company_name,
+                "custom_company_id"
             )
-
-            phases_docs = frappe.get_all(
-                "Payment Terms Phases",
-                filters={"customer": custom_id},  
-                fields=["id","phase", "percentage", "condition"]
-            )
-
-            phases_list = []
-            frappe.logger().debug(f"Phase list: {phases_docs}")
-            for p in phases_docs:
-                phases_list.append({
-                    "id": p.get("id"),
-                    "name": p.get("phase"),
-                    "percentage": p.get("percentage"),
-                    "condition": p.get("condition")
-                })
-
-    
-            payment_info = {}
-            if payment_phases_docs:
-                first = payment_phases_docs[0]
-                payment_info = {
-                    "phases": phases_list,
-                    "dueDates": first.get("dueDates"),
-                    "lateCharges": first.get("lateCharges"),
-                    "taxes": first.get("tax"),
-                    "notes": first.get("notes")
+            
+            if not custom_company_id:
+                return {}
+            
+            try:
+                # ── Get Selling Terms ─────────────────────────────────────────
+                selling_terms_doc = None
+                if frappe.db.exists("Company Selling Terms", {"company": custom_company_id}):
+                    selling_terms_doc = frappe.get_doc("Company Selling Terms", {"company": custom_company_id})
+                
+                # ── Get Selling Payment ───────────────────────────────────────
+                selling_payment_doc = None
+                if frappe.db.exists("Company Selling Payments", {"company": custom_company_id}):
+                    selling_payment_doc = frappe.get_doc("Company Selling Payments", {"company": custom_company_id})
+                
+                # ── Get Selling Payment Phases ────────────────────────────────
+                phases = frappe.get_all(
+                    "Company Selling Payments Phases",
+                    filters={"company": custom_company_id},
+                    fields=["id", "phase_name as name", "percentage", "condition"],
+                )
+                
+                return {
+                    "selling": {
+                        "general": getattr(selling_terms_doc, "general", "") if selling_terms_doc else "",
+                        "delivery": getattr(selling_terms_doc, "delivery", "") if selling_terms_doc else "",
+                        "cancellation": getattr(selling_terms_doc, "cancellation", "") if selling_terms_doc else "",
+                        "warranty": getattr(selling_terms_doc, "warranty", "") if selling_terms_doc else "",
+                        "liability": getattr(selling_terms_doc, "liability", "") if selling_terms_doc else "",
+                        "payment": {
+                            "type": getattr(selling_payment_doc, "type", "") if selling_payment_doc else "",
+                            "dueDates": getattr(selling_payment_doc, "duedates", "") if selling_payment_doc else "",
+                            "lateCharges": getattr(selling_payment_doc, "latecharges", "") if selling_payment_doc else "",
+                            "taxes": getattr(selling_payment_doc, "tax", "") if selling_payment_doc else "",
+                            "notes": getattr(selling_payment_doc, "notes", "") if selling_payment_doc else "",
+                            "phases": phases,
+                        },
+                    }
                 }
+            
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Get Customer Selling Terms Error")
+                return {}
+        
+        terms = get_selling_terms()
 
-            terms = {
-                "selling": {
-                    "general": safe_attr(terms_doc, "general"),
-                    "payment": payment_info,
-                    "delivery": safe_attr(terms_doc, "delivery"),
-                    "cancellation": safe_attr(terms_doc, "cancellation"),
-                    "warranty": safe_attr(terms_doc, "warranty"),
-                    "liability": safe_attr(terms_doc, "liability")
-                }
-            }
-
-
-
-        except frappe.DoesNotExistError:
-            terms = {}
         data = {
             "id": safe_attr(customer, "custom_id"),
             "tpin": safe_attr(customer, "tax_id"),
@@ -694,6 +702,7 @@ def get_customer_by_id(custom_id):
             http_status=404
         )
     except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get Customer By ID Error")
         return send_response(
             status="error",
             message=f"Failed to retrieve customer: {str(e)}",
