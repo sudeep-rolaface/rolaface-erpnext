@@ -145,7 +145,8 @@ def create_proforma_api():
             unit_price = float(item.get("price", 0))
             discount = float(item.get("discount", 0))
             tax = float(item.get("tax", 0))
-
+            packing_size = item.get("packingSize", None)
+            packing_unit = item.get("packingUnit", None)
             item_total = (qty * unit_price) - discount + tax
             getItemDetails = ZRA_INSTANCE.get_item_details(item.get("itemCode"))
 
@@ -159,7 +160,9 @@ def create_proforma_api():
                 "unit_price": unit_price,
                 "discount": discount,
                 "tax": tax,
-                "item_total": item_total
+                "item_total": item_total,
+                "packing_size": packing_size,
+                "packing_unit": packing_unit
             }).insert(ignore_permissions=True)
 
             total_items += qty
@@ -360,7 +363,9 @@ def get_proforma_by_id():
                 "unit_price",
                 "discount",
                 "tax",
-                "item_total"
+                "item_total",
+                "packing_unit",
+                "packing_size"
             ]
         )
 
@@ -373,7 +378,9 @@ def get_proforma_by_id():
                 "price": i.unit_price,
                 "discount": i.discount,
                 "tax": i.tax,
-                "itemTotal": i.item_total
+                "itemTotal": i.item_total,
+                "packingUnit": i.packing_unit,
+                "packingSize": i.packing_size
             } for i in items
         ]
 
