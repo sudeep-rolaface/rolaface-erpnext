@@ -33,6 +33,8 @@ class SalesInvoiceItem(Document):
 		base_rate: DF.Currency
 		base_rate_with_margin: DF.Currency
 		batch_no: DF.Link | None
+		box_end: DF.Data | None
+		boxstart: DF.Data | None
 		brand: DF.Data | None
 		company_total_stock: DF.Float
 		conversion_factor: DF.Float
@@ -49,6 +51,7 @@ class SalesInvoiceItem(Document):
 		distributed_discount_amount: DF.Currency
 		dn_detail: DF.Data | None
 		enable_deferred_revenue: DF.Check
+		exp_date: DF.Date | None
 		expense_account: DF.Link | None
 		finance_book: DF.Link | None
 		grant_commission: DF.Check
@@ -65,8 +68,11 @@ class SalesInvoiceItem(Document):
 		item_tax_template: DF.Link | None
 		margin_rate_or_amount: DF.Float
 		margin_type: DF.Literal["", "Percentage", "Amount"]
+		mfg_date: DF.Date | None
 		net_amount: DF.Currency
 		net_rate: DF.Currency
+		packing_size: DF.Data | None
+		packing_unit: DF.Data | None
 		page_break: DF.Check
 		parent: DF.Data
 		parentfield: DF.Data

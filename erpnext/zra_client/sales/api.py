@@ -443,6 +443,14 @@ def create_sales_invoice():
         discount = float(item.get("discount", 0))
         description = item.get("description")
         validatedDiscount = discount if discount else 0
+        batchNo = item.get("batchNo", None)
+        boxEnd = item.get("boxEnd", None)
+        boxStart = item.get("boxStart", None)
+        expDate = item.get("expDate", None)
+        mfgDate = item.get("mfgDate", None)
+        packingSize = item.get("packingSize", None)
+        packingUnit = item.get("packingUnit", None)
+
         if not description:
             return send_response(
                 status="fail",
@@ -545,6 +553,13 @@ def create_sales_invoice():
             "custom_tlcd": tlCd,
             "description": description,
             "expense_account": CUSTOM_FRAPPE_MAIN_INSTANCE.getDefaultExpenseAccount(frappe.defaults.get_global_default("company")),
+            "batch_no": batchNo,
+            "box_end": boxEnd,
+            "box_start": boxStart,
+            "exp_date": expDate,
+            "mfg_date": mfgDate,
+            "packing_size": packingSize,
+            "packing_unit": packingUnit
         })
     
         sale_payload_items.append({
@@ -559,7 +574,14 @@ def create_sales_invoice():
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "IplCd": iplCd,
             "TlCd": tlCd,
-            "discountRate": validatedDiscount
+            "discountRate": validatedDiscount,
+            "batch_no": batchNo,
+            "box_end": boxEnd,
+            "box_start": boxStart,
+            "exp_date": expDate,
+            "mfg_date": mfgDate,
+            "packing_size": packingSize,
+            "packing_unit": packingUnit
         })
 
     new_invoice_name = SalesInvoice.get_next_invoice_name()
@@ -931,6 +953,13 @@ def get_sales_invoice_by_id():
                 "price": i.rate,
                 "vatCode": i.custom_vatcd,
                 "vatTaxableAmount": i.custom_vattaxblamt,
+                "batchNo": i.batch_no,
+                "boxEnd": i.box_end,
+                "boxStart": i.box_start,
+                "expDate": i.exp_date,
+                "mfgDate": i.mfg_date,
+                "packingSize": i.packing_size,
+                "packingUnit": i.packing_unit
             })
         def get_address(field_prefix):
             return {
