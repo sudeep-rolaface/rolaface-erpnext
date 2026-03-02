@@ -758,7 +758,7 @@ def create_quotation():
             "customer": customer_data.get("name"),
             "customer_name": customer_data.get("customer_name"),
             "currency": currencyCd,
-            "conversion_rate": exchangeRt,
+            "conversion_rate":  exchangeRt if exchangeRt else 1,
             "valid_till": validUntil,
             "custom_destination_country_code": destnCountryCd,
             "custom_lpo_number": lpoNumber,
