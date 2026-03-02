@@ -23,6 +23,8 @@
   "quantity_and_rate",
   "qty",
   "stock_uom",
+  "packing_size",
+  "packing_unit",
   "col_break2",
   "uom",
   "conversion_factor",
@@ -693,17 +695,28 @@
    "print_hide": 1,
    "read_only": 1,
    "report_hide": 1
+  },
+  {
+   "fieldname": "packing_size",
+   "fieldtype": "Data",
+   "label": "Packing Size"
+  },
+  {
+   "fieldname": "packing_unit",
+   "fieldtype": "Data",
+   "label": "Packing Unit"
   }
  ],
  "idx": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-06-12 17:31:47.775890",
+ "modified": "2026-03-02 08:54:12.577696",
  "modified_by": "Administrator",
  "module": "Selling",
  "name": "Quotation Item",
  "owner": "Administrator",
  "permissions": [],
+ "row_format": "Dynamic",
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],

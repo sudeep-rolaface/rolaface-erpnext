@@ -343,6 +343,8 @@ def get_quotation_by_id():
                 "discount": item.discount_amount,
                 # vatCode only shown for ZMW quotations
                 "vatCode": item.get("custom_vat_code") if quotation.currency == "ZMW" else None,
+                "packingUnit": item.packing_unit,
+                "packingSize": item.packing_size
             })
 
         terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": quotation_id}) \
@@ -795,7 +797,8 @@ def create_quotation():
             rate = float(item.get("price", 0))
             discount = float(item.get("discount", 0))
             item_tax = float(item.get("tax", 0))
-
+            packing_size = item.get("packingSize", None)
+            packing_unit = item.get("packingUnit", None)
             item_total = (qty * rate) - discount + item_tax
 
             quotation.append("items", {
@@ -808,7 +811,9 @@ def create_quotation():
                 "amount": item_total,
                 # FIX: vatCode stored for all currencies but only validated for ZMW
                 # defaults to empty string if not provided (safe for non-ZMW)
-                "custom_vat_code": item.get("vatCode") or ""
+                "custom_vat_code": item.get("vatCode") or "",
+                "packing_size": packing_size,
+                "packing_unit": packing_unit
             })
 
             total_qty += qty
