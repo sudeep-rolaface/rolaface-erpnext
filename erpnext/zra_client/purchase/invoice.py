@@ -2572,10 +2572,310 @@ def get_automatic_purchase_invoice():
 #  - All other statuses → raw SQL update only
 # ─────────────────────────────────────────────────────────────────────────────
 
+# @frappe.whitelist(allow_guest=False, methods=["PATCH"])
+# def update_purchase_invoices_status():
+#     data = frappe.form_dict
+#     pId = data.get("id")         # ✅ "id" from payload = "name" in Frappe
+#     new_status = data.get("status")
+
+#     STATUSES = CUSTOM_FRAPPE_INSTANCE.PurchaseInvoiceStatuses()
+
+#     # ── Basic validations ─────────────────────────────────────────────────────
+#     if not pId:
+#         return send_response(status="fail", message="'id' parameter is required.", data=None, status_code=400, http_status=400)
+
+#     if not new_status:
+#         return send_response(status="fail", message="'status' parameter is required.", data=None, status_code=400, http_status=400)
+
+#     if new_status not in STATUSES:
+#         return send_response(
+#             status="fail",
+#             message=f"Invalid status '{new_status}'. Allowed statuses are: {', '.join(STATUSES)}.",
+#             status_code=400,
+#             http_status=400,
+#         )
+
+#     if not frappe.db.exists("Purchase Invoice", pId):
+#         return send_response(status="fail", message=f"Purchase Invoice '{pId}' not found.", data=None, status_code=404, http_status=404)
+
+#     # ── Fetch document ────────────────────────────────────────────────────────
+#     pi_doc = frappe.get_doc("Purchase Invoice", pId)
+
+#     # ── Status triggers that require stock movement ───────────────────────────
+#     # status  = your custom field ("Paid", "Approved", "Draft" etc.)
+#     # docstatus = Frappe internal (0=Draft, 1=Submitted, 2=Cancelled)
+#     STOCK_TRIGGER_STATUSES = ["Approved", "Paid"]
+
+#     if new_status in STOCK_TRIGGER_STATUSES:
+
+#         if pi_doc.docstatus == 0:
+#             # ── Document is Draft → submit with stock ────────────────────────
+#             # ✅ Batch was already validated and created during create_purchase_invoice
+#             # ✅ Only validate batch if item has batch_no assigned on PI item
+#             for item in pi_doc.items:
+#                 if item.batch_no:
+#                     if not frappe.db.exists("Batch", {"name": item.batch_no, "item": item.item_code}):
+#                         return send_response(
+#                             status="fail",
+#                             message=f"Batch '{item.batch_no}' no longer exists for item '{item.item_code}'.",
+#                             status_code=400,
+#                             http_status=400
+#                         )
+
+#             try:
+#                 # ✅ Step 1: Force update_stock=1 directly in DB — bypasses cache
+#                 frappe.db.set_value(
+#                     "Purchase Invoice",
+#                     pId,
+#                     "update_stock",
+#                     1,
+#                     update_modified=False
+#                 )
+#                 frappe.db.commit()
+
+#                 # ✅ Step 2: Fresh reload from DB — picks up update_stock=1
+#                 pi_doc = frappe.get_doc("Purchase Invoice", pId)
+
+#                 frappe.logger().info(
+#                     f"[PI STATUS] '{pId}' docstatus=0 → submitting with update_stock=1."
+#                 )
+
+#                 # ✅ Step 3: Submit — Stock Ledger Entry created, batch balance updated
+#                 pi_doc.submit()
+
+#                 # ✅ Step 4: Force status="Paid" — ERPNext auto-sets "Unpaid" on submit
+#                 frappe.db.sql("""
+#                     UPDATE `tabPurchase Invoice`
+#                     SET status = %s,
+#                         modified = NOW(),
+#                         modified_by = %s
+#                     WHERE name = %s
+#                 """, (new_status, frappe.session.user, pId))
+
+#                 frappe.db.commit()
+
+#                 frappe.logger().info(
+#                     f"[PI STATUS] '{pId}' submitted. status='{new_status}'. Inventory updated."
+#                 )
+
+#             except Exception as e:
+#                 frappe.db.rollback()
+#                 frappe.log_error(frappe.get_traceback(), "Update Purchase Invoice Status - Stock Error")
+#                 return send_response(
+#                     status="fail",
+#                     message=f"Failed to update stock for invoice '{pId}': {str(e)}",
+#                     status_code=500,
+#                     http_status=500
+#                 )
+
+#         elif pi_doc.docstatus == 1:
+#             # ── Document already Submitted → just update status field via SQL ─
+#             frappe.logger().info(
+#                 f"[PI STATUS] '{pId}' docstatus=1 (already submitted) → updating status='{new_status}' only."
+#             )
+
+#             frappe.db.sql("""
+#                 UPDATE `tabPurchase Invoice`
+#                 SET status = %s,
+#                     modified = NOW(),
+#                     modified_by = %s
+#                 WHERE name = %s
+#             """, (new_status, frappe.session.user, pId))
+
+#             frappe.db.commit()
+
+#         else:
+#             # ── docstatus=2 → Cancelled, cannot update ───────────────────────
+#             return send_response(
+#                 status="fail",
+#                 message=f"Purchase Invoice '{pId}' is cancelled and cannot be updated.",
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#     else:
+#         # ✅ Non-stock-triggering status — raw SQL update only (as before)
+#         frappe.db.sql("""
+#             UPDATE `tabPurchase Invoice`
+#             SET status = %s,
+#                 modified = NOW(),
+#                 modified_by = %s
+#             WHERE name = %s
+#         """, (new_status, frappe.session.user, pId))
+
+#         frappe.db.commit()
+
+#     return send_response(status="success", message="The purchase invoice status was updated successfully.", data=[], status_code=200, http_status=200)
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# #  SYNC AUTO PURCHASE INVOICES
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# @frappe.whitelist(allow_guest=False, methods=["PATCH"])
+# def sync_auto_purchase_invoices():
+#     data = frappe.form_dict
+#     pId = data.get("id")
+#     pchsSttsCd = data.get("transactionProgress")
+
+#     if not pId:
+#         return send_response(
+#             status="fail",
+#             message="Purchase id must not be null",
+#             data=[],
+#             http_status=400,
+#             status_code=400
+#         )
+
+#     trx_names = CUSTOM_FRAPPE_INSTANCE.GetTransactionProgressNames()
+#     trx_codes = CUSTOM_FRAPPE_INSTANCE.GetTransactionProgressCodes()
+
+#     if pchsSttsCd not in trx_names:
+#         return send_response(
+#             status="fail",
+#             message=f"Invalid transaction progress: {pchsSttsCd}. Available : {trx_names}",
+#             status_code=400,
+#             http_status=400
+#         )
+
+#     index = trx_names.index(pchsSttsCd)
+#     trxProgCd = trx_codes[index]
+
+#     p = frappe.db.get_value(
+#         "Purchase Invoice",
+#         pId,
+#         [
+#             "name", "supplier", "posting_date", "due_date", "grand_total",
+#             "status", "currency", "tax_category", "custom_place_of_supply",
+#             "remarks", "supplier_address", "dispatch_address", "shipping_address",
+#             "incoterm", "project", "cost_center", "custom_total_tax_amount",
+#             "custom_total_taxble_amount", "owner", "creation", "modified",
+#             "bill_no", "custom_registration_type", "custom_payment_method",
+#             "custom_transaction_progress", "custom_destncountrycd", "custom_lpo_number",
+#         ],
+#         as_dict=True
+#     )
+
+#     if not p:
+#         return send_response(
+#             status="fail",
+#             message=f"Purchase Invoice '{pId}' not found.",
+#             data=[],
+#             status_code=404,
+#             http_status=404
+#         )
+
+#     pmtType = p.custom_payment_method
+
+#     payment_names = CUSTOM_FRAPPE_INSTANCE.GetPaymentMethodsName()
+#     payment_codes = CUSTOM_FRAPPE_INSTANCE.GetPaymentMethodsCodes()
+
+#     index = payment_names.index(pmtType)
+#     pmtTyCd = payment_codes[index]
+
+#     supplier = frappe.db.get_value(
+#         "Supplier",
+#         p.get("supplier"),
+#         [
+#             "name", "supplier_name", "supplier_type", "tax_id",
+#             "mobile_no", "email_id", "supplier_group", "country"
+#         ],
+#         as_dict=True
+#     )
+
+#     if not supplier:
+#         return send_response(
+#             status="fail",
+#             message=f"Supplier '{p.get('supplier')}' not found.",
+#             data=[],
+#             status_code=404,
+#             http_status=404
+#         )
+
+#     items = frappe.get_all(
+#         "Purchase Invoice Item",
+#         filters={"parent": p.name},
+#         fields=[
+#             "item_code", "item_name", "qty", "rate", "amount",
+#             "description", "uom", "net_amount", "custom_vat",
+#         ]
+#     )
+
+#     if not items:
+#         return send_response(
+#             status="fail",
+#             message="No items found for this Purchase Invoice.",
+#             data=[],
+#             status_code=404,
+#             http_status=404
+#         )
+
+#     purchase_invoice_items = []
+
+#     for i in items:
+#         itemCode = i.item_code
+#         item_details = CUSTOM_FRAPPE_INSTANCE.GetItemInfo(itemCode)
+
+#         purchase_invoice_items.append({
+#             "itemCode": itemCode,
+#             "itemName": item_details.get("itemName"),
+#             "qty": i.qty,
+#             "itemClassCode": item_details.get("itemClassCd"),
+#             "packageUnitCode": item_details.get("itemPackingUnitCd"),
+#             "price": i.rate,
+#             "VatCd": i.custom_vat,
+#             "unitOfMeasure": item_details.get("itemUnitCd"),
+#         })
+
+#     # ------------------------------------------------------------------ #
+#     #  ZRA sync OR skip based on site config                               #
+#     # ------------------------------------------------------------------ #
+#     if is_zra_enabled():
+#         purchase_invoice_payload = {
+#             "supplierName": supplier.supplier_name,
+#             "supplierTpin": supplier.tax_id,
+#             "pmtTyCd": pmtTyCd,
+#             "pchsSttsCd": trxProgCd,
+#             "spplrInvcNo": p.bill_no,
+#             "items": purchase_invoice_items
+#         }
+
+#         print("Auto Purchase Payload: ", purchase_invoice_payload)
+#         results = AUTOMATIC_PURCHASE_HELPER.send_purchase_data(purchase_invoice_payload)
+#         print("Results: ", results)
+#         resultCd = results.get("resultCd")
+#         resultMsg = results.get("resultMsg")
+#         payload = results.get("payload")
+#         sync_status = 1
+#     else:
+#         # ✅ ZRA disabled — skip ZRA API call, mark as synced with empty payload
+#         frappe.logger().info(f"[PI] ZRA disabled — skipping sync for {pId}")
+#         payload = {}
+#         sync_status = 1
+
+#     frappe.db.set_value(
+#         "Purchase Invoice",
+#         pId,
+#         {
+#             "custom_sync_status": sync_status,
+#             "custom_transaction_progress": pchsSttsCd
+#         }
+#     )
+
+#     frappe.db.commit()
+
+#     return send_response(
+#         status="success",
+#         message="Purchase invoice synchronized successfully.",
+#         data=payload,
+#         status_code=200,
+#         http_status=200
+#     )
+
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_purchase_invoices_status():
     data = frappe.form_dict
-    pId = data.get("id")         # ✅ "id" from payload = "name" in Frappe
+    pId = data.get("id")
     new_status = data.get("status")
 
     STATUSES = CUSTOM_FRAPPE_INSTANCE.PurchaseInvoiceStatuses()
@@ -2601,26 +2901,11 @@ def update_purchase_invoices_status():
     # ── Fetch document ────────────────────────────────────────────────────────
     pi_doc = frappe.get_doc("Purchase Invoice", pId)
 
-    # ── Status triggers that require stock movement ───────────────────────────
-    # status  = your custom field ("Paid", "Approved", "Draft" etc.)
-    # docstatus = Frappe internal (0=Draft, 1=Submitted, 2=Cancelled)
     STOCK_TRIGGER_STATUSES = ["Approved", "Paid"]
 
     if new_status in STOCK_TRIGGER_STATUSES:
 
         if pi_doc.docstatus == 0:
-            # ── Document is Draft → submit with stock ────────────────────────
-            # ✅ Batch was already validated and created during create_purchase_invoice
-            # ✅ Only validate batch if item has batch_no assigned on PI item
-            for item in pi_doc.items:
-                if item.batch_no:
-                    if not frappe.db.exists("Batch", {"name": item.batch_no, "item": item.item_code}):
-                        return send_response(
-                            status="fail",
-                            message=f"Batch '{item.batch_no}' no longer exists for item '{item.item_code}'.",
-                            status_code=400,
-                            http_status=400
-                        )
 
             try:
                 # ✅ Step 1: Force update_stock=1 directly in DB — bypasses cache
@@ -2633,17 +2918,57 @@ def update_purchase_invoices_status():
                 )
                 frappe.db.commit()
 
-                # ✅ Step 2: Fresh reload from DB — picks up update_stock=1
+                # ✅ Step 2: Restore batch_no on PI items — ERPNext drops batch_no
+                # on PI items when update_stock=0 at creation time. Must restore
+                # before submit so ERPNext can create correct Stock Ledger Entries.
+                pi_items = frappe.get_all(
+                    "Purchase Invoice Item",
+                    filters={"parent": pId},
+                    fields=["name", "item_code", "batch_no"]
+                )
+
+                for pi_item in pi_items:
+                    if not pi_item.get("batch_no"):
+                        item_has_batch = frappe.db.get_value("Item", pi_item["item_code"], "has_batch_no")
+                        if item_has_batch:
+                            batch = frappe.db.get_value(
+                                "Batch",
+                                {"item": pi_item["item_code"], "disabled": 0},
+                                "name",
+                                order_by="creation desc"
+                            )
+                            if batch:
+                                frappe.db.set_value(
+                                    "Purchase Invoice Item",
+                                    pi_item["name"],
+                                    "batch_no",
+                                    batch,
+                                    update_modified=False
+                                )
+                                frappe.logger().info(
+                                    f"[PI STATUS] Restored batch_no='{batch}' on item '{pi_item['item_code']}'"
+                                )
+                            else:
+                                return send_response(
+                                    status="fail",
+                                    message=f"No active batch found for item '{pi_item['item_code']}'. Cannot approve.",
+                                    status_code=400,
+                                    http_status=400
+                                )
+
+                frappe.db.commit()
+
+                # ✅ Step 3: Fresh reload from DB — picks up update_stock=1 + batch_no
                 pi_doc = frappe.get_doc("Purchase Invoice", pId)
 
                 frappe.logger().info(
-                    f"[PI STATUS] '{pId}' docstatus=0 → submitting with update_stock=1."
+                    f"[PI STATUS] '{pId}' update_stock={pi_doc.update_stock} — submitting."
                 )
 
-                # ✅ Step 3: Submit — Stock Ledger Entry created, batch balance updated
+                # ✅ Step 4: Submit — Stock Ledger Entry created, batch balance updated
                 pi_doc.submit()
 
-                # ✅ Step 4: Force status="Paid" — ERPNext auto-sets "Unpaid" on submit
+                # ✅ Step 5: Force custom status — ERPNext auto-sets "Unpaid" on submit
                 frappe.db.sql("""
                     UPDATE `tabPurchase Invoice`
                     SET status = %s,
@@ -2694,7 +3019,7 @@ def update_purchase_invoices_status():
             )
 
     else:
-        # ✅ Non-stock-triggering status — raw SQL update only (as before)
+        # ✅ Non-stock-triggering status — raw SQL update only
         frappe.db.sql("""
             UPDATE `tabPurchase Invoice`
             SET status = %s,
@@ -2706,168 +3031,3 @@ def update_purchase_invoices_status():
         frappe.db.commit()
 
     return send_response(status="success", message="The purchase invoice status was updated successfully.", data=[], status_code=200, http_status=200)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SYNC AUTO PURCHASE INVOICES
-# ─────────────────────────────────────────────────────────────────────────────
-
-@frappe.whitelist(allow_guest=False, methods=["PATCH"])
-def sync_auto_purchase_invoices():
-    data = frappe.form_dict
-    pId = data.get("id")
-    pchsSttsCd = data.get("transactionProgress")
-
-    if not pId:
-        return send_response(
-            status="fail",
-            message="Purchase id must not be null",
-            data=[],
-            http_status=400,
-            status_code=400
-        )
-
-    trx_names = CUSTOM_FRAPPE_INSTANCE.GetTransactionProgressNames()
-    trx_codes = CUSTOM_FRAPPE_INSTANCE.GetTransactionProgressCodes()
-
-    if pchsSttsCd not in trx_names:
-        return send_response(
-            status="fail",
-            message=f"Invalid transaction progress: {pchsSttsCd}. Available : {trx_names}",
-            status_code=400,
-            http_status=400
-        )
-
-    index = trx_names.index(pchsSttsCd)
-    trxProgCd = trx_codes[index]
-
-    p = frappe.db.get_value(
-        "Purchase Invoice",
-        pId,
-        [
-            "name", "supplier", "posting_date", "due_date", "grand_total",
-            "status", "currency", "tax_category", "custom_place_of_supply",
-            "remarks", "supplier_address", "dispatch_address", "shipping_address",
-            "incoterm", "project", "cost_center", "custom_total_tax_amount",
-            "custom_total_taxble_amount", "owner", "creation", "modified",
-            "bill_no", "custom_registration_type", "custom_payment_method",
-            "custom_transaction_progress", "custom_destncountrycd", "custom_lpo_number",
-        ],
-        as_dict=True
-    )
-
-    if not p:
-        return send_response(
-            status="fail",
-            message=f"Purchase Invoice '{pId}' not found.",
-            data=[],
-            status_code=404,
-            http_status=404
-        )
-
-    pmtType = p.custom_payment_method
-
-    payment_names = CUSTOM_FRAPPE_INSTANCE.GetPaymentMethodsName()
-    payment_codes = CUSTOM_FRAPPE_INSTANCE.GetPaymentMethodsCodes()
-
-    index = payment_names.index(pmtType)
-    pmtTyCd = payment_codes[index]
-
-    supplier = frappe.db.get_value(
-        "Supplier",
-        p.get("supplier"),
-        [
-            "name", "supplier_name", "supplier_type", "tax_id",
-            "mobile_no", "email_id", "supplier_group", "country"
-        ],
-        as_dict=True
-    )
-
-    if not supplier:
-        return send_response(
-            status="fail",
-            message=f"Supplier '{p.get('supplier')}' not found.",
-            data=[],
-            status_code=404,
-            http_status=404
-        )
-
-    items = frappe.get_all(
-        "Purchase Invoice Item",
-        filters={"parent": p.name},
-        fields=[
-            "item_code", "item_name", "qty", "rate", "amount",
-            "description", "uom", "net_amount", "custom_vat",
-        ]
-    )
-
-    if not items:
-        return send_response(
-            status="fail",
-            message="No items found for this Purchase Invoice.",
-            data=[],
-            status_code=404,
-            http_status=404
-        )
-
-    purchase_invoice_items = []
-
-    for i in items:
-        itemCode = i.item_code
-        item_details = CUSTOM_FRAPPE_INSTANCE.GetItemInfo(itemCode)
-
-        purchase_invoice_items.append({
-            "itemCode": itemCode,
-            "itemName": item_details.get("itemName"),
-            "qty": i.qty,
-            "itemClassCode": item_details.get("itemClassCd"),
-            "packageUnitCode": item_details.get("itemPackingUnitCd"),
-            "price": i.rate,
-            "VatCd": i.custom_vat,
-            "unitOfMeasure": item_details.get("itemUnitCd"),
-        })
-
-    # ------------------------------------------------------------------ #
-    #  ZRA sync OR skip based on site config                               #
-    # ------------------------------------------------------------------ #
-    if is_zra_enabled():
-        purchase_invoice_payload = {
-            "supplierName": supplier.supplier_name,
-            "supplierTpin": supplier.tax_id,
-            "pmtTyCd": pmtTyCd,
-            "pchsSttsCd": trxProgCd,
-            "spplrInvcNo": p.bill_no,
-            "items": purchase_invoice_items
-        }
-
-        print("Auto Purchase Payload: ", purchase_invoice_payload)
-        results = AUTOMATIC_PURCHASE_HELPER.send_purchase_data(purchase_invoice_payload)
-        print("Results: ", results)
-        resultCd = results.get("resultCd")
-        resultMsg = results.get("resultMsg")
-        payload = results.get("payload")
-        sync_status = 1
-    else:
-        # ✅ ZRA disabled — skip ZRA API call, mark as synced with empty payload
-        frappe.logger().info(f"[PI] ZRA disabled — skipping sync for {pId}")
-        payload = {}
-        sync_status = 1
-
-    frappe.db.set_value(
-        "Purchase Invoice",
-        pId,
-        {
-            "custom_sync_status": sync_status,
-            "custom_transaction_progress": pchsSttsCd
-        }
-    )
-
-    frappe.db.commit()
-
-    return send_response(
-        status="success",
-        message="Purchase invoice synchronized successfully.",
-        data=payload,
-        status_code=200,
-        http_status=200
-    )
