@@ -2,6 +2,7 @@ from erpnext.zra_client.main import ZRAClient
 import frappe
 from frappe.utils import flt
 
+
 class Stock(ZRAClient):
     def __init__(self):
         super().__init__()
@@ -13,6 +14,15 @@ class Stock(ZRAClient):
         return self.branch_code
 
     def create_stock(self, stock_data):
+        # ✅ If ZRA is disabled — skip entirely, let ERPNext handle stock natively
+        if not frappe.conf.get("enable_zra_sync", False):
+            frappe.logger().info(
+                "[STOCK] ZRA disabled — skipping ZRA stock sync. "
+                "ERPNext default stock flow will handle inventory."
+            )
+            return
+
+        # ── ZRA enabled — proceed with ZRA stock sync ─────────────────────────
         if not isinstance(stock_data, dict):
             frappe.throw("Invalid input: stock_data must be a dictionary")
 
@@ -25,34 +35,34 @@ class Stock(ZRAClient):
             frappe.throw("No items found in stock_data")
 
         payload = {
-            "tpin": self.tpin,
-            "bhfId": self.branch_code,
-            "sarNo": 1,
-            "orgSarNo": 0,
-            "regTyCd": "M",
-            "custTpin": None,
-            "custNm": None,
-            "custBhfId": None,
-            "sarTyCd": "02",
-            "ocrnDt": stock_data.get("posting_date", "").replace("-", "") if stock_data.get("posting_date") else None,
+            "tpin":       self.tpin,
+            "bhfId":      self.branch_code,
+            "sarNo":      1,
+            "orgSarNo":   0,
+            "regTyCd":    "M",
+            "custTpin":   None,
+            "custNm":     None,
+            "custBhfId":  None,
+            "sarTyCd":    "02",
+            "ocrnDt":     stock_data.get("posting_date", "").replace("-", "") if stock_data.get("posting_date") else None,
             "totItemCnt": len(items),
-            "remark": stock_data.get("remarks"),
-            "regrId": stock_data.get("owner"),
-            "regrNm": stock_data.get("owner"),
-            "modrNm": stock_data.get("owner"),
-            "modrId": stock_data.get("owner"),
-            "itemList": []
+            "remark":     stock_data.get("remarks"),
+            "regrId":     stock_data.get("owner"),
+            "regrNm":     stock_data.get("owner"),
+            "modrNm":     stock_data.get("owner"),
+            "modrId":     stock_data.get("owner"),
+            "itemList":   []
         }
 
         vat_code_map = {
-            "StandardRated": "A",
-            "MinimumTaxableValue": "B",
-            "Exports": "C1",
+            "StandardRated":            "A",
+            "MinimumTaxableValue":      "B",
+            "Exports":                  "C1",
             "ZeroRatingLocalPurchases": "C2",
-            "ZeroRatedByNature": "C3",
-            "Exempt": "D",
-            "Disbursement": "E",
-            "ReverseVAT": "RVAT"
+            "ZeroRatedByNature":        "C3",
+            "Exempt":                   "D",
+            "Disbursement":             "E",
+            "ReverseVAT":               "RVAT"
         }
 
         for idx, item in enumerate(items, start=1):
@@ -71,66 +81,74 @@ class Stock(ZRAClient):
                 frappe.log_error(f"Item not found: {item_code}")
                 continue
 
-            qty = flt(item.get("qty", 0))
+            qty            = flt(item.get("qty", 0))
             valuation_rate = flt(item.get("valuation_rate", 0))
 
+            # ✅ Safe access — custom_default_unit_price may not exist on all items
             if not valuation_rate:
-                valuation_rate = flt(item_doc.get("custom_default_unit_price", 0))
+                valuation_rate = flt(getattr(item_doc, "custom_default_unit_price", 0) or 0)
 
             if valuation_rate == 0:
                 if not item.get("allow_zero_valuation_rate", False):
-                    frappe.throw(f"Valuation Rate missing for item: {item_code}. "
-                                 "Set valuation rate or enable 'Allow Zero Valuation Rate'.")
+                    frappe.throw(
+                        f"Valuation Rate missing for item: {item_code}. "
+                        "Set valuation rate or enable 'Allow Zero Valuation Rate'."
+                    )
                 else:
                     frappe.log_error(f"Zero valuation rate allowed for item: {item_code}")
 
-            custom_vat = (item_doc.get("custom_vat") or "").replace(" ", "").strip()
-            vatCatCd = vat_code_map.get(custom_vat, "A")
-            vat_rate = 0.16 if vatCatCd == "A" else 0
+            # ✅ Safe access — custom_vat may not exist on all items
+            custom_vat = (getattr(item_doc, "custom_vat", None) or "").replace(" ", "").strip()
+            vatCatCd   = vat_code_map.get(custom_vat, "A")
+            vat_rate   = 0.16 if vatCatCd == "A" else 0
 
-            supply_amount = round(qty * valuation_rate, 2)
-            taxable_amount = supply_amount if vatCatCd == "A" else 0
-            tax_amount = round(taxable_amount * vat_rate, 2)
+            supply_amount     = round(qty * valuation_rate, 2)
+            taxable_amount    = supply_amount if vatCatCd == "A" else 0
+            tax_amount        = round(taxable_amount * vat_rate, 2)
             total_item_amount = supply_amount + tax_amount
 
             total_taxable += taxable_amount
-            total_tax += tax_amount
-            total_amount += total_item_amount
+            total_tax     += tax_amount
+            total_amount  += total_item_amount
 
             payload["itemList"].append({
-                "itemSeq": idx,
-                "itemCd": item_code,
-                "itemClsCd": item_doc.get("item_class_code") or "NA",
-                "itemNm": item_doc.item_name,
-                "pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "PKG",
-                "qtyUnitCd": item_doc.get("custom_units_of_measure") or "EA",
-                "vatCatCd": vatCatCd,
-                "qty": qty,
-                "prc": valuation_rate,
-                "splyAmt": supply_amount,
-                "taxblAmt": taxable_amount,
-                "taxAmt": tax_amount,
-                "totAmt": total_item_amount,
-                "totDcAmt": 0,
-                "pkg": 1
+                "itemSeq":   idx,
+                "itemCd":    item_code,
+                # ✅ Safe access with fallback for all custom fields
+                "itemClsCd": getattr(item_doc, "item_class_code", None) or
+                             getattr(item_doc, "custom_item_class_code", None) or "NA",
+                "itemNm":    item_doc.item_name,
+                "pkgUnitCd": getattr(item_doc, "custom_packaging_unit_code", None) or
+                             getattr(item_doc, "custom_pkgunitcd", None) or "PKG",
+                "qtyUnitCd": getattr(item_doc, "custom_units_of_measure", None) or
+                             getattr(item_doc, "custom_itemunitcd", None) or
+                             item_doc.stock_uom or "EA",
+                "vatCatCd":  vatCatCd,
+                "qty":       qty,
+                "prc":       valuation_rate,
+                "splyAmt":   supply_amount,
+                "taxblAmt":  taxable_amount,
+                "taxAmt":    tax_amount,
+                "totAmt":    total_item_amount,
+                "totDcAmt":  0,
+                "pkg":       1
             })
 
         payload.update({
             "totTaxblAmt": total_taxable,
-            "totTaxAmt": total_tax,
-            "totAmt": total_amount
+            "totTaxAmt":   total_tax,
+            "totAmt":      total_amount
         })
-
-
 
         try:
             response = self.save_stock(payload)
+
             if isinstance(response, dict) and response.get("resultCd") == "000":
                 update_stock_master_payload = {
-                    "tpin": payload.get("tpin"),
+                    "tpin":   payload.get("tpin"),
                     "regrId": payload.get("regrId"),
                     "regrNm": payload.get("regrNm"),
-                    "bhfId": payload.get("bhfId"),
+                    "bhfId":  payload.get("bhfId"),
                     "modrId": payload.get("modrId"),
                     "modrNm": payload.get("modrNm"),
                     "stockItemList": [
@@ -141,21 +159,19 @@ class Stock(ZRAClient):
                     ]
                 }
 
-        
                 print("Update stock master payload: ", update_stock_master_payload)
-          
-
                 update_stock_master_response = self.update_stock_master(update_stock_master_payload)
 
             else:
-                frappe.throw(f"ZRA returned error: {response.get('resultMsg') if isinstance(response, dict) else response}")
+                frappe.throw(
+                    f"ZRA returned error: {response.get('resultMsg') if isinstance(response, dict) else response}"
+                )
 
         except Exception as e:
             frappe.log_error(title="❌ ZRA Save Stock Failed", message=str(e))
             frappe.throw(f"ZRA Error: {e}")
 
     def update_stock_master(self, update_stock_master_payload):
-  
         try:
             save_stock_master = self.save_stock_master(update_stock_master_payload)
             return save_stock_master
