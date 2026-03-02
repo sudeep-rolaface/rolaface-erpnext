@@ -34,7 +34,7 @@ class SalesInvoiceItem(Document):
 		base_rate_with_margin: DF.Currency
 		batch_no: DF.Link | None
 		box_end: DF.Data | None
-		boxstart: DF.Data | None
+		box_start: DF.Data | None
 		brand: DF.Data | None
 		company_total_stock: DF.Float
 		conversion_factor: DF.Float
