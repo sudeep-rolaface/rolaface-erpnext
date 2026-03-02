@@ -833,6 +833,7 @@ def get_purchase_invoice_by_id():
                 "custom_destncountrycd",
                 "custom_lpo_number",
                 "custom_sync_status",
+                "company",
             ],
             as_dict=True
         )
@@ -840,7 +841,7 @@ def get_purchase_invoice_by_id():
         if not po:
             return send_response(
                 status="fail",
-                message=f"Purchase Order '{pId}' not found.",
+                message=f"Purchase Invoice '{pId}' not found.",
                 data=[],
                 status_code=404,
                 http_status=404
@@ -849,26 +850,21 @@ def get_purchase_invoice_by_id():
         items = frappe.get_all(
             "Purchase Invoice Item",
             filters={"parent": pId},
-            fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "custom_vat"]
+            fields=[
+                "item_code",
+                "item_name",
+                "qty",
+                "uom",
+                "rate",
+                "amount",
+                "custom_vat as VatCd"
+            ]
         )
-
-        formatted_items = [
-            {
-                "item_code": i["item_code"],
-                "item_name": i["item_name"],
-                "qty": i["qty"],
-                "uom": i["uom"],
-                "rate": i["rate"],
-                "amount": i["amount"],
-                "VatCd": i["custom_vat"]
-            }
-            for i in items
-        ]
 
         total_quantity = sum(item.get("qty", 0) for item in items)
         sub_total = sum(item.get("amount", 0) for item in items)
         grand_total = po.grand_total or 0
-        rounded_total = po.rounded_total if hasattr(po, "rounded_total") and po.rounded_total else grand_total
+        rounded_total = po.get("rounded_total") or grand_total
         rounding_adjustment = rounded_total - grand_total
 
         summary = {
@@ -881,6 +877,17 @@ def get_purchase_invoice_by_id():
         }
 
         taxRate = "16%" if po.tax_category == "Non-Export" else "0%"
+        
+        # Calculate effective tax rate if available
+        if po.custom_total_taxble_amount and float(po.custom_total_taxble_amount or 0) > 0:
+            effective_rate = (
+                float(po.custom_total_tax_amount or 0)
+                / float(po.custom_total_taxble_amount)
+                * 100
+            )
+            if effective_rate > 0:
+                taxRate = f"{round(effective_rate, 2)}%"
+        
         taxes = {
             "type": po.tax_category,
             "taxRate": taxRate,
@@ -888,38 +895,57 @@ def get_purchase_invoice_by_id():
             "taxAmount": po.custom_total_tax_amount
         }
 
-        terms_doc = frappe.get_doc(
-            "Sale Invoice Selling Terms",
-            {"invoiceno": po.name}
-        ) if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": po.name}) else None
-
-        payment_doc = frappe.get_doc(
-            "Sale Invoice Selling Payment",
-            {"invoiceno": po.name}
-        ) if frappe.db.exists("Sale Invoice Selling Payment", {"invoiceno": po.name}) else None
-
-        phases = frappe.get_all(
-            "Sale Invoice Selling Payment Phases",
-            filters={"invoiceno": po.name},
-            fields=["phase_name as name", "percentage", "condition"]
-        )
-
-        def purchase_terms():
+        def get_purchase_terms():
+            """Fetch buying terms from Company settings"""
+            
+            # Get company from Purchase Invoice
+            company_name = po.get("company")
+            if not company_name:
+                return {"terms": {"buying": {}}}
+            
+            # Get custom_company_id from Company
+            custom_company_id = frappe.db.get_value(
+                "Company",
+                company_name,
+                "custom_company_id"
+            )
+            
+            if not custom_company_id:
+                return {"terms": {"buying": {}}}
+            
+            # ── Get Buying Terms ──────────────────────────────────────────────
+            buying_terms_doc = None
+            if frappe.db.exists("Company Buying Terms", {"company": custom_company_id}):
+                buying_terms_doc = frappe.get_doc("Company Buying Terms", {"company": custom_company_id})
+            
+            # ── Get Buying Payment ────────────────────────────────────────────
+            buying_payment_doc = None
+            if frappe.db.exists("Company Buying Payments", {"company": custom_company_id}):
+                buying_payment_doc = frappe.get_doc("Company Buying Payments", {"company": custom_company_id})
+            
+            # ── Get Buying Payment Phases ─────────────────────────────────────
+            phases = frappe.get_all(
+                "Company Buying Payments Phases",
+                filters={"company": custom_company_id},
+                fields=["id", "phase_name as name", "percentage", "condition"],
+            )
+            
             return {
                 "terms": {
                     "buying": {
-                        "general": getattr(terms_doc, "general", ""),
-                        "delivery": getattr(terms_doc, "delivery", ""),
-                        "cancellation": getattr(terms_doc, "cancellation", ""),
-                        "warranty": getattr(terms_doc, "warranty", ""),
-                        "liability": getattr(terms_doc, "liability", ""),
+                        "general": getattr(buying_terms_doc, "general", "") if buying_terms_doc else "",
+                        "delivery": getattr(buying_terms_doc, "delivery", "") if buying_terms_doc else "",
+                        "cancellation": getattr(buying_terms_doc, "cancellation", "") if buying_terms_doc else "",
+                        "warranty": getattr(buying_terms_doc, "warranty", "") if buying_terms_doc else "",
+                        "liability": getattr(buying_terms_doc, "liability", "") if buying_terms_doc else "",
                         "payment": {
-                            "dueDates": getattr(payment_doc, "duedates", ""),
-                            "lateCharges": getattr(payment_doc, "latecharges", ""),
-                            "taxes": getattr(payment_doc, "taxes", ""),
-                            "notes": getattr(payment_doc, "notes", ""),
-                            "phases": phases
-                        }
+                            "type": getattr(buying_payment_doc, "type", "") if buying_payment_doc else "",
+                            "dueDates": getattr(buying_payment_doc, "duedates", "") if buying_payment_doc else "",
+                            "lateCharges": getattr(buying_payment_doc, "latecharges", "") if buying_payment_doc else "",
+                            "taxes": getattr(buying_payment_doc, "taxes", "") if buying_payment_doc else "",
+                            "notes": getattr(buying_payment_doc, "specialnotes", "") if buying_payment_doc else "",
+                            "phases": phases,
+                        },
                     }
                 }
             }
@@ -986,8 +1012,8 @@ def get_purchase_invoice_by_id():
                 "dispatchAddress": dispatch_addr,
                 "shippingAddress": shipping_addr
             },
-            "terms": purchase_terms(),
-            "items": formatted_items,
+            "terms": get_purchase_terms(),
+            "items": items,
             "tax": taxes,
             "summary": summary,
             "metadata": {
