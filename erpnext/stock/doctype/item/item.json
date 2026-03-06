@@ -893,7 +893,7 @@
   {
    "fieldname": "packing_unit",
    "fieldtype": "Data",
-   "label": "pakingunit"
+   "label": "packingunit"
   }
  ],
  "icon": "fa fa-tag",
@@ -901,7 +901,7 @@
  "image_field": "image",
  "links": [],
  "make_attachments_public": 1,
- "modified": "2026-03-06 14:18:44.518294",
+ "modified": "2026-03-06 14:44:30.769597",
  "modified_by": "Administrator",
  "module": "Stock",
  "name": "Item",

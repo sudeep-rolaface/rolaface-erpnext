@@ -270,7 +270,7 @@ def create_item_api():
             "description":          description,
             "brand":                brand,
             "packing_size":          packingsize,
-            "paking_unit":           pakingunit,
+            "packing_unit":           pakingunit,
             # ZRA
             "custom_itemclscd":     custom_itemclscd or "",
             "custom_itemtycd":      custom_itemtycd or "",
