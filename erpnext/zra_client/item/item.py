@@ -196,8 +196,8 @@ def create_item_api():
         if not custom_isrcaplcbyn:
             return send_response(status="fail", message="Insurance applicable flag is required when ZRA sync is enabled", status_code=400, http_status=400)
 
-    if not custom_selling_price:
-        return send_response(status="fail", message="Selling price is required", status_code=400, http_status=400)
+    # if not custom_selling_price:
+    #     return send_response(status="fail", message="Selling price is required", status_code=400, http_status=400)
 
     # ── Generate item code ────────────────────────────────────────────────────
     if zra_will_sync:
@@ -280,8 +280,8 @@ def create_item_api():
             "custom_isrcaplcbyn":   custom_isrcaplcbyn or "N",
             # Pricing
             "is_stock_item":        1,
-            "standard_rate":        custom_selling_price,
-            "custom_buying_price":  custom_buying_price,
+            "standard_rate":        custom_selling_price or "",
+            "custom_buying_price":  custom_buying_price or "",
             # Physical
             "custom_suk":           custom_sku,
             "custom_kg":            custom_kg,
