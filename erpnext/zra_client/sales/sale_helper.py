@@ -528,6 +528,7 @@ class NormaSale(ZRAClient):
                 "update_stock": 1 if canUpdateInvoice else 0,
                 "items": sell_data["invoice_items"],
                 "custom_invoice_type": sell_data["invoiceType"],
+                "custom_invoice_status": sell_data["invoiceStatus"],
                 "due_date":sell_data["dueDate"],
                 "custom_billing_address_line_1":sell_data["billingAddressLine1"],
                 "custom_billing_address_line_2":sell_data["billingAddressLine2"],
