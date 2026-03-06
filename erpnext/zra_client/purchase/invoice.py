@@ -982,7 +982,7 @@ def get_purchase_invoice_by_id():
         total_quantity = sum(item.get("qty", 0) for item in items)
         sub_total = sum(item.get("amount", 0) for item in items)
         #grand_total = po.grand_total or 0
-        grand_total = sub_total + po.custom_total_tax_amount
+        grand_total = sub_total + float(po.custom_total_tax_amount or 0)
         rounded_total = po.get("rounded_total") or grand_total
         rounding_adjustment = rounded_total - grand_total
 
