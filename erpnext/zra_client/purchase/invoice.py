@@ -481,7 +481,10 @@ def create_purchase_invoice():
         # ── Batch Handling ────────────────────────────────────────────────────
         resolved_batch_no = None
 
-        if item_details.get("has_batch_no"):
+        item_has_batch = frappe.db.get_value("Item", itemCode, "has_batch_no")
+
+
+        if item_has_batch:
             if not batch_no:
                 # ✅ Hard stop — batch is mandatory, user must always provide it
                 return send_response(
