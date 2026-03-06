@@ -393,7 +393,7 @@ def get_all_items_api():
                 # Core
                 "item_code", "item_name", "item_group", "stock_uom",
                 "standard_rate", "custom_buying_price", "brand", "description",
-                "packing_size", "paking_unit",
+                "packing_size", "packing_unit",
                 # Classification
                 "custom_itemclscd", "custom_itemtycd", "custom_orgnnatcd", "custom_pkgunitcd",
                 "custom_svcchargeyn", "custom_isrcaplcbyn",
@@ -475,7 +475,7 @@ def get_all_items_api():
                 "dimensionLength":  it.get("custom_dimensionlength", ""),
                 "dimensionWidth":   it.get("custom_dimensionwidth", ""),
                 "dimensionHeight":  it.get("custom_dimensionheight", ""),
-                "pakingUnit":       it.get("paking_unit"),
+                "packingUnit":       it.get("packing_unit"),
                 "packingSize":      it.get("packing_size"),   
                 # Vendor
                 "vendorInfo": {
@@ -552,7 +552,7 @@ def get_item_by_id_api():
             fields=[
                 # Core
                 "name", "item_code", "item_name", "item_group", "stock_uom",
-                "standard_rate", "description", "brand", "packing_size", "paking_unit",
+                "standard_rate", "description", "brand", "packing_size", "packing_unit",
                 # ZRA / Classification
                 "custom_itemclscd", "custom_itemtycd", "custom_orgnnatcd",
                 "custom_pkgunitcd", "custom_svcchargeyn", "custom_isrcaplcbyn",
@@ -637,7 +637,7 @@ def get_item_by_id_api():
             "dimensionLength":   it.get("custom_dimensionlength", ""),
             "dimensionWidth":    it.get("custom_dimensionwidth", ""),
             "dimensionHeight":   it.get("custom_dimensionheight", ""),
-            "pakingUnit":        it.get("paking_unit", None),
+            "packingUnit":        it.get("packing_unit", None),
             "packingSize":       it.get("packing_size", None),
 
             # Vendor
