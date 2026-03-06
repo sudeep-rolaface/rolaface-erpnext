@@ -595,11 +595,36 @@ def create_sales_invoice():
         "currencyCd": currencyCd,
         "exchangeRt": exchangeRt,
         "created_by": createBy,
-        "items": sale_payload_items
+        "items": sale_payload_items,
+        "invoiceType": invoiceType,
+        "invoiceStatus": invoiceStatus,
+
+        "dueDate": dueDate,
+        "billingAddressLine1": billingAddressLine1,
+        "billingAddressLine2": billingAddressLine2,
+        "billingAddressPostalCode": billingAddressPostalCode,
+        "billingAddressCity":  billingAddressCity,
+        "billingAddressState": billingAddressState,
+        "billingAddressCountry": billingAddressCountry,
+        "shippingAddressLine1": shippingAddressLine1,
+        "shippingAddressLine2": shippingAddressLine2,
+        "shippingAddressPostalCode": shippingAddressPostalCode, 
+        "shippingAddressCity": shippingAddressCity, 
+        "shippingAddressState": shippingAddressState, 
+        "shippingAddressCountry": shippingAddressCountry,
+        "destnCountryCd": destnCountryCd,
+        "lpoNumber": lpoNumber,
+        "payment_terms": payment_terms,
+        "payment_method": payment_method,
+        "bank_name": bank_name,
+        "account_number": account_number,
+        "routing_number": routing_number,
+        "swift_code": swift_code,
+        "invoice_items":invoice_items,
     }
     
 
-    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload,invoice_items)
+    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
     additional_info = result.get("additionalInfo") or []
     if additional_info and len(additional_info) >= 3:
         currency = additional_info[0]

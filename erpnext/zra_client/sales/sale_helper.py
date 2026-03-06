@@ -249,7 +249,7 @@ class NormaSale(ZRAClient):
 
         return {**taxblAmt, **taxRt, **taxAmt}
 
-    def send_sale_data(self, sell_data, invoice_items=None):
+    def send_sale_data(self, sell_data):
         customer_name = sell_data.get("customerName")
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
@@ -319,7 +319,7 @@ class NormaSale(ZRAClient):
             response = self.create_normal_sale_helper(payload)
             response = response.json()
         else:
-            response = self.create_erpnext_normal_sale_helper(payload, exchangeRt, invoice_items)
+            response = self.create_erpnext_normal_sale_helper(payload, exchangeRt, sell_data)
 
         apiCallerResponse = response
         print(response)
@@ -473,7 +473,7 @@ class NormaSale(ZRAClient):
                 return
         print("Response returned 2")
         return response
-    def create_erpnext_normal_sale_helper(self, payload, exchangeRt, invoice_items):
+    def create_erpnext_normal_sale_helper(self, payload, exchangeRt, sell_data):
         """
         Create ERPNext Sales Invoice instead of ZRA invoice
         """
@@ -515,6 +515,7 @@ class NormaSale(ZRAClient):
 
             invoice = frappe.get_doc({
                 "doctype": "Sales Invoice",
+                "name": sell_data["name"],
                 "customer": customer.name,
                 "company": company,
                 "posting_date": posting_date,
@@ -525,7 +526,29 @@ class NormaSale(ZRAClient):
                 "items": items,
                 "remarks": payload.get("remark", ""),
                 "update_stock": 1 if canUpdateInvoice else 0,
-                "items": invoice_items,
+                "items": sell_data["invoice_items"],
+                "custom_invoice_type": sell_data["invoiceType"],
+                "due_date":sell_data["dueDate"],
+                "custom_billing_address_line_1":sell_data["billingAddressLine1"],
+                "custom_billing_address_line_2":sell_data["billingAddressLine2"],
+                "custom_billing_address_postal_code":sell_data["billingAddressPostalCode"],
+                "custom_billing_address_city":sell_data["billingAddressCity"],
+                "custom_billing_address_state":sell_data["billingAddressState"],
+                "custom_billing_address_country":sell_data["billingAddressCountry"],
+                "custom_shipping_address_line1": sell_data["shippingAddressLine1"],
+                "custom_shipping_address_line2": sell_data["shippingAddressLine2"],
+                "custom_shipping_address_postal_code": sell_data["shippingAddressPostalCode"], 
+                "custom_shipping_address_city": sell_data["shippingAddressCity"], 
+                "custom_shipping_address_state": sell_data["shippingAddressState"], 
+                "custom_shipping_address_country": sell_data["shippingAddressCountry"],
+                "custom_export_destination_country": sell_data["destnCountryCd"],
+                "custom_local_purchase_order_number": sell_data["lpoNumber"],
+                "custom_payment_terms": sell_data["payment_terms"],
+                "custom_payment_method": sell_data["payment_method"],
+                "custom_bank_name": sell_data["bank_name"],
+                "custom_account_number": sell_data["account_number"],
+                "custom_routing_number": sell_data["routing_number"],
+                "custom_swift": sell_data["swift_code"],
             })
 
             invoice.insert(ignore_permissions=True)
