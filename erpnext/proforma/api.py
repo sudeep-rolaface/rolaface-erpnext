@@ -144,7 +144,7 @@ def create_proforma_api():
             qty = float(item.get("quantity", 1))
             unit_price = float(item.get("price", 0))
             discount = float(item.get("discount", 0))
-            tax = float(item.get("tax", 0))
+            tax = float(item.get("vatRate", 0))
             packing_size = item.get("packingSize", None)
             packing_unit = item.get("packingUnit", None)
             item_total = (qty * unit_price) - discount + tax
@@ -162,7 +162,9 @@ def create_proforma_api():
                 "tax": tax,
                 "item_total": item_total,
                 "packing_size": packing_size,
-                "packing_unit": packing_unit
+                "packing_unit": packing_unit,
+                "vat_code": item.get("vatCode")
+
             }).insert(ignore_permissions=True)
 
             total_items += qty
@@ -365,7 +367,8 @@ def get_proforma_by_id():
                 "tax",
                 "item_total",
                 "packing_unit",
-                "packing_size"
+                "packing_size",
+                "vat_code"
             ]
         )
 
@@ -377,10 +380,11 @@ def get_proforma_by_id():
                 "quantity": i.qty,
                 "price": i.unit_price,
                 "discount": i.discount,
-                "tax": i.tax,
+                "vatRate": i.tax,
                 "itemTotal": i.item_total,
                 "packingUnit": i.packing_unit,
-                "packingSize": i.packing_size
+                "packingSize": i.packing_size,
+                "vatCode": i.vat_code,
             } for i in items
         ]
 
