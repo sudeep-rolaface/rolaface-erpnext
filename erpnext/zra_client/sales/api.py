@@ -396,7 +396,7 @@ def create_sales_invoice():
     # ✅ FIX: Use proper assignment (=) instead of comparison (==)
     # and remove the currency restriction — accept any currency
     if not currencyCd:
-        currencyCd = "ZMW"
+        currencyCd = frappe.defaults.get_global_default("currency")
         exchangeRt = 1
 
     if not exchangeRt:
@@ -599,7 +599,7 @@ def create_sales_invoice():
     }
     
 
-    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
+    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload,invoice_items)
     additional_info = result.get("additionalInfo") or []
     if additional_info and len(additional_info) >= 3:
         currency = additional_info[0]
@@ -627,44 +627,45 @@ def create_sales_invoice():
         )
     canUpdateInvoice = all(ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) for item in items)
     try:
-        doc = frappe.get_doc({
-            "doctype": "Sales Invoice",
-            "name": new_invoice_name,
-            "custom_invoice_type": invoiceType,
-            "custom_exchange_rate": exchange_rate,
-            "custom_total_tax_amount": total_tax,
-            "custom_zra_currency": currency,
-            "custom_invoice_status": invoiceStatus,
-            "due_date": dueDate,
-            "custom_billing_address_line_1": billingAddressLine1,
-            "custom_billing_address_line_2": billingAddressLine2,
-            "custom_billing_address_postal_code": billingAddressPostalCode,
-            "custom_billing_address_city":  billingAddressCity,
-            "custom_billing_address_state": billingAddressState,
-            "custom_billing_address_country": billingAddressCountry,
-            "custom_shipping_address_line1": shippingAddressLine1,
-            "custom_shipping_address_line2": shippingAddressLine2,
-            "custom_shipping_address_postal_code": shippingAddressPostalCode, 
-            "custom_shipping_address_city": shippingAddressCity, 
-            "custom_shipping_address_state": shippingAddressState, 
-            "custom_shipping_address_country": shippingAddressCountry,
-            "custom_export_destination_country": destnCountryCd,
-            "custom_local_purchase_order_number": lpoNumber,
-            "custom_payment_terms": payment_terms,
-            "custom_payment_method": payment_method,
-            "custom_bank_name": bank_name,
-            "custom_account_number": account_number,
-            "custom_routing_number": routing_number,
-            "custom_swift": swift_code,
-            "customer": customer_data.get("name"),
-            "update_stock": 1 if canUpdateInvoice else 0,
-            "items": invoice_items,
-            "conversion_rate": exchangeRt
+        if frappe.conf.get("enable_zra_sync", False):
+            doc = frappe.get_doc({
+                "doctype": "Sales Invoice",
+                "name": new_invoice_name,
+                "custom_invoice_type": invoiceType,
+                "custom_exchange_rate": exchange_rate,
+                "custom_total_tax_amount": total_tax,
+                "custom_zra_currency": currency,
+                "custom_invoice_status": invoiceStatus,
+                "due_date": dueDate,
+                "custom_billing_address_line_1": billingAddressLine1,
+                "custom_billing_address_line_2": billingAddressLine2,
+                "custom_billing_address_postal_code": billingAddressPostalCode,
+                "custom_billing_address_city":  billingAddressCity,
+                "custom_billing_address_state": billingAddressState,
+                "custom_billing_address_country": billingAddressCountry,
+                "custom_shipping_address_line1": shippingAddressLine1,
+                "custom_shipping_address_line2": shippingAddressLine2,
+                "custom_shipping_address_postal_code": shippingAddressPostalCode, 
+                "custom_shipping_address_city": shippingAddressCity, 
+                "custom_shipping_address_state": shippingAddressState, 
+                "custom_shipping_address_country": shippingAddressCountry,
+                "custom_export_destination_country": destnCountryCd,
+                "custom_local_purchase_order_number": lpoNumber,
+                "custom_payment_terms": payment_terms,
+                "custom_payment_method": payment_method,
+                "custom_bank_name": bank_name,
+                "custom_account_number": account_number,
+                "custom_routing_number": routing_number,
+                "custom_swift": swift_code,
+                "customer": customer_data.get("name"),
+                "update_stock": 1 if canUpdateInvoice else 0,
+                "items": invoice_items,
+                "conversion_rate": exchangeRt
 
-        })
-        doc.insert(ignore_permissions=True)
-        doc.submit()
-        frappe.db.commit()
+            })
+            doc.insert(ignore_permissions=True)
+            doc.submit()
+            frappe.db.commit()
         
         terms_doc = frappe.get_doc({
             "doctype": "Sale Invoice Selling Terms",

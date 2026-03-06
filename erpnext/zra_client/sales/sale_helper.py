@@ -249,7 +249,7 @@ class NormaSale(ZRAClient):
 
         return {**taxblAmt, **taxRt, **taxAmt}
 
-    def send_sale_data(self, sell_data):
+    def send_sale_data(self, sell_data, invoice_items=None):
         customer_name = sell_data.get("customerName")
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
@@ -301,7 +301,6 @@ class NormaSale(ZRAClient):
             "cust_name": customer_name,
             "cust_tpin": customer_tpin,
             "name": name,
-            "currencyCd": frappe.defaults.get_global_default("currency"),
             "exchangeRt": exchangeRt,
             "created_by": created_by,
             "currencyCd": currencyCd,
@@ -320,7 +319,7 @@ class NormaSale(ZRAClient):
             response = self.create_normal_sale_helper(payload)
             response = response.json()
         else:
-            response = self.create_erpnext_normal_sale_helper(payload)
+            response = self.create_erpnext_normal_sale_helper(payload, exchangeRt, invoice_items)
 
         apiCallerResponse = response
         print(response)
@@ -332,7 +331,7 @@ class NormaSale(ZRAClient):
 
             additionInfoToBeSaved = []
             additionInfoToBeSaved.extend([
-                payload["currencyTyCd"],
+                payload.get("currencyCd") or payload.get("currencyTyCd") or "INR",
                 payload["exchangeRt"],
                 payload["totTaxAmt"]
             ])
@@ -474,7 +473,7 @@ class NormaSale(ZRAClient):
                 return
         print("Response returned 2")
         return response
-    def create_erpnext_normal_sale_helper(self, payload):
+    def create_erpnext_normal_sale_helper(self, payload, exchangeRt, invoice_items):
         """
         Create ERPNext Sales Invoice instead of ZRA invoice
         """
@@ -482,7 +481,9 @@ class NormaSale(ZRAClient):
         try:
             company = frappe.defaults.get_global_default("company")
             posting_date = datetime.strptime(payload["salesDt"], "%Y%m%d").date()
+            currency = payload.get("currencyCd") or payload.get("currencyTyCd") or "ZMW"
 
+            debtor_account = self.get_or_create_debtor_account(company, currency)
             # 1️⃣ Ensure customer exists
             customer_name = payload.get("custNm") or "Walk-in Customer"
 
@@ -508,15 +509,23 @@ class NormaSale(ZRAClient):
                 })
 
             # 3️⃣ Create Sales Invoice
+            from erpnext.zra_client.sales.api import ZRA_CLIENT_INSTANCE
+
+            canUpdateInvoice = all(ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) for item in items)
+
             invoice = frappe.get_doc({
                 "doctype": "Sales Invoice",
                 "customer": customer.name,
                 "company": company,
                 "posting_date": posting_date,
                 "due_date": posting_date,
-                "currency": payload.get("currencyTyCd", "INR"),
+                "currency": currency,
+                "conversion_rate": float(exchangeRt),
+                "debit_to": debtor_account,
                 "items": items,
                 "remarks": payload.get("remark", ""),
+                "update_stock": 1 if canUpdateInvoice else 0,
+                "items": invoice_items,
             })
 
             invoice.insert(ignore_permissions=True)
@@ -546,3 +555,44 @@ class NormaSale(ZRAClient):
                 "resultCd": "999",
                 "resultMsg": "Failed to create Sales Invoice"
             }
+
+    def get_or_create_debtor_account(self, company, currency):
+        parent_account = frappe.db.get_value(
+                                "Account",
+                                {
+                                    "account_name": "Debtors",
+                                    "company": company
+                                },
+                                "name"
+                            )
+
+        if not parent_account:
+            frappe.throw("Receivable parent account not found")
+
+        account_name = f"Debtors {currency}"
+
+        existing = frappe.db.get_value(
+            "Account",
+            {
+                "account_name": account_name,
+                "company": company
+            },
+            "name"
+        )
+
+        if existing:
+            return existing
+
+        acc = frappe.get_doc({
+            "doctype": "Account",
+            "account_name": account_name,
+            "company": company,
+            "parent_account": parent_account,
+            "account_type": "Receivable",
+            "account_currency": currency,
+            "is_group": 0
+        })
+
+        acc.insert(ignore_permissions=True)
+
+        return acc.name
