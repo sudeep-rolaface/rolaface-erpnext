@@ -342,7 +342,7 @@ def get_quotation_by_id():
                 "price": item.rate,
                 "discount": item.discount_amount,
                 # vatCode only shown for ZMW quotations
-                "vatCode": item.get("custom_vat_code") if quotation.currency == "ZMW" else None,
+                "vatCode": item.custom_vat_code,
                 "packingUnit": item.packing_unit,
                 "packingSize": item.packing_size
             })

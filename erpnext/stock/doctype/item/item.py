@@ -130,7 +130,7 @@ class Item(Document):
 		over_billing_allowance: DF.Float
 		over_delivery_receipt_allowance: DF.Float
 		packing_size: DF.Data | None
-		paking_unit: DF.Data | None
+		packing_unit: DF.Data | None
 		purchase_uom: DF.Link | None
 		quality_inspection_template: DF.Link | None
 		reorder_levels: DF.Table[ItemReorder]

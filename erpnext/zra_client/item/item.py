@@ -121,8 +121,8 @@ def create_item_api():
     custom_dimensionlength = data.get("dimensionLength") or ""
     custom_dimensionwidth  = data.get("dimensionWidth") or ""
     custom_dimensionheight = data.get("dimensionHeight") or ""
-    pakingunit             = data.get("pakingunit", None)
-    packingsize            = data.get("packingsize", None)
+    pakingunit             = data.get("pakingUnit", None)
+    packingsize            = data.get("packingSize", None)
     # ── Vendor info (nested preferred, flat fallback) ─────────────────────────
     custom_vendor           = vendor_info.get("preferredVendor")  or data.get("preferredVendor") or ""
     custom_sales_account    = vendor_info.get("salesAccount")     or data.get("salesAccount") or ""
@@ -761,8 +761,8 @@ def update_item_api():
     custom_dimensionlength = data.get("dimensionLength") or item.custom_dimensionlength
     custom_dimensionwidth  = data.get("dimensionWidth")  or item.custom_dimensionwidth
     custom_dimensionheight = data.get("dimensionHeight") or item.custom_dimensionheight
-    packing_size           = (data.get("packingSize")     or item.packingSize or None).strip()
-    paking_unit            = (data.get("pakingUnit")      or item.pakingUnit or None).strip()
+    packing_size           = (data.get("packingSize")     or item.packing_size or None)
+    packing_unit            = (data.get("packingUnit")      or item.packing_unit or None)
 
     # ── Vendor info (nested preferred, flat fallback) ─────────────────────────
     custom_vendor           = vendor_info.get("preferredVendor")  or data.get("preferredVendor")  or item.custom_vendor or ""
@@ -863,7 +863,7 @@ def update_item_api():
             "stock_uom":            unit_of_measure_cd,
             "brand":                brand,
             "description":          description,
-            "paking_unit":          paking_unit,
+            "packing_unit":         packing_unit,
             "packing_size":         packing_size,
 
             # ZRA
