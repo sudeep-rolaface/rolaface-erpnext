@@ -788,7 +788,7 @@ def get_stock_balance(
         opening_entries = frappe.get_all(
             "Stock Ledger Entry",
             filters=opening_filters,
-            fields=["item_code", "item_name", "warehouse",
+            fields=["item_code", "name", "warehouse",
                     "qty_after_transaction", "valuation_rate"],
             order_by="posting_date asc, posting_time asc",
             limit=0,   # fetch all
@@ -797,7 +797,7 @@ def get_stock_balance(
         for e in opening_entries:
             key = (e["item_code"], e["warehouse"])
             opening_map[key] = {
-                "item_name":      e["item_name"],
+                "name":      e["name"],
                 "opening_qty":    e["qty_after_transaction"],
                 "valuation_rate": e["valuation_rate"] or 0,
             }
@@ -821,7 +821,7 @@ def get_stock_balance(
         "Stock Ledger Entry",
         filters=range_filters,
         fields=[
-            "item_code", "item_name", "warehouse", "actual_qty",
+            "item_code", "name", "warehouse", "actual_qty",
             "qty_after_transaction", "valuation_rate", "stock_value"
         ],
         order_by="posting_date asc, posting_time asc",
@@ -830,13 +830,13 @@ def get_stock_balance(
 
     # ── Step 3: Calculate in/out per (item, warehouse) ───────────────────────
     movement = defaultdict(lambda: {
-        "item_name": "", "in_qty": 0.0, "out_qty": 0.0,
+        "name": "", "in_qty": 0.0, "out_qty": 0.0,
         "last_qty_after": 0.0, "last_valuation_rate": 0.0,
     })
 
     for e in range_entries:
         key = (e["item_code"], e["warehouse"])
-        movement[key]["item_name"]           = e["item_name"]
+        movement[key]["name"]           = e["name"]
         movement[key]["last_qty_after"]      = e["qty_after_transaction"]
         movement[key]["last_valuation_rate"] = e["valuation_rate"] or 0
 
@@ -851,10 +851,10 @@ def get_stock_balance(
 
     for (code, wh) in sorted(all_keys):
         o = opening_map.get((code, wh), {
-            "item_name": "", "opening_qty": 0.0, "valuation_rate": 0.0
+            "name": "", "opening_qty": 0.0, "valuation_rate": 0.0
         })
         m = movement.get((code, wh), {
-            "item_name": "", "in_qty": 0.0, "out_qty": 0.0,
+            "name": "", "in_qty": 0.0, "out_qty": 0.0,
             "last_valuation_rate": 0.0
         })
 
@@ -867,7 +867,7 @@ def get_stock_balance(
 
         result.append({
             "item_code":      code,
-            "item_name":      o["item_name"] or m["item_name"],
+            "name":      o["name"] or m["name"],
             "warehouse":      wh,
             "opening_qty":    opening_qty,
             "in_qty":         in_qty,
