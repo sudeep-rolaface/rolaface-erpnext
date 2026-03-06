@@ -750,67 +750,454 @@ def delete_stock_entry(stock_entry_id=None):
 
 
 
+# @frappe.whitelist()
+# def get_stock_balance(
+#     from_date=None,     # ← optional now
+#     to_date=None,       # ← optional now
+#     warehouse=None,
+#     item_code=None,
+#     batch_no=None, 
+#     page=1,             # ← pagination: page number
+#     page_size=20,       # ← pagination: records per page
+# ):
+#     """
+#     Custom Stock Balance API
+#     GET /api/method/custom_stock_api.api.stock.get_stock_balance
+#         &from_date=2025-12-01     (optional)
+#         &to_date=2026-03-06       (optional)
+#         &warehouse=Finished Goods (optional)
+#         &item_code=ITEM-001       (optional)
+#         &batch_no=BATCH-001       (optional)
+#         &page=1                   (optional, default 1)
+#         &page_size=20             (optional, default 20)
+#     """
+
+#     page      = int(page)
+#     page_size = int(page_size)
+
+#     # ── Step 1: Opening qty (SLE before from_date) ───────────────────────────
+#     opening_map = {}
+
+#     if from_date:
+#         opening_filters = {
+#             "posting_date": ("<", from_date),
+#             "docstatus":    1,
+#             "is_cancelled": 0,
+#         }
+#         if warehouse: opening_filters["warehouse"] = warehouse
+#         if item_code: opening_filters["item_code"] = item_code
+#         if batch_no:  opening_filters["batch_no"]  = batch_no
+
+#         opening_entries = frappe.get_all(
+#             "Stock Ledger Entry",
+#             filters=opening_filters,
+#             fields=["item_code", "name", "warehouse","batch_no",
+#                     "qty_after_transaction", "valuation_rate", "stock_value"],
+#             order_by="posting_date asc, posting_time asc",
+#             limit=0,   # fetch all
+#         )
+
+#         for e in opening_entries:
+#             key = (e["item_code"], e["warehouse"], e["batch_no"] or "")
+#             opening_map[key] = {
+#                 "name":      e["name"],
+#                 "opening_qty":    e["qty_after_transaction"],
+#                 "opening_value":  e["stock_value"] or 0,
+#                 "valuation_rate": e["valuation_rate"] or 0,
+#             }
+
+#     # ── Step 2: Movement entries ─────────────────────────────────────────────
+#     range_filters = {
+#         "docstatus":    1,
+#         "is_cancelled": 0,
+#     }
+#     if from_date and to_date:
+#         range_filters["posting_date"] = ("between", [from_date, to_date])
+#     elif from_date:
+#         range_filters["posting_date"] = (">=", from_date)
+#     elif to_date:
+#         range_filters["posting_date"] = ("<=", to_date)
+
+    
+
+#     if warehouse: range_filters["warehouse"] = warehouse
+#     if item_code: range_filters["item_code"] = item_code
+#     if batch_no:  range_filters["batch_no"]  = batch_no
+
+
+#     range_entries = frappe.get_all(
+#         "Stock Ledger Entry",
+#         filters=range_filters,
+#         fields=[
+#             "item_code", "name", "warehouse", "actual_qty", "batch_no",
+#             "qty_after_transaction", "valuation_rate", "stock_value", "stock_value_difference",  # ← for buy/sell value
+#             "voucher_type",
+#         ],
+#         order_by="posting_date asc, posting_time asc",
+#         limit=0,   # fetch all for calculation
+#     )
+
+#     # ── Step 3: Calculate in/out per (item, warehouse) ───────────────────────
+#     movement = defaultdict(lambda: {
+#         "name": "", "in_qty": 0.0, "out_qty": 0.0,
+#         "buy_value":          0.0,   # ← total value of incoming stock
+#         "sell_value":         0.0,  
+#         "last_qty_after": 0.0, "last_valuation_rate": 0.0,
+#     })
+
+#     for e in range_entries:
+#         key = (e["item_code"], e["warehouse"], e["batch_no"] or "")
+#         movement[key]["name"]           = e["name"]
+#         movement[key]["last_qty_after"]      = e["qty_after_transaction"]
+#         movement[key]["last_valuation_rate"] = e["valuation_rate"] or 0
+
+#         val_diff = e["stock_value_difference"] or 0
+
+#         if e["actual_qty"] > 0:
+#             movement[key]["in_qty"]  += e["actual_qty"]
+#             movement[key]["buy_value"] += val_diff
+#         else:
+#             movement[key]["out_qty"] += abs(e["actual_qty"])
+#             movement[key]["sell_value"] += abs(val_diff)
+
+#     # ── Step 4: Build full result ─────────────────────────────────────────────
+#     all_keys = set(opening_map.keys()) | set(movement.keys())
+#     result = []
+
+#     for (code, wh, batch) in sorted(all_keys):
+#         o = opening_map.get((code, wh, batch), {
+#             "name": "", "opening_qty": 0.0,"opening_value":  0.0,
+# "valuation_rate": 0.0
+#         })
+#         m = movement.get((code, wh, batch), {
+#             "name": "", "in_qty": 0.0, "out_qty": 0.0,"buy_value": 0.0,
+#             "sell_value": 0.0,
+#             "last_valuation_rate": 0.0
+#         })
+
+#         opening_qty = o["opening_qty"]
+#         in_qty      = m["in_qty"]
+#         out_qty     = m["out_qty"]
+#         bal_qty     = opening_qty + in_qty - out_qty
+#         val_rate    = m["last_valuation_rate"] or o["valuation_rate"]
+#         bal_val     = round(bal_qty * val_rate, 2)
+
+#         result.append({
+#             "item_code":      code,
+#             "name":      o["name"] or m["name"],
+#             "warehouse":      wh,
+#             "batch_no":       batch or None,      # ← batch no
+#             "opening_qty":    opening_qty,
+#             "in_qty":         in_qty,
+#             "out_qty":        out_qty,
+#             "bal_qty":        bal_qty,
+#             "bal_val":        bal_val,
+#             "valuation_rate": val_rate,
+#             "buy_value":      round(m["buy_value"],  2),   # ← total incoming value
+#             "sell_value":     round(m["sell_value"], 2),   
+#         })
+
+#     # ── Step 5: Pagination ────────────────────────────────────────────────────
+#     total_records = len(result)
+#     total_pages   = max(1, -(-total_records // page_size))  # ceiling division
+#     start         = (page - 1) * page_size
+#     end           = start + page_size
+#     paginated     = result[start:end]
+
+#     return {
+#         "data":          paginated,
+#         "pagination": {
+#             "page":          page,
+#             "page_size":     page_size,
+#             "total_records": total_records,
+#             "total_pages":   total_pages,
+#             "has_next":      page < total_pages,
+#             "has_prev":      page > 1,
+#         }
+#     }
+
+
+# import frappe
+# from collections import defaultdict
+
+
+# @frappe.whitelist()
+# def get_stock_balance(
+#     from_date=None,
+#     to_date=None,
+#     warehouse=None,
+#     item_code=None,
+#     item_group=None,
+#     batch_no=None,
+#     page=1,
+#     page_size=20,
+# ):
+#     """
+#     Custom Stock Balance API
+#     GET /api/method/custom_stock_api.api.stock.get_stock_balance
+#         ?from_date=2025-12-01                   (optional)
+#         &from_date=2025-12-01                   (optional)
+#         &to_date=2026-03-06                     (optional)
+#         &warehouse=Finished Goods - RI          (optional)
+#         &item_code=ITEM-001                     (optional)
+#         &item_group=raw material                (optional)
+#         &batch_no=BATCH-001                     (optional)
+#         &page=1                                 (optional, default 1)
+#         &page_size=20                           (optional, default 20)
+#     """
+
+#     page      = int(page)
+#     page_size = int(page_size)
+
+#     # ── Helper: build base filters ───────────────────────────────────────────
+#     def base_filters():
+#         f = {
+#             "company":      frappe.defaults.get_global_default("company"),
+#             "docstatus":    1,
+#             "is_cancelled": 0,
+#         }
+#         if warehouse:  f["warehouse"]  = warehouse
+#         if item_code:  f["item_code"]  = item_code
+#         if batch_no:   f["batch_no"]   = batch_no
+#         return f
+
+#     # ── Step 1: Opening qty (SLE before from_date) ───────────────────────────
+#     opening_map = {}
+
+#     if from_date:
+#         opening_filters = base_filters()
+#         opening_filters["posting_date"] = ("<", from_date)
+
+#         opening_entries = frappe.get_all(
+#             "Stock Ledger Entry",
+#             filters=opening_filters,
+#             fields=[
+#                 "item_code", "warehouse", "batch_no",
+#                 "qty_after_transaction", "valuation_rate", "stock_value"
+#             ],
+#             order_by="posting_date asc, posting_time asc",
+#             limit=0,
+#         )
+
+#         for e in opening_entries:
+#             key = (e["item_code"], e["warehouse"], e["batch_no"] or "")
+#             opening_map[key] = {
+#                 "opening_qty":    e["qty_after_transaction"],
+#                 "opening_value":  round(e["stock_value"] or 0, 2),
+#                 "valuation_rate": e["valuation_rate"] or 0,
+#             }
+
+#     # ── Step 2: Movement entries ─────────────────────────────────────────────
+#     range_filters = base_filters()
+
+#     if from_date and to_date:
+#         range_filters["posting_date"] = ("between", [from_date, to_date])
+#     elif from_date:
+#         range_filters["posting_date"] = (">=", from_date)
+#     elif to_date:
+#         range_filters["posting_date"] = ("<=", to_date)
+
+#     range_entries = frappe.get_all(
+#         "Stock Ledger Entry",
+#         filters=range_filters,
+#         fields=[
+#             "item_code", "warehouse", "batch_no",
+#             "actual_qty", "qty_after_transaction",
+#             "valuation_rate", "stock_value", "stock_value_difference",
+#             "voucher_type",
+#         ],
+#         order_by="posting_date asc, posting_time asc",
+#         limit=0,
+#     )
+
+#     # ── Step 3: Calculate per (item, warehouse, batch) ───────────────────────
+#     movement = defaultdict(lambda: {
+#         "in_qty":              0.0,
+#         "in_value":            0.0,
+#         "out_qty":             0.0,
+#         "out_value":           0.0,
+#         "last_qty_after":      0.0,
+#         "last_valuation_rate": 0.0,
+#         "last_stock_value":    0.0,
+#     })
+
+#     for e in range_entries:
+#         key      = (e["item_code"], e["warehouse"], e["batch_no"] or "")
+#         m        = movement[key]
+#         val_diff = e["stock_value_difference"] or 0
+
+#         m["last_qty_after"]      = e["qty_after_transaction"]
+#         m["last_valuation_rate"] = e["valuation_rate"] or 0
+#         m["last_stock_value"]    = e["stock_value"] or 0
+
+#         if e["actual_qty"] > 0:
+#             m["in_qty"]    += e["actual_qty"]
+#             m["in_value"]  += val_diff
+#         else:
+#             m["out_qty"]   += abs(e["actual_qty"])
+#             m["out_value"] += abs(val_diff)
+
+#     # ── Step 4: Fetch name, item_group, stock_uom from Item doctype ──────────
+#     all_item_codes = list({key[0] for key in set(opening_map.keys()) | set(movement.keys())})
+
+#     item_details_map = {}
+#     if all_item_codes:
+#         item_details = frappe.get_all(
+#             "Item",
+#             filters=[["item_code", "in", all_item_codes]],
+#             fields=["item_code", "name", "item_group", "stock_uom"],
+#             limit=0,
+#         )
+#         for item in item_details:
+#             item_details_map[item["item_code"]] = {
+#                 "name":       item["name"],
+#                 "item_group": item["item_group"],
+#                 "stock_uom":  item["stock_uom"],
+#             }
+
+#     # ── Step 5: Build final result ────────────────────────────────────────────
+#     all_keys = set(opening_map.keys()) | set(movement.keys())
+#     result   = []
+
+#     for (code, wh, batch) in sorted(all_keys):
+#         o = opening_map.get((code, wh, batch), {
+#             "opening_qty":    0.0,
+#             "opening_value":  0.0,
+#             "valuation_rate": 0.0,
+#         })
+#         m = movement.get((code, wh, batch), {
+#             "in_qty":              0.0,
+#             "in_value":            0.0,
+#             "out_qty":             0.0,
+#             "out_value":           0.0,
+#             "last_valuation_rate": 0.0,
+#             "last_stock_value":    0.0,
+#         })
+#         item_info = item_details_map.get(code, {
+#             "name":       "",
+#             "item_group": "",
+#             "stock_uom":  "",
+#         })
+
+#         if item_group and item_info.get("item_group") != item_group:
+#             continue
+
+#         opening_qty   = o["opening_qty"]
+#         opening_value = o["opening_value"]
+#         in_qty        = m["in_qty"]
+#         in_value      = round(m["in_value"],  2)
+#         out_qty       = m["out_qty"]
+#         out_value     = round(m["out_value"], 2)
+#         bal_qty       = opening_qty + in_qty - out_qty
+#         val_rate      = m["last_valuation_rate"] or o["valuation_rate"]
+#         bal_val       = round(bal_qty * val_rate, 2)
+
+#         result.append({
+#             "item_code":      code,
+#             "name":           item_info.get("name", ""),
+#             "item_group":     item_info.get("item_group", ""),
+#             "warehouse":      wh,
+#             "stock_uom":      item_info.get("stock_uom", ""),
+#             "batch_no":       batch or None,
+#             "opening_qty":    opening_qty,
+#             "opening_value":  opening_value,
+#             "in_qty":         in_qty,
+#             "in_value":       in_value,
+#             "out_qty":        out_qty,
+#             "out_value":      out_value,
+#             "bal_qty":        bal_qty,
+#             "bal_val":        bal_val,
+#             "valuation_rate": val_rate,
+#         })
+
+#     # ── Step 6: Pagination ────────────────────────────────────────────────────
+#     total_records = len(result)
+#     total_pages   = max(1, -(-total_records // page_size))
+#     start         = (page - 1) * page_size
+#     end           = start + page_size
+
+#     return {
+#         "data": result[start:end],
+#         "pagination": {
+#             "page":          page,
+#             "page_size":     page_size,
+#             "total_records": total_records,
+#             "total_pages":   total_pages,
+#             "has_next":      page < total_pages,
+#             "has_prev":      page > 1,
+#         }
+#     }
+
+
 @frappe.whitelist()
 def get_stock_balance(
-    from_date=None,     # ← optional now
-    to_date=None,       # ← optional now
+    from_date=None,
+    to_date=None,
     warehouse=None,
     item_code=None,
-    batch_no=None, 
-    page=1,             # ← pagination: page number
-    page_size=20,       # ← pagination: records per page
+    item_group=None,
+    batch_no=None,
+    page=1,
+    page_size=20,
 ):
     """
     Custom Stock Balance API
     GET /api/method/custom_stock_api.api.stock.get_stock_balance
-        &from_date=2025-12-01     (optional)
-        &to_date=2026-03-06       (optional)
-        &warehouse=Finished Goods (optional)
-        &item_code=ITEM-001       (optional)
-        &batch_no=BATCH-001       (optional)
-        &page=1                   (optional, default 1)
-        &page_size=20             (optional, default 20)
+        ?from_date=2025-12-01                   (optional)
+        &from_date=2025-12-01                   (optional)
+        &to_date=2026-03-06                     (optional)
+        &warehouse=Finished Goods - RI          (optional)
+        &item_code=ITEM-001                     (optional)
+        &item_group=raw material                (optional)
+        &batch_no=BATCH-001                     (optional)
+        &page=1                                 (optional, default 1)
+        &page_size=20                           (optional, default 20)
     """
 
     page      = int(page)
     page_size = int(page_size)
 
+    # ── Helper: build base filters ───────────────────────────────────────────
+    def base_filters():
+        f = {
+            "company":      frappe.defaults.get_global_default("company"),
+            "docstatus":    1,
+            "is_cancelled": 0,
+        }
+        if warehouse:  f["warehouse"]  = warehouse
+        if item_code:  f["item_code"]  = item_code
+        if batch_no:   f["batch_no"]   = batch_no
+        return f
+
     # ── Step 1: Opening qty (SLE before from_date) ───────────────────────────
     opening_map = {}
 
     if from_date:
-        opening_filters = {
-            "posting_date": ("<", from_date),
-            "docstatus":    1,
-            "is_cancelled": 0,
-        }
-        if warehouse: opening_filters["warehouse"] = warehouse
-        if item_code: opening_filters["item_code"] = item_code
-        if batch_no:  opening_filters["batch_no"]  = batch_no
+        opening_filters = base_filters()
+        opening_filters["posting_date"] = ("<", from_date)
 
         opening_entries = frappe.get_all(
             "Stock Ledger Entry",
             filters=opening_filters,
-            fields=["item_code", "name", "warehouse","batch_no",
-                    "qty_after_transaction", "valuation_rate", "stock_value"],
+            fields=[
+                "item_code", "warehouse", "batch_no",
+                "qty_after_transaction", "valuation_rate", "stock_value"
+            ],
             order_by="posting_date asc, posting_time asc",
-            limit=0,   # fetch all
+            limit=0,
         )
 
         for e in opening_entries:
             key = (e["item_code"], e["warehouse"], e["batch_no"] or "")
             opening_map[key] = {
-                "name":      e["name"],
                 "opening_qty":    e["qty_after_transaction"],
-                "opening_value":  e["stock_value"] or 0,
+                "opening_value":  round(e["stock_value"] or 0, 2),
                 "valuation_rate": e["valuation_rate"] or 0,
             }
 
     # ── Step 2: Movement entries ─────────────────────────────────────────────
-    range_filters = {
-        "docstatus":    1,
-        "is_cancelled": 0,
-    }
+    range_filters = base_filters()
+
     if from_date and to_date:
         range_filters["posting_date"] = ("between", [from_date, to_date])
     elif from_date:
@@ -818,94 +1205,139 @@ def get_stock_balance(
     elif to_date:
         range_filters["posting_date"] = ("<=", to_date)
 
-    
-
-    if warehouse: range_filters["warehouse"] = warehouse
-    if item_code: range_filters["item_code"] = item_code
-    if batch_no:  range_filters["batch_no"]  = batch_no
-
-
     range_entries = frappe.get_all(
         "Stock Ledger Entry",
         filters=range_filters,
         fields=[
-            "item_code", "name", "warehouse", "actual_qty", "batch_no",
-            "qty_after_transaction", "valuation_rate", "stock_value", "stock_value_difference",  # ← for buy/sell value
+            "item_code", "warehouse", "batch_no",
+            "actual_qty", "qty_after_transaction",
+            "valuation_rate", "stock_value", "stock_value_difference",
             "voucher_type",
         ],
         order_by="posting_date asc, posting_time asc",
-        limit=0,   # fetch all for calculation
+        limit=0,
     )
 
-    # ── Step 3: Calculate in/out per (item, warehouse) ───────────────────────
+    # ── Step 3: Calculate per (item, warehouse, batch) ───────────────────────
     movement = defaultdict(lambda: {
-        "name": "", "in_qty": 0.0, "out_qty": 0.0,
-        "buy_value":          0.0,   # ← total value of incoming stock
-        "sell_value":         0.0,  
-        "last_qty_after": 0.0, "last_valuation_rate": 0.0,
+        "in_qty":              0.0,
+        "in_value":            0.0,
+        "out_qty":             0.0,
+        "out_value":           0.0,
+        "buy_value":           0.0,   # ← total incoming stock value
+        "sell_value":          0.0,   # ← total outgoing stock value
+        "last_qty_after":      0.0,
+        "last_valuation_rate": 0.0,
+        "last_stock_value":    0.0,
     })
 
     for e in range_entries:
-        key = (e["item_code"], e["warehouse"], e["batch_no"] or "")
-        movement[key]["name"]           = e["name"]
-        movement[key]["last_qty_after"]      = e["qty_after_transaction"]
-        movement[key]["last_valuation_rate"] = e["valuation_rate"] or 0
-
+        key      = (e["item_code"], e["warehouse"], e["batch_no"] or "")
+        m        = movement[key]
         val_diff = e["stock_value_difference"] or 0
 
-        if e["actual_qty"] > 0:
-            movement[key]["in_qty"]  += e["actual_qty"]
-            movement[key]["buy_value"] += val_diff
-        else:
-            movement[key]["out_qty"] += abs(e["actual_qty"])
-            movement[key]["sell_value"] += abs(val_diff)
+        m["last_qty_after"]      = e["qty_after_transaction"]
+        m["last_valuation_rate"] = e["valuation_rate"] or 0
+        m["last_stock_value"]    = e["stock_value"] or 0
 
-    # ── Step 4: Build full result ─────────────────────────────────────────────
+        if e["actual_qty"] > 0:
+            # Incoming — Purchase Receipt, Material Receipt etc.
+            m["in_qty"]    += e["actual_qty"]
+            m["in_value"]  += val_diff
+            m["buy_value"] += val_diff           # ← buy value
+        else:
+            # Outgoing — Delivery Note, Material Issue etc.
+            m["out_qty"]    += abs(e["actual_qty"])
+            m["out_value"]  += abs(val_diff)
+            m["sell_value"] += abs(val_diff)     # ← sell value
+
+    # ── Step 4: Fetch name, item_group, stock_uom from Item doctype ──────────
+    all_item_codes = list({key[0] for key in set(opening_map.keys()) | set(movement.keys())})
+
+    item_details_map = {}
+    if all_item_codes:
+        item_details = frappe.get_all(
+            "Item",
+            filters=[["item_code", "in", all_item_codes]],
+            fields=["item_code", "name", "item_group", "stock_uom"],
+            limit=0,
+        )
+        for item in item_details:
+            item_details_map[item["item_code"]] = {
+                "name":       item["name"],
+                "item_group": item["item_group"],
+                "stock_uom":  item["stock_uom"],
+            }
+
+    # ── Step 5: Build final result ────────────────────────────────────────────
     all_keys = set(opening_map.keys()) | set(movement.keys())
-    result = []
+    result   = []
 
     for (code, wh, batch) in sorted(all_keys):
         o = opening_map.get((code, wh, batch), {
-            "name": "", "opening_qty": 0.0,"opening_value":  0.0,
-"valuation_rate": 0.0
+            "opening_qty":    0.0,
+            "opening_value":  0.0,
+            "valuation_rate": 0.0,
         })
         m = movement.get((code, wh, batch), {
-            "name": "", "in_qty": 0.0, "out_qty": 0.0,"buy_value": 0.0,
-            "sell_value": 0.0,
-            "last_valuation_rate": 0.0
+            "in_qty":              0.0,
+            "in_value":            0.0,
+            "out_qty":             0.0,
+            "out_value":           0.0,
+            "buy_value":           0.0,
+            "sell_value":          0.0,
+            "last_valuation_rate": 0.0,
+            "last_stock_value":    0.0,
+        })
+        item_info = item_details_map.get(code, {
+            "name":       "",
+            "item_group": "",
+            "stock_uom":  "",
         })
 
-        opening_qty = o["opening_qty"]
-        in_qty      = m["in_qty"]
-        out_qty     = m["out_qty"]
-        bal_qty     = opening_qty + in_qty - out_qty
-        val_rate    = m["last_valuation_rate"] or o["valuation_rate"]
-        bal_val     = round(bal_qty * val_rate, 2)
+        if item_group and item_info.get("item_group") != item_group:
+            continue
+
+        opening_qty   = o["opening_qty"]
+        opening_value = o["opening_value"]
+        in_qty        = m["in_qty"]
+        in_value      = round(m["in_value"],   2)
+        out_qty       = m["out_qty"]
+        out_value     = round(m["out_value"],  2)
+        buy_value     = round(m["buy_value"],  2)
+        sell_value    = round(m["sell_value"], 2)
+        bal_qty       = opening_qty + in_qty - out_qty
+        val_rate      = m["last_valuation_rate"] or o["valuation_rate"]
+        bal_val       = round(bal_qty * val_rate, 2)
 
         result.append({
             "item_code":      code,
-            "name":      o["name"] or m["name"],
+            "name":           item_info.get("name",       ""),
+            "item_group":     item_info.get("item_group", ""),
             "warehouse":      wh,
-            "batch_no":       batch or None,      # ← batch no
+            "stock_uom":      item_info.get("stock_uom",  ""),
+            "batch_no":       batch or None,
             "opening_qty":    opening_qty,
+            "opening_value":  opening_value,
             "in_qty":         in_qty,
+            "in_value":       in_value,
             "out_qty":        out_qty,
+            "out_value":      out_value,
             "bal_qty":        bal_qty,
             "bal_val":        bal_val,
             "valuation_rate": val_rate,
-            "buy_value":      round(m["buy_value"],  2),   # ← total incoming value
-            "sell_value":     round(m["sell_value"], 2),   
+            "buy_value":      buy_value,    # ← total value of all incoming stock
+            "sell_value":     sell_value,   # ← total value of all outgoing stock
         })
 
-    # ── Step 5: Pagination ────────────────────────────────────────────────────
+    # ── Step 6: Pagination ────────────────────────────────────────────────────
     total_records = len(result)
-    total_pages   = max(1, -(-total_records // page_size))  # ceiling division
+    total_pages   = max(1, -(-total_records // page_size))
     start         = (page - 1) * page_size
     end           = start + page_size
-    paginated     = result[start:end]
 
     return {
-        "data":          paginated,
+        "data": result[start:end],
         "pagination": {
             "page":          page,
             "page_size":     page_size,
