@@ -658,7 +658,9 @@ def create_sales_invoice():
             "custom_swift": swift_code,
             "customer": customer_data.get("name"),
             "update_stock": 1 if canUpdateInvoice else 0,
-            "items": invoice_items
+            "items": invoice_items,
+            "conversion_rate": exchangeRt
+
         })
         doc.insert(ignore_permissions=True)
         doc.submit()
