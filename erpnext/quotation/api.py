@@ -496,13 +496,13 @@ def create_quotation():
     payment_info = data.get("paymentInformation")
 
     # ── industryBases ──────────────────────────────────────────────────────────
-    if not industryBases:
-        return send_response(
-            status="fail",
-            message="Industry Bases is required",
-            status_code=400,
-            http_status=400
-        )
+    # if not industryBases:
+    #     return send_response(
+    #         status="fail",
+    #         message="Industry Bases is required",
+    #         status_code=400,
+    #         http_status=400
+    #     )
 
     # ── paymentInformation ─────────────────────────────────────────────────────
     if not payment_info or not isinstance(payment_info, dict):
