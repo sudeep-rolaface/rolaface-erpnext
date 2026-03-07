@@ -133,7 +133,7 @@ def create_purchase_order():
     supplierAddress = addresses.get("supplierAddress", {})
     dispatchAddress = addresses.get("dispatchAddress", {})
     shippingAddress = addresses.get("shippingAddress", {})
-
+    shipping_rule = data.get("shippingRule")
     print(supplierAddress)
     print(dispatchAddress)
     print(shippingAddress)
@@ -552,6 +552,7 @@ def create_purchase_order():
         "custom_placeofsupply": placeOfSupply,
         "custom_remarks": remarks,
         "tax_category": taxCategory,
+        "shipping_rule": shipping_rule,
         "custom_total_taxble_amount": tax_response.get("totTaxblAmt", 0),
         "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items,
@@ -686,7 +687,7 @@ def get_purchase_orders():
 
         all_pos = frappe.get_all(
             "Purchase Order",
-            fields=["name", "supplier", "transaction_date", "schedule_date", "grand_total", "status"],
+            fields=["name", "supplier", "transaction_date", "schedule_date", "grand_total", "status", "shipping_rule"],
             filters=filters,
             order_by="creation desc",
         )
@@ -710,6 +711,7 @@ def get_purchase_orders():
             po["poDate"] = str(po.pop("transaction_date")) if po.get("transaction_date") else None
             po["deliveryDate"] = str(po.pop("schedule_date")) if po.get("schedule_date") else None
             po["grandTotal"] = po.pop("grand_total")
+            po["shippingRule"] = po.pop("shipping_rule")
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -771,7 +773,7 @@ def get_purchase_order():
                 "supplier_address", "dispatch_address", "shipping_address",
                 "incoterm", "project", "cost_center",
                 "custom_total_tax_amount", "custom_total_taxble_amount",
-                "owner", "creation", "modified", "company"
+                "owner", "creation", "modified", "company", "shipping_rule"
             ],
             as_dict=True,
         )
@@ -928,6 +930,7 @@ def get_purchase_order():
             "incoterm": po.incoterm,
             "project": po.project,
             "costCenter": po.cost_center,
+            "shippingRule": po.shipping_rule,
             "addresses": {
                 "supplierAddress": supplier_addr,
                 "dispatchAddress": dispatch_addr,
