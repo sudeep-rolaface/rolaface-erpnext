@@ -2192,6 +2192,309 @@ def get_stock_balance(
 #     }
 
 
+# import frappe
+
+
+# @frappe.whitelist()
+# def get_batch_wise_stock_report(
+#     from_date=None,
+#     to_date=None,
+#     warehouse=None,
+#     item_code=None,
+#     item_group=None,
+#     batch_no=None,
+#     page=1,
+#     page_size=20,
+# ):
+#     page      = int(page)
+#     page_size = int(page_size)
+#     company   = frappe.defaults.get_global_default("company")
+
+#     # ── Step 1: Fetch all active batches ──────────────────────────────────────
+#     batch_filters = [["disabled", "=", 0]]
+#     if item_code: batch_filters.append(["item", "=", item_code])
+#     if batch_no:  batch_filters.append(["name", "=", batch_no])
+
+#     all_batches = frappe.get_all(
+#         "Batch",
+#         filters=batch_filters,
+#         fields=["name as batch_no", "item as item_code",
+#                 "expiry_date", "manufacturing_date"],
+#         limit=0,
+#     )
+
+#     if not all_batches:
+#         return _empty(page, page_size)
+
+#     # ── Step 2: Fetch item details ────────────────────────────────────────────
+#     all_item_codes = list({b["item_code"] for b in all_batches})
+
+#     item_details_map = {}
+#     for item in frappe.get_all(
+#         "Item",
+#         filters=[["item_code", "in", all_item_codes]],
+#         fields=["item_code", "item_name", "item_group", "stock_uom"],
+#         limit=0,
+#     ):
+#         item_details_map[item["item_code"]] = item
+
+#     # apply item_group filter
+#     if item_group:
+#         all_batches = [
+#             b for b in all_batches
+#             if item_details_map.get(b["item_code"], {}).get("item_group") == item_group
+#         ]
+
+#     if not all_batches:
+#         return _empty(page, page_size)
+
+#     # ── Step 3: Build SQL helpers ─────────────────────────────────────────────
+#     batch_list = [b["batch_no"]   for b in all_batches]
+#     item_list  = list({b["item_code"] for b in all_batches})
+
+#     batch_sql  = ", ".join([frappe.db.escape(b) for b in batch_list])
+#     item_sql   = ", ".join([frappe.db.escape(i) for i in item_list])
+
+#     wh_cond    = f"AND warehouse = {frappe.db.escape(warehouse)}" if warehouse else ""
+
+#     if from_date and to_date:
+#         range_cond = f"AND posting_date BETWEEN {frappe.db.escape(from_date)} AND {frappe.db.escape(to_date)}"
+#     elif from_date:
+#         range_cond = f"AND posting_date >= {frappe.db.escape(from_date)}"
+#     elif to_date:
+#         range_cond = f"AND posting_date <= {frappe.db.escape(to_date)}"
+#     else:
+#         range_cond = ""
+
+#     base_where = f"""
+#         WHERE company      = {frappe.db.escape(company)}
+#           AND docstatus    = 1
+#           AND is_cancelled = 0
+#           AND item_code IN ({item_sql})
+#           AND batch_no  IN ({batch_sql})
+#           {wh_cond}
+#     """
+
+#     # ── Step 4: Opening SLE — key: (item_code, batch_no) ─────────────────────
+#     # Get qty_after_transaction from the LAST SLE before from_date per batch
+#     opening_map = {}
+
+#     if from_date:
+#         opening_rows = frappe.db.sql(f"""
+#             SELECT
+#                 sle.item_code,
+#                 sle.batch_no,
+#                 SUM(sle.qty_after_transaction) AS opening_qty,
+#                 SUM(sle.stock_value)           AS opening_value,
+#                 AVG(sle.valuation_rate)        AS valuation_rate
+#             FROM `tabStock Ledger Entry` sle
+#             INNER JOIN (
+#                 SELECT item_code, batch_no, MAX(posting_date) AS max_date
+#                 FROM `tabStock Ledger Entry`
+#                 {base_where}
+#                   AND posting_date < {frappe.db.escape(from_date)}
+#                 GROUP BY item_code, batch_no
+#             ) latest
+#               ON  sle.item_code    = latest.item_code
+#               AND sle.batch_no     = latest.batch_no
+#               AND sle.posting_date = latest.max_date
+#             {base_where}
+#               AND sle.posting_date < {frappe.db.escape(from_date)}
+#             GROUP BY sle.item_code, sle.batch_no
+#         """, as_dict=True)
+
+#         for row in opening_rows:
+#             key = (row["item_code"], row["batch_no"] or "")
+#             opening_map[key] = {
+#                 "opening_qty":    float(row["opening_qty"]    or 0),
+#                 "opening_value":  round(float(row["opening_value"] or 0), 2),
+#                 "valuation_rate": float(row["valuation_rate"] or 0),
+#             }
+
+#     # ── Step 5: Movement SLE — key: (item_code, batch_no) ────────────────────
+#     movement_map = {}
+#     warehouse_map = {}  # (item_code, batch_no) → warehouse
+
+#     movement_rows = frappe.db.sql(f"""
+#         SELECT
+#             item_code,
+#             batch_no,
+#             warehouse,
+#             SUM(CASE WHEN actual_qty > 0 THEN actual_qty               ELSE 0 END) AS in_qty,
+#             SUM(CASE WHEN actual_qty > 0 THEN stock_value_difference   ELSE 0 END) AS in_value,
+#             SUM(CASE WHEN actual_qty < 0 THEN ABS(actual_qty)          ELSE 0 END) AS out_qty,
+#             SUM(CASE WHEN actual_qty < 0 THEN ABS(stock_value_difference) ELSE 0 END) AS out_value,
+#             SUM(CASE WHEN actual_qty > 0 THEN stock_value_difference   ELSE 0 END) AS buy_value,
+#             SUM(CASE WHEN actual_qty < 0 THEN ABS(stock_value_difference) ELSE 0 END) AS sell_value,
+#             MAX(valuation_rate)  AS last_valuation_rate,
+#             MAX(stock_value)     AS last_stock_value
+#         FROM `tabStock Ledger Entry`
+#         {base_where}
+#         {range_cond}
+#         GROUP BY item_code, batch_no, warehouse
+#     """, as_dict=True)
+
+#     for row in movement_rows:
+#         # key WITHOUT warehouse so it always matches
+#         key = (row["item_code"], row["batch_no"] or "")
+
+#         if key not in movement_map:
+#             movement_map[key] = {
+#                 "in_qty":              0.0,
+#                 "in_value":            0.0,
+#                 "out_qty":             0.0,
+#                 "out_value":           0.0,
+#                 "buy_value":           0.0,
+#                 "sell_value":          0.0,
+#                 "last_valuation_rate": 0.0,
+#                 "last_stock_value":    0.0,
+#             }
+
+#         m = movement_map[key]
+#         m["in_qty"]              += float(row["in_qty"]              or 0)
+#         m["in_value"]            += float(row["in_value"]            or 0)
+#         m["out_qty"]             += float(row["out_qty"]             or 0)
+#         m["out_value"]           += float(row["out_value"]           or 0)
+#         m["buy_value"]           += float(row["buy_value"]           or 0)
+#         m["sell_value"]          += float(row["sell_value"]          or 0)
+#         m["last_valuation_rate"]  = float(row["last_valuation_rate"] or 0)
+#         m["last_stock_value"]     = float(row["last_stock_value"]    or 0)
+
+#         # store warehouse for display
+#         warehouse_map[key] = row["warehouse"]
+
+#     # ── Step 6: Group batches under each item ─────────────────────────────────
+#     items_map = {}
+
+#     for b in all_batches:
+#         code  = b["item_code"]
+#         batch = b["batch_no"]
+#         key   = (code, batch)   # ← simple 2-tuple, always matches
+
+#         item_info = item_details_map.get(code, {
+#             "item_name": "", "item_group": "", "stock_uom": "",
+#         })
+
+#         o = opening_map.get(key, {
+#             "opening_qty":    0.0,
+#             "opening_value":  0.0,
+#             "valuation_rate": 0.0,
+#         })
+#         m = movement_map.get(key, {
+#             "in_qty":              0.0,
+#             "in_value":            0.0,
+#             "out_qty":             0.0,
+#             "out_value":           0.0,
+#             "buy_value":           0.0,
+#             "sell_value":          0.0,
+#             "last_valuation_rate": 0.0,
+#             "last_stock_value":    0.0,
+#         })
+
+#         opening_qty   = o["opening_qty"]
+#         opening_value = o["opening_value"]
+#         in_qty        = m["in_qty"]
+#         in_value      = round(m["in_value"],   2)
+#         out_qty       = m["out_qty"]
+#         out_value     = round(m["out_value"],  2)
+#         buy_value     = round(m["buy_value"],  2)
+#         sell_value    = round(m["sell_value"], 2)
+#         bal_qty       = opening_qty + in_qty - out_qty
+#         val_rate      = m["last_valuation_rate"] or o["valuation_rate"]
+#         bal_val       = round(bal_qty * val_rate, 2)
+
+#         # get warehouse from SLE, fallback to param
+#         wh = warehouse_map.get(key) or warehouse or ""
+
+#         batch_row = {
+#             "batch_no":           batch,
+#             "expiry_date":        b.get("expiry_date"),
+#             "manufacturing_date": b.get("manufacturing_date"),
+#             "warehouse":          wh,
+#             "opening_qty":        opening_qty,
+#             "opening_value":      opening_value,
+#             "in_qty":             in_qty,
+#             "in_value":           in_value,
+#             "out_qty":            out_qty,
+#             "out_value":          out_value,
+#             "bal_qty":            bal_qty,
+#             "bal_val":            bal_val,
+#             "valuation_rate":     val_rate,
+#             "buy_value":          buy_value,
+#             "sell_value":         sell_value,
+#         }
+
+#         if code not in items_map:
+#             items_map[code] = {
+#                 "item_code":           code,
+#                 "item_name":           item_info.get("item_name",  ""),
+#                 "item_group":          item_info.get("item_group", ""),
+#                 "stock_uom":           item_info.get("stock_uom",  ""),
+#                 "total_opening_qty":   0.0,
+#                 "total_opening_value": 0.0,
+#                 "total_in_qty":        0.0,
+#                 "total_in_value":      0.0,
+#                 "total_out_qty":       0.0,
+#                 "total_out_value":     0.0,
+#                 "total_bal_qty":       0.0,
+#                 "total_bal_val":       0.0,
+#                 "total_buy_value":     0.0,
+#                 "total_sell_value":    0.0,
+#                 "batches":             [],
+#             }
+
+#         row = items_map[code]
+#         row["batches"].append(batch_row)
+#         row["total_opening_qty"]   += opening_qty
+#         row["total_opening_value"] += opening_value
+#         row["total_in_qty"]        += in_qty
+#         row["total_in_value"]      += in_value
+#         row["total_out_qty"]       += out_qty
+#         row["total_out_value"]     += out_value
+#         row["total_bal_qty"]       += bal_qty
+#         row["total_bal_val"]       += bal_val
+#         row["total_buy_value"]     += buy_value
+#         row["total_sell_value"]    += sell_value
+
+#     # round item totals
+#     result = []
+#     for row in items_map.values():
+#         for f in ["total_opening_value", "total_in_value", "total_out_value",
+#                   "total_bal_val", "total_buy_value", "total_sell_value"]:
+#             row[f] = round(row[f], 2)
+#         result.append(row)
+
+#     # ── Step 7: Pagination ────────────────────────────────────────────────────
+#     total_records = len(result)
+#     total_pages   = max(1, -(-total_records // page_size))
+#     start         = (page - 1) * page_size
+#     end           = start + page_size
+
+#     return {
+#         "data": result[start:end],
+#         "pagination": {
+#             "page":          page,
+#             "page_size":     page_size,
+#             "total_records": total_records,
+#             "total_pages":   total_pages,
+#             "has_next":      page < total_pages,
+#             "has_prev":      page > 1,
+#         }
+#     }
+
+
+# def _empty(page, page_size):
+#     return {
+#         "data": [],
+#         "pagination": {
+#             "page": page, "page_size": page_size,
+#             "total_records": 0, "total_pages": 0,
+#             "has_next": False, "has_prev": False,
+#         }
+#     }
+
+
+
 import frappe
 
 
@@ -2210,24 +2513,91 @@ def get_batch_wise_stock_report(
     page_size = int(page_size)
     company   = frappe.defaults.get_global_default("company")
 
-    # ── Step 1: Fetch all active batches ──────────────────────────────────────
-    batch_filters = [["disabled", "=", 0]]
-    if item_code: batch_filters.append(["item", "=", item_code])
-    if batch_no:  batch_filters.append(["name", "=", batch_no])
+    # ── Step 1: Build SQL conditions ──────────────────────────────────────────
+    conditions = [
+        f"company = {frappe.db.escape(company)}",
+        "docstatus = 1",
+        "is_cancelled = 0",
+    ]
 
-    all_batches = frappe.get_all(
-        "Batch",
-        filters=batch_filters,
-        fields=["name as batch_no", "item as item_code",
-                "expiry_date", "manufacturing_date"],
-        limit=0,
-    )
+    if warehouse:  conditions.append(f"warehouse = {frappe.db.escape(warehouse)}")
+    if item_code:  conditions.append(f"item_code = {frappe.db.escape(item_code)}")
+    if batch_no:   conditions.append(f"batch_no = {frappe.db.escape(batch_no)}")
 
-    if not all_batches:
+    where_clause = "WHERE " + " AND ".join(conditions)
+
+    if from_date and to_date:
+        range_cond = f"AND posting_date BETWEEN {frappe.db.escape(from_date)} AND {frappe.db.escape(to_date)}"
+    elif from_date:
+        range_cond = f"AND posting_date >= {frappe.db.escape(from_date)}"
+    elif to_date:
+        range_cond = f"AND posting_date <= {frappe.db.escape(to_date)}"
+    else:
+        range_cond = ""
+
+    # ── Step 2: Movement SLE — start from SLE, group by item+batch ───────────
+    movement_rows = frappe.db.sql(f"""
+        SELECT
+            item_code,
+            IFNULL(batch_no, '')   AS batch_no,
+            warehouse,
+            SUM(CASE WHEN actual_qty > 0 THEN actual_qty                  ELSE 0 END) AS in_qty,
+            SUM(CASE WHEN actual_qty > 0 THEN stock_value_difference      ELSE 0 END) AS in_value,
+            SUM(CASE WHEN actual_qty < 0 THEN ABS(actual_qty)             ELSE 0 END) AS out_qty,
+            SUM(CASE WHEN actual_qty < 0 THEN ABS(stock_value_difference) ELSE 0 END) AS out_value,
+            SUM(CASE WHEN actual_qty > 0 THEN stock_value_difference      ELSE 0 END) AS buy_value,
+            SUM(CASE WHEN actual_qty < 0 THEN ABS(stock_value_difference) ELSE 0 END) AS sell_value,
+            MAX(valuation_rate)   AS last_valuation_rate,
+            MAX(stock_value)      AS last_stock_value,
+            MAX(qty_after_transaction) AS last_qty_after
+        FROM `tabStock Ledger Entry`
+        {where_clause}
+        {range_cond}
+        GROUP BY item_code, IFNULL(batch_no, ''), warehouse
+    """, as_dict=True)
+
+    if not movement_rows:
         return _empty(page, page_size)
 
-    # ── Step 2: Fetch item details ────────────────────────────────────────────
-    all_item_codes = list({b["item_code"] for b in all_batches})
+    # ── Step 3: Opening SLE per (item_code, batch_no) ────────────────────────
+    opening_map = {}
+
+    if from_date:
+        opening_rows = frappe.db.sql(f"""
+            SELECT
+                sle.item_code,
+                IFNULL(sle.batch_no, '') AS batch_no,
+                sle.qty_after_transaction AS opening_qty,
+                sle.stock_value           AS opening_value,
+                sle.valuation_rate
+            FROM `tabStock Ledger Entry` sle
+            INNER JOIN (
+                SELECT
+                    item_code,
+                    IFNULL(batch_no, '') AS batch_no,
+                    MAX(posting_date)    AS max_date
+                FROM `tabStock Ledger Entry`
+                {where_clause}
+                  AND posting_date < {frappe.db.escape(from_date)}
+                GROUP BY item_code, IFNULL(batch_no, '')
+            ) latest
+              ON  sle.item_code            = latest.item_code
+              AND IFNULL(sle.batch_no, '') = latest.batch_no
+              AND sle.posting_date         = latest.max_date
+            {where_clause}
+              AND sle.posting_date < {frappe.db.escape(from_date)}
+        """, as_dict=True)
+
+        for row in opening_rows:
+            key = (row["item_code"], row["batch_no"])
+            opening_map[key] = {
+                "opening_qty":    float(row["opening_qty"]    or 0),
+                "opening_value":  round(float(row["opening_value"] or 0), 2),
+                "valuation_rate": float(row["valuation_rate"] or 0),
+            }
+
+    # ── Step 4: Fetch item details ────────────────────────────────────────────
+    all_item_codes = list({r["item_code"] for r in movement_rows})
 
     item_details_map = {}
     for item in frappe.get_all(
@@ -2240,177 +2610,61 @@ def get_batch_wise_stock_report(
 
     # apply item_group filter
     if item_group:
-        all_batches = [
-            b for b in all_batches
-            if item_details_map.get(b["item_code"], {}).get("item_group") == item_group
+        movement_rows = [
+            r for r in movement_rows
+            if item_details_map.get(r["item_code"], {}).get("item_group") == item_group
         ]
 
-    if not all_batches:
+    if not movement_rows:
         return _empty(page, page_size)
 
-    # ── Step 3: Build SQL helpers ─────────────────────────────────────────────
-    batch_list = [b["batch_no"]   for b in all_batches]
-    item_list  = list({b["item_code"] for b in all_batches})
+    # ── Step 5: Fetch Batch details ───────────────────────────────────────────
+    all_batch_nos = list({r["batch_no"] for r in movement_rows if r["batch_no"]})
 
-    batch_sql  = ", ".join([frappe.db.escape(b) for b in batch_list])
-    item_sql   = ", ".join([frappe.db.escape(i) for i in item_list])
+    batch_details_map = {}
+    if all_batch_nos:
+        for b in frappe.get_all(
+            "Batch",
+            filters=[["name", "in", all_batch_nos]],
+            fields=["name", "expiry_date", "manufacturing_date"],
+            limit=0,
+        ):
+            batch_details_map[b["name"]] = b
 
-    wh_cond    = f"AND warehouse = {frappe.db.escape(warehouse)}" if warehouse else ""
-
-    if from_date and to_date:
-        range_cond = f"AND posting_date BETWEEN {frappe.db.escape(from_date)} AND {frappe.db.escape(to_date)}"
-    elif from_date:
-        range_cond = f"AND posting_date >= {frappe.db.escape(from_date)}"
-    elif to_date:
-        range_cond = f"AND posting_date <= {frappe.db.escape(to_date)}"
-    else:
-        range_cond = ""
-
-    base_where = f"""
-        WHERE company      = {frappe.db.escape(company)}
-          AND docstatus    = 1
-          AND is_cancelled = 0
-          AND item_code IN ({item_sql})
-          AND batch_no  IN ({batch_sql})
-          {wh_cond}
-    """
-
-    # ── Step 4: Opening SLE — key: (item_code, batch_no) ─────────────────────
-    # Get qty_after_transaction from the LAST SLE before from_date per batch
-    opening_map = {}
-
-    if from_date:
-        opening_rows = frappe.db.sql(f"""
-            SELECT
-                sle.item_code,
-                sle.batch_no,
-                SUM(sle.qty_after_transaction) AS opening_qty,
-                SUM(sle.stock_value)           AS opening_value,
-                AVG(sle.valuation_rate)        AS valuation_rate
-            FROM `tabStock Ledger Entry` sle
-            INNER JOIN (
-                SELECT item_code, batch_no, MAX(posting_date) AS max_date
-                FROM `tabStock Ledger Entry`
-                {base_where}
-                  AND posting_date < {frappe.db.escape(from_date)}
-                GROUP BY item_code, batch_no
-            ) latest
-              ON  sle.item_code    = latest.item_code
-              AND sle.batch_no     = latest.batch_no
-              AND sle.posting_date = latest.max_date
-            {base_where}
-              AND sle.posting_date < {frappe.db.escape(from_date)}
-            GROUP BY sle.item_code, sle.batch_no
-        """, as_dict=True)
-
-        for row in opening_rows:
-            key = (row["item_code"], row["batch_no"] or "")
-            opening_map[key] = {
-                "opening_qty":    float(row["opening_qty"]    or 0),
-                "opening_value":  round(float(row["opening_value"] or 0), 2),
-                "valuation_rate": float(row["valuation_rate"] or 0),
-            }
-
-    # ── Step 5: Movement SLE — key: (item_code, batch_no) ────────────────────
-    movement_map = {}
-    warehouse_map = {}  # (item_code, batch_no) → warehouse
-
-    movement_rows = frappe.db.sql(f"""
-        SELECT
-            item_code,
-            batch_no,
-            warehouse,
-            SUM(CASE WHEN actual_qty > 0 THEN actual_qty               ELSE 0 END) AS in_qty,
-            SUM(CASE WHEN actual_qty > 0 THEN stock_value_difference   ELSE 0 END) AS in_value,
-            SUM(CASE WHEN actual_qty < 0 THEN ABS(actual_qty)          ELSE 0 END) AS out_qty,
-            SUM(CASE WHEN actual_qty < 0 THEN ABS(stock_value_difference) ELSE 0 END) AS out_value,
-            SUM(CASE WHEN actual_qty > 0 THEN stock_value_difference   ELSE 0 END) AS buy_value,
-            SUM(CASE WHEN actual_qty < 0 THEN ABS(stock_value_difference) ELSE 0 END) AS sell_value,
-            MAX(valuation_rate)  AS last_valuation_rate,
-            MAX(stock_value)     AS last_stock_value
-        FROM `tabStock Ledger Entry`
-        {base_where}
-        {range_cond}
-        GROUP BY item_code, batch_no, warehouse
-    """, as_dict=True)
-
-    for row in movement_rows:
-        # key WITHOUT warehouse so it always matches
-        key = (row["item_code"], row["batch_no"] or "")
-
-        if key not in movement_map:
-            movement_map[key] = {
-                "in_qty":              0.0,
-                "in_value":            0.0,
-                "out_qty":             0.0,
-                "out_value":           0.0,
-                "buy_value":           0.0,
-                "sell_value":          0.0,
-                "last_valuation_rate": 0.0,
-                "last_stock_value":    0.0,
-            }
-
-        m = movement_map[key]
-        m["in_qty"]              += float(row["in_qty"]              or 0)
-        m["in_value"]            += float(row["in_value"]            or 0)
-        m["out_qty"]             += float(row["out_qty"]             or 0)
-        m["out_value"]           += float(row["out_value"]           or 0)
-        m["buy_value"]           += float(row["buy_value"]           or 0)
-        m["sell_value"]          += float(row["sell_value"]          or 0)
-        m["last_valuation_rate"]  = float(row["last_valuation_rate"] or 0)
-        m["last_stock_value"]     = float(row["last_stock_value"]    or 0)
-
-        # store warehouse for display
-        warehouse_map[key] = row["warehouse"]
-
-    # ── Step 6: Group batches under each item ─────────────────────────────────
+    # ── Step 6: Group by item_code → batches nested inside ───────────────────
     items_map = {}
 
-    for b in all_batches:
-        code  = b["item_code"]
-        batch = b["batch_no"]
-        key   = (code, batch)   # ← simple 2-tuple, always matches
+    for row in movement_rows:
+        code  = row["item_code"]
+        batch = row["batch_no"]
+        key   = (code, batch)
 
-        item_info = item_details_map.get(code, {
-            "item_name": "", "item_group": "", "stock_uom": "",
-        })
+        item_info  = item_details_map.get(code,  {"item_name": "", "item_group": "", "stock_uom": ""})
+        batch_info = batch_details_map.get(batch, {"expiry_date": None, "manufacturing_date": None})
 
         o = opening_map.get(key, {
             "opening_qty":    0.0,
             "opening_value":  0.0,
             "valuation_rate": 0.0,
         })
-        m = movement_map.get(key, {
-            "in_qty":              0.0,
-            "in_value":            0.0,
-            "out_qty":             0.0,
-            "out_value":           0.0,
-            "buy_value":           0.0,
-            "sell_value":          0.0,
-            "last_valuation_rate": 0.0,
-            "last_stock_value":    0.0,
-        })
 
         opening_qty   = o["opening_qty"]
         opening_value = o["opening_value"]
-        in_qty        = m["in_qty"]
-        in_value      = round(m["in_value"],   2)
-        out_qty       = m["out_qty"]
-        out_value     = round(m["out_value"],  2)
-        buy_value     = round(m["buy_value"],  2)
-        sell_value    = round(m["sell_value"], 2)
+        in_qty        = float(row["in_qty"]    or 0)
+        in_value      = round(float(row["in_value"]   or 0), 2)
+        out_qty       = float(row["out_qty"]   or 0)
+        out_value     = round(float(row["out_value"]  or 0), 2)
+        buy_value     = round(float(row["buy_value"]  or 0), 2)
+        sell_value    = round(float(row["sell_value"] or 0), 2)
         bal_qty       = opening_qty + in_qty - out_qty
-        val_rate      = m["last_valuation_rate"] or o["valuation_rate"]
+        val_rate      = float(row["last_valuation_rate"] or 0) or o["valuation_rate"]
         bal_val       = round(bal_qty * val_rate, 2)
 
-        # get warehouse from SLE, fallback to param
-        wh = warehouse_map.get(key) or warehouse or ""
-
         batch_row = {
-            "batch_no":           batch,
-            "expiry_date":        b.get("expiry_date"),
-            "manufacturing_date": b.get("manufacturing_date"),
-            "warehouse":          wh,
+            "batch_no":           batch or None,
+            "expiry_date":        batch_info.get("expiry_date"),
+            "manufacturing_date": batch_info.get("manufacturing_date"),
+            "warehouse":          row["warehouse"],
             "opening_qty":        opening_qty,
             "opening_value":      opening_value,
             "in_qty":             in_qty,
@@ -2443,26 +2697,26 @@ def get_batch_wise_stock_report(
                 "batches":             [],
             }
 
-        row = items_map[code]
-        row["batches"].append(batch_row)
-        row["total_opening_qty"]   += opening_qty
-        row["total_opening_value"] += opening_value
-        row["total_in_qty"]        += in_qty
-        row["total_in_value"]      += in_value
-        row["total_out_qty"]       += out_qty
-        row["total_out_value"]     += out_value
-        row["total_bal_qty"]       += bal_qty
-        row["total_bal_val"]       += bal_val
-        row["total_buy_value"]     += buy_value
-        row["total_sell_value"]    += sell_value
+        r = items_map[code]
+        r["batches"].append(batch_row)
+        r["total_opening_qty"]   += opening_qty
+        r["total_opening_value"] += opening_value
+        r["total_in_qty"]        += in_qty
+        r["total_in_value"]      += in_value
+        r["total_out_qty"]       += out_qty
+        r["total_out_value"]     += out_value
+        r["total_bal_qty"]       += bal_qty
+        r["total_bal_val"]       += bal_val
+        r["total_buy_value"]     += buy_value
+        r["total_sell_value"]    += sell_value
 
-    # round item totals
+    # round totals
     result = []
-    for row in items_map.values():
+    for r in items_map.values():
         for f in ["total_opening_value", "total_in_value", "total_out_value",
                   "total_bal_val", "total_buy_value", "total_sell_value"]:
-            row[f] = round(row[f], 2)
-        result.append(row)
+            r[f] = round(r[f], 2)
+        result.append(r)
 
     # ── Step 7: Pagination ────────────────────────────────────────────────────
     total_records = len(result)
