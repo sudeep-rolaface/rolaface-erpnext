@@ -343,7 +343,7 @@ def create_purchase_order():
         if not vat_cd:
             return send_response(
                 status="fail",
-                message="Vat Category must not be null",
+                message="Tax Code must not be Empty",
                 data=[],
                 status_code=400,
                 http_status=400,
