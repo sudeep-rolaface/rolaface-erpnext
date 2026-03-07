@@ -2846,7 +2846,7 @@ def get_batch_wise_stock_report(
     for item in frappe.get_all(
         "Item",
         filters=[["item_code", "in", all_item_codes]],
-        fields=["item_code", "item_name", "item_group", "stock_uom"],
+        fields=["item_code", "item_name", "item_group", "stock_uom", "description"],
         limit=0,
     ):
         item_details_map[item["item_code"]] = item
@@ -2895,7 +2895,7 @@ def get_batch_wise_stock_report(
         wh   = row["warehouse"]
 
         item_info = item_details_map.get(code, {
-            "item_name": "", "item_group": "", "stock_uom": "",
+            "item_name": "", "item_group": "", "stock_uom": "", "description":""
         })
         o = opening_map.get(code, {
             "opening_qty":    0.0,
@@ -2977,6 +2977,7 @@ def get_batch_wise_stock_report(
                 "item_name":           item_info.get("item_name",  ""),
                 "item_group":          item_info.get("item_group", ""),
                 "stock_uom":           item_info.get("stock_uom",  ""),
+                "description":         item_info.get("description",""),
                 "total_opening_qty":   round(opening_qty,   4),
                 "total_opening_value": opening_value,
                 "total_in_qty":        in_qty,
