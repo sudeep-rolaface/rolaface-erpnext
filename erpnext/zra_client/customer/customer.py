@@ -619,18 +619,18 @@ def get_customer_by_id(custom_id):
             try:
                 # ── Get Selling Terms ─────────────────────────────────────────
                 selling_terms_doc = None
-                if frappe.db.exists("Company Selling Terms", {"company": custom_company_id}):
-                    selling_terms_doc = frappe.get_doc("Company Selling Terms", {"company": custom_company_id})
+                if frappe.db.exists("Customer Terms", {"customer": custom_id}):
+                    selling_terms_doc = frappe.get_doc("Customer Terms", {"customer": custom_id})
                 
                 # ── Get Selling Payment ───────────────────────────────────────
                 selling_payment_doc = None
-                if frappe.db.exists("Company Selling Payments", {"company": custom_company_id}):
-                    selling_payment_doc = frappe.get_doc("Company Selling Payments", {"company": custom_company_id})
+                if frappe.db.exists("Payment Terms", {"customer": custom_id}):
+                    selling_payment_doc = frappe.get_doc("Payment Terms", {"customer": custom_id})
                 
                 # ── Get Selling Payment Phases ────────────────────────────────
                 phases = frappe.get_all(
-                    "Company Selling Payments Phases",
-                    filters={"company": custom_company_id},
+                    "Payment Terms Phases",
+                    filters={"customer": custom_id},
                     fields=["id", "phase_name as name", "percentage", "condition"],
                 )
                 
@@ -652,7 +652,8 @@ def get_customer_by_id(custom_id):
                     }
                 }
             
-            except Exception:
+            except Exception as e:
+                print(f"Error --> {e}")
                 frappe.log_error(frappe.get_traceback(), "Get Customer Selling Terms Error")
                 return {}
         
