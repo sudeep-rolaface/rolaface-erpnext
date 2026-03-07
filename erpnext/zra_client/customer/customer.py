@@ -631,7 +631,7 @@ def get_customer_by_id(custom_id):
                 phases = frappe.get_all(
                     "Payment Terms Phases",
                     filters={"customer": custom_id},
-                    fields=["id", "phase_name as name", "percentage", "condition"],
+                    fields=["id", "phase as name", "percentage", "condition"],
                 )
                 
                 return {
