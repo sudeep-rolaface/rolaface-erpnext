@@ -504,7 +504,8 @@ def create_purchase_invoice():
             "itemClassCode": item_details.get("itemClassCd"),
             "packageUnitCode": item_details.get("itemPackingUnitCd"),
             "price": rate,
-            "VatCd": vat_cd,
+            "custom_vat": vat_cd,
+            "vat_rate": vat_rate,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "schedule_date": item_required_by,
             "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name)
@@ -515,6 +516,7 @@ def create_purchase_invoice():
             "item_name": item_details.get("itemName"),
             "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
             "custom_vat": vat_cd,
+            "vat_rate": vat_rate,
             "qty": quantity,
             "rate": rate,
             "schedule_date": item_required_by,
@@ -975,7 +977,8 @@ def get_purchase_invoice_by_id():
                 "uom",
                 "rate",
                 "amount",
-                "custom_vat as VatCd"
+                "custom_vat as VatCd",
+                "vat_rate as vatRate",
             ]
         )
 

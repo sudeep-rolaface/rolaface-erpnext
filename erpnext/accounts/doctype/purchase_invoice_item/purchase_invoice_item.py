@@ -94,6 +94,7 @@ class PurchaseInvoiceItem(Document):
 		uom: DF.Link
 		use_serial_batch_fields: DF.Check
 		valuation_rate: DF.Currency
+		vat_rate: DF.Data | None
 		warehouse: DF.Link | None
 		weight_per_unit: DF.Float
 		weight_uom: DF.Link | None
