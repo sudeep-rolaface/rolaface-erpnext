@@ -95,6 +95,7 @@ class PurchaseOrderItem(Document):
 		supplier_quotation_item: DF.Link | None
 		total_weight: DF.Float
 		uom: DF.Link
+		vat_rate: DF.Data | None
 		warehouse: DF.Link | None
 		weight_per_unit: DF.Float
 		weight_uom: DF.Link | None

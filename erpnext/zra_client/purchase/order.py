@@ -439,6 +439,7 @@ def create_purchase_order():
             "packing_size": packing_size,
             "batch_no": batch_no,
             "custom_vat_cd": vat_cd,
+            "vat_rate": float(i.get("vatRate") or 0)
         })
 
     # ------------------------------------------------------------------ #
@@ -789,7 +790,7 @@ def get_purchase_order():
             filters={"parent": poId},
             fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date",
                     "mfg_date as mfgDate", "packing_unit as packingUnit", "packing_size as packingSize",
-                    "batch_no as batchNo", "custom_vat_cd as vatCd"],
+                    "batch_no as batchNo", "custom_vat_cd as vatCd", "vat_rate as vatRate"],
         )
 
         total_quantity = sum(item.get("qty", 0) for item in items)
