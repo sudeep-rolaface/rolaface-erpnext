@@ -765,6 +765,9 @@ def get_sales_invoice():
 
         page = args.get("page")
         customer_name = args.get("customer")
+        conditions = {}
+        if customer_name:
+            conditions["customer"] = customer_name
         if not page:
             return send_response(
                 status="error",
@@ -830,7 +833,7 @@ def get_sales_invoice():
                 "amended_from",
                 "outstanding_amount",
             ],
-            filters={"customer":customer_name},            
+            filters=conditions,            
             order_by="creation desc",
             limit_start=start,
             limit_page_length=page_size
