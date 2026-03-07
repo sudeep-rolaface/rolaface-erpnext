@@ -129,9 +129,17 @@ def get_all_quotations():
         filters = {}
         or_filters = []
 
-        customer = args.get("customer")
-        if customer:
-            filters["customer_name"] = ["like", f"%{customer}%"]
+        customer_id = args.get("customer")
+        if customer_id:
+            customer_name = frappe.db.get_value(
+                "Customer",
+                {"custom_id": customer_id},
+                "name"
+            )
+            if not customer_name:
+                frappe.throw("Customer not found")
+
+            filters["customer_name"] = customer_name
 
         id = args.get("id")
         if id:

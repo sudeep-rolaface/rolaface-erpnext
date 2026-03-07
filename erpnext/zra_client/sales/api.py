@@ -764,6 +764,7 @@ def get_sales_invoice():
         args = frappe.request.args
 
         page = args.get("page")
+        customer_id = args.get("customer")
         if not page:
             return send_response(
                 status="error",
@@ -807,6 +808,14 @@ def get_sales_invoice():
                 status_code=400,
                 http_status=400
             )
+        customer_name = frappe.db.get_value(
+                            "Customer",
+                            {"custom_id": customer_id},
+                            "name"
+                        )
+
+        if not customer_name:
+            frappe.throw("Customer not found")
 
         start = (page - 1) * page_size
         all_invoices = frappe.get_all(
@@ -829,7 +838,15 @@ def get_sales_invoice():
                 "amended_from",
                 "outstanding_amount",
             ],
-            order_by="creation desc",
+            filters={
+                    "customer": ["in",
+                        frappe.get_all(
+                            "Customer",
+                            filters={"custom_id": customer_id},
+                            pluck="name"
+                        )
+                    ]
+                },            order_by="creation desc",
             limit_start=start,
             limit_page_length=page_size
         )
