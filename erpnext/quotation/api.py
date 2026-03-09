@@ -220,7 +220,8 @@ def get_all_quotations():
                 "transaction_date",
                 "valid_till",
                 "grand_total",
-                "currency"
+                "currency",
+                "status",
             ],
             order_by=order_by,
             start=start_index,
@@ -264,6 +265,7 @@ def get_all_quotations():
                 "grandTotal": quotation.get("grand_total"),
                 "currency": quotation.get("currency"),
                 "industryBases": quotation.get("custom_industry_bases"),
+                "invoiceStatus": quotation.get("status")
             }
 
         quotations_camel = [to_camel_case(q) for q in paginated_quotations]
