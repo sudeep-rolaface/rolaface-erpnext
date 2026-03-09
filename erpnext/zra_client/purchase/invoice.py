@@ -649,7 +649,8 @@ def create_purchase_invoice():
         "custom_payment_method": pmtType,
         "custom_transaction_progress": pchsSttsCd,
         "custom_destncountrycd": destnCountryCd,
-        "custom_lpo_number": lpoNumber
+        "custom_lpo_number": lpoNumber,
+        "shipping_rule": shippingRule
     })
 
     purchase_invoice.insert(ignore_permissions=True)
@@ -841,6 +842,7 @@ def get_all_purchase_invoices():
                 "custom_registration_type",
                 "custom_sync_status",
                 "status",
+                "shipping_rule"
             ],
             filters=filters,
             order_by="creation desc"
@@ -867,6 +869,7 @@ def get_all_purchase_invoices():
             po["grandTotal"] = po.pop("grand_total")
             po["registrationType"] = po.pop("custom_registration_type")
             po["syncStatus"] = po.pop("custom_sync_status")
+            po["shippingRule"] = po.pop("shipping_rule")
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -955,6 +958,7 @@ def get_purchase_invoice_by_id():
                 "custom_lpo_number",
                 "custom_sync_status",
                 "company",
+                "shipping_rule"
             ],
             as_dict=True
         )
@@ -1127,6 +1131,7 @@ def get_purchase_invoice_by_id():
             "destnCountryCd": po.custom_destncountrycd,
             "lpoNumber": po.custom_lpo_number,
             "costCenter": po.cost_center,
+            "shippingRule": po.shipping_rule,
             "addresses": {
                 "supplierAddress": supplier_addr,
                 "dispatchAddress": dispatch_addr,
