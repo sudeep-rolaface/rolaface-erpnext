@@ -188,13 +188,13 @@ def get_all_quotations():
         ]
 
         # Only filter date fields if search is a valid date
-        from datetime import datetime
-        try:
-            datetime.strptime(search, "%Y-%m-%d")
-            or_filters.append(["transaction_date", "=", search])
-            or_filters.append(["valid_till", "=", search])
-        except ValueError:
-            pass
+            from datetime import datetime
+            try:
+                datetime.strptime(search, "%Y-%m-%d")
+                or_filters.append(["transaction_date", "=", search])
+                or_filters.append(["valid_till", "=", search])
+            except ValueError:
+                pass
 
             customers = frappe.get_all(
                 "Customer",
