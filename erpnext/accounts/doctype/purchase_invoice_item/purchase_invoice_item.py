@@ -57,6 +57,7 @@ class PurchaseInvoiceItem(Document):
 		material_request_item: DF.Data | None
 		net_amount: DF.Currency
 		net_rate: DF.Currency
+		packing: DF.Data | None
 		page_break: DF.Check
 		parent: DF.Data
 		parentfield: DF.Data

@@ -378,7 +378,7 @@ def create_purchase_invoice():
         vat_rate = i.get("vatRate", 0)
         item_required_by = i.get("requiredBy")
         batch_no = i.get("batchNo")
-
+        packing = i.get("packing")
         if not itemCode:
             return send_response(
                 status="fail",
@@ -508,7 +508,8 @@ def create_purchase_invoice():
             "vat_rate": vat_rate,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "schedule_date": item_required_by,
-            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name)
+            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
+            "packing": packing
         })
 
         invoice_items_to_be_saved.append({
@@ -521,7 +522,7 @@ def create_purchase_invoice():
             "rate": rate,
             "schedule_date": item_required_by,
             "batch_no": resolved_batch_no,  # ERPNext clears this when update_stock=0 on save —
-                                             # _persist_batch_nos() force-writes it back after all saves
+            "packing": packing              # _persist_batch_nos() force-writes it back after all saves
         })
 
     supplierName = supplier.supplier_name
@@ -980,6 +981,7 @@ def get_purchase_invoice_by_id():
                 "custom_vat as VatCd",
                 "vat_rate as vatRate",
                 "schedule_date as requiredBy",
+                "packing"
             ]
         )
 
