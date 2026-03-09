@@ -518,7 +518,7 @@ class ZRAClient:
         return doc.name
 
     def getCurrentCompany(self):
-        COMPANY = "Izyane"
+        COMPANY = frappe.defaults.get_global_default("company")
         return COMPANY
 
     def GetOrCreateCostCenter(self, doctype, name):

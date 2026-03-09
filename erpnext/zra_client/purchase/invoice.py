@@ -978,7 +978,8 @@ def get_purchase_invoice_by_id():
                 "rate",
                 "amount",
                 "custom_vat as VatCd",
-                "vat_rate as vatRate",
+                "vat_rate as vatRate"
+                "schedule_date as requiredBy",
             ]
         )
 

@@ -9,6 +9,7 @@
  "field_order": [
   "item_code",
   "product_bundle",
+  "schedule_date",
   "col_break1",
   "item_name",
   "description_section",
@@ -984,13 +985,18 @@
    "fieldname": "vat_rate",
    "fieldtype": "Data",
    "label": "Vat Rate"
+  },
+  {
+   "fieldname": "schedule_date",
+   "fieldtype": "Date",
+   "label": "Schedule Date"
   }
  ],
  "grid_page_length": 50,
  "idx": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-07 09:14:19.189798",
+ "modified": "2026-03-09 07:15:53.353350",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Purchase Invoice Item",

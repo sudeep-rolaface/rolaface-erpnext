@@ -82,6 +82,7 @@ class PurchaseInvoiceItem(Document):
 		rm_supp_cost: DF.Currency
 		sales_incoming_rate: DF.Currency
 		sales_invoice_item: DF.Data | None
+		schedule_date: DF.Date | None
 		serial_and_batch_bundle: DF.Link | None
 		serial_no: DF.Text | None
 		service_end_date: DF.Date | None
