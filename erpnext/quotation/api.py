@@ -180,9 +180,21 @@ def get_all_quotations():
         search = args.get("search")
         if search:
             or_filters = [
-                ["name", "like", f"%{search}%"],
-                ["customer_name", "like", f"%{search}%"],
-            ]
+            ["name", "like", f"%{search}%"],
+            ["customer_name", "like", f"%{search}%"],
+            ["custom_invoice_type", "like", f"%{search}%"],
+            ["currency", "like", f"%{search}%"],
+            ["custom_industry_bases", "like", f"%{search}%"],
+        ]
+
+        # Only filter date fields if search is a valid date
+        from datetime import datetime
+        try:
+            datetime.strptime(search, "%Y-%m-%d")
+            or_filters.append(["transaction_date", "=", search])
+            or_filters.append(["valid_till", "=", search])
+        except ValueError:
+            pass
 
             customers = frappe.get_all(
                 "Customer",
@@ -191,6 +203,11 @@ def get_all_quotations():
             )
             if customers:
                 or_filters.append(["customer_name", "in", customers])
+            try:
+                search_amount = float(search)
+                or_filters.append(["grand_total", "=", search_amount])
+            except ValueError:
+                pass
 
         allowed_sort_fields = {
             "id": "name",
