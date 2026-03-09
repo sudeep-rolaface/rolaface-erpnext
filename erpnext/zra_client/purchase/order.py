@@ -810,16 +810,23 @@ def get_purchase_order():
             "roundedTotal": rounded_total,
         }
 
-        taxRate = "16%" if po.tax_category == "Non-Export" else "0%"
-        # If tax amount exists but taxRate would show 0%, compute real effective rate
-        if po.custom_total_taxble_amount and float(po.custom_total_taxble_amount or 0) > 0:
-            effective_rate = (
-                float(po.custom_total_tax_amount or 0)
-                / float(po.custom_total_taxble_amount)
-                * 100
-            )
-            if effective_rate > 0:
-                taxRate = f"{round(effective_rate, 2)}%"
+        # Calculate weighted average tax rate based on each item's amount and vat_rate
+        total_weighted_tax = sum(
+            (item.get("amount") or 0) * (item.get("vatRate") or 0)
+            for item in items
+        )
+        taxRate = (total_weighted_tax / sub_total) if sub_total else 0
+
+        # taxRate = "16%" if po.tax_category == "Non-Export" else "0%"
+        # # If tax amount exists but taxRate would show 0%, compute real effective rate
+        # if po.custom_total_taxble_amount and float(po.custom_total_taxble_amount or 0) > 0:
+        #     effective_rate = (
+        #         float(po.custom_total_tax_amount or 0)
+        #         / float(po.custom_total_taxble_amount)
+        #         * 100
+        #     )
+        #     if effective_rate > 0:
+        #         taxRate = f"{round(effective_rate, 2)}%"
         taxes = {
             "type": po.tax_category,
             "taxRate": taxRate,
