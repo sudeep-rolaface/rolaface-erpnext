@@ -893,7 +893,8 @@ def get_sales_invoice():
                 "invoiceStatus": inv.custom_invoice_status,
                 "outstandingAmount": inv.outstanding_amount,
                 "invoiceTypeParent": invoice_type_parent,
-                "invoiceType": invoice_type
+                "invoiceType": invoice_type,
+                "OutStandingAmount": inv.outstanding_amount
             })
 
         total_pages = (total_invoices + page_size - 1) // page_size
