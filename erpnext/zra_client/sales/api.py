@@ -1013,6 +1013,7 @@ def get_sales_invoice_by_id():
             "invoiceType": parent_doc.custom_invoice_type,
             "originInvoice": getattr(doc, "return_against", None),
             "customerName": doc.customer,
+            "OutStandingAmount": doc.outstanding_amount,
             "customerId": customer_id,
             "customerTpin": customer_tpin,
             "currencyCode": doc.custom_zra_currency or doc.currency,
