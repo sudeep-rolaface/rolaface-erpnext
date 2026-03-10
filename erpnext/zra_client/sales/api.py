@@ -948,11 +948,15 @@ def get_sales_invoice_by_id():
 
     try:
         doc = frappe.get_doc("Sales Invoice", invoice_name)
-        customer_tpin = frappe.db.get_value(
-            "Customer",
-            doc.customer_name,
-            "tax_id"
-        ) or ""
+        customer_details = frappe.db.get_value(
+                            "Customer",
+                            doc.customer,
+                            ["tax_id", "customer_id"],
+                            as_dict=True
+                        ) or {}
+        customer_tpin = customer_details.get("tax_id", "")
+        customer_id = customer_details.get("custom_id", "")
+
         if getattr(doc, "is_debit_note", 0) == 1:
             invoice_type = "Debit Note"
         elif getattr(doc, "is_return", 0) == 1:
@@ -1009,6 +1013,7 @@ def get_sales_invoice_by_id():
             "invoiceType": parent_doc.custom_invoice_type,
             "originInvoice": getattr(doc, "return_against", None),
             "customerName": doc.customer,
+            "customerId": customer_id,
             "customerTpin": customer_tpin,
             "currencyCode": doc.custom_zra_currency or doc.currency,
             "exchangeRt": str(doc.custom_exchange_rate or 1),
