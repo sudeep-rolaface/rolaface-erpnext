@@ -1925,3 +1925,591 @@ def get_debit_notes():
             status_code=500,
             http_status=500
         )
+
+
+
+
+@frappe.whitelist(allow_guest=False, methods=["PUT"])
+def edit_sales_invoice():
+    try:
+        payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
+    except Exception as e:
+        return send_response(
+            status="fail",
+            message=f"Invalid JSON payload: {str(e)}",
+            status_code=400
+        )
+
+    data = payload
+
+    # ── Required: invoice name to update ─────────────────────────────────────
+    invoice_name = data.get("invoiceName")
+    if not invoice_name:
+        return send_response(
+            status="fail",
+            message="invoiceName is required to identify the invoice to update",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Check invoice exists ──────────────────────────────────────────────────
+    if not frappe.db.exists("Sales Invoice", invoice_name):
+        return send_response(
+            status="fail",
+            message=f"Sales Invoice '{invoice_name}' not found",
+            status_code=404,
+            http_status=404
+        )
+
+    # ── Check invoice is still editable (must be Draft) ──────────────────────
+    current_status = frappe.db.get_value("Sales Invoice", invoice_name, "docstatus")
+    if current_status == 1:
+        return send_response(
+            status="fail",
+            message=f"Sales Invoice '{invoice_name}' is already submitted and cannot be edited",
+            status_code=400,
+            http_status=400
+        )
+    if current_status == 2:
+        return send_response(
+            status="fail",
+            message=f"Sales Invoice '{invoice_name}' is cancelled and cannot be edited",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Extract fields ────────────────────────────────────────────────────────
+    customer_id     = data.get("customerId")
+    currencyCd      = data.get("currencyCode")
+    exchangeRt      = data.get("exchangeRt")
+    createBy        = data.get("created_by")
+    destnCountryCd  = data.get("destnCountryCd")
+    lpoNumber       = data.get("lpoNumber")
+    invoiceStatus   = data.get("invoiceStatus")
+    invoiceType     = data.get("invoiceType")
+    dueDate         = data.get("dueDate")
+
+    # ── Billing address ───────────────────────────────────────────────────────
+    billingAddress          = data.get("billingAddress") or {}
+    billingAddressLine1     = billingAddress.get("line1")
+    billingAddressLine2     = billingAddress.get("line2")
+    billingAddressPostalCode= billingAddress.get("postalCode")
+    billingAddressCity      = billingAddress.get("city")
+    billingAddressState     = billingAddress.get("state")
+    billingAddressCountry   = billingAddress.get("country")
+
+    # ── Shipping address ──────────────────────────────────────────────────────
+    shippingAddress          = data.get("shippingAddress") or {}
+    shippingAddressLine1     = shippingAddress.get("line1")
+    shippingAddressLine2     = shippingAddress.get("line2")
+    shippingAddressPostalCode= shippingAddress.get("postalCode")
+    shippingAddressCity      = shippingAddress.get("city")
+    shippingAddressState     = shippingAddress.get("state")
+    shippingAddressCountry   = shippingAddress.get("country")
+
+    # ── Payment information ───────────────────────────────────────────────────
+    payment_info = data.get("paymentInformation")
+    if not payment_info or not isinstance(payment_info, dict):
+        return send_response(
+            status="error",
+            message="paymentInformation is required and must be an object",
+            status_code=400
+        )
+
+    payment_terms   = payment_info.get("paymentTerms")
+    payment_method  = payment_info.get("paymentMethod")
+    bank_name       = payment_info.get("bankName")
+    account_number  = payment_info.get("accountNumber")
+    routing_number  = payment_info.get("routingNumber")
+    swift_code      = payment_info.get("swiftCode")
+
+    PAYMENT_METHOD_LIST = ["01", "02", "03", "04", "05", "06", "07", "08"]
+
+    if not payment_method:
+        return send_response(
+            status="fail",
+            message="'paymentMethod' is required.",
+            status_code=400,
+            http_status=400
+        )
+
+    if payment_method not in PAYMENT_METHOD_LIST:
+        return send_response(
+            status="fail",
+            message=f"Invalid paymentMethod '{payment_method}'. Allowed values are {PAYMENT_METHOD_LIST}.",
+            status_code=400,
+            http_status=400
+        )
+
+    required_fields = {
+        "paymentTerms":  payment_terms,
+        "paymentMethod": payment_method,
+        "bankName":      bank_name,
+        "accountNumber": account_number,
+        "routingNumber": routing_number,
+        "swiftCode":     swift_code,
+    }
+    missing_fields = [k for k, v in required_fields.items() if not v]
+    if missing_fields:
+        return send_response(
+            status="error",
+            message=f"Missing paymentInformation fields: {', '.join(missing_fields)}",
+            status_code=400
+        )
+
+    # ── Terms ─────────────────────────────────────────────────────────────────
+    terms               = data.get("terms") or {}
+    selling             = terms.get("selling") or {}
+    general             = (selling.get("general") or "").strip()
+    delivery            = (selling.get("delivery") or "").strip()
+    cancellation        = (selling.get("cancellation") or "").strip()
+    warranty            = (selling.get("warranty") or "").strip()
+    liability           = (selling.get("liability") or "").strip()
+    payment_terms_data  = selling.get("payment") or {}
+    dueDates            = payment_terms_data.get("dueDates", "")
+    lateCharges         = payment_terms_data.get("lateCharges", "")
+    tax                 = payment_terms_data.get("taxes", "")
+    notes               = payment_terms_data.get("notes", "")
+    phases              = payment_terms_data.get("phases", [])
+
+    # ── Due date validation ───────────────────────────────────────────────────
+    today_date = getdate(today())
+    if not dueDate:
+        return send_response(
+            status="fail",
+            message="dueDate is required",
+            data=None,
+            status_code=400,
+            http_status=400
+        )
+    due_date = getdate(dueDate)
+    if due_date < today_date:
+        return send_response(
+            status="fail",
+            message="Due Date cannot be before today's date",
+            data=None,
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Customer ──────────────────────────────────────────────────────────────
+    if not customer_id:
+        return send_response(
+            status="fail",
+            message="Customer ID is required (customerId)",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Invoice type ──────────────────────────────────────────────────────────
+    allowedInvoiceType = ZRA_CLIENT_INSTANCE.getTaxCategory()
+
+    if not invoiceType:
+        return send_response(
+            status="fail",
+            message="Missing required field: invoiceType",
+            status_code=400,
+            http_status=400
+        )
+    if invoiceType not in allowedInvoiceType:
+        return send_response(
+            status="fail",
+            message=f"Invalid invoiceType. Allowed values are: {', '.join(allowedInvoiceType)}",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Invoice status ────────────────────────────────────────────────────────
+    if not invoiceStatus:
+        return send_response(
+            status="fail",
+            message="Invoice status is required (invoiceStatus)",
+            status_code=400,
+            http_status=400
+        )
+    allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
+    if invoiceStatus not in allowedInvoiceStatus:
+        return send_response(
+            status="fail",
+            message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Currency ──────────────────────────────────────────────────────────────
+    if not currencyCd:
+        currencyCd = frappe.defaults.get_global_default("currency")
+        exchangeRt = 1
+
+    if not exchangeRt:
+        return send_response(
+            status="fail",
+            message="Exchange rate must not be null",
+            status_code=400,
+            http_status=400
+        )
+
+    # ── Items ─────────────────────────────────────────────────────────────────
+    items = data.get("items", [])
+    if not items or not isinstance(items, list):
+        return send_response(
+            status="fail",
+            message="Items must be a non-empty list",
+            status_code=400,
+            http_status=400
+        )
+
+    customer_data = get_customer_details(customer_id)
+    if not customer_data or customer_data.get("status") == "fail":
+        return customer_data
+
+    invoice_items      = []
+    sale_payload_items = []
+
+    for item in items:
+        item_code    = item.get("itemCode")
+        qty          = item.get("quantity", 1)
+        rate         = item.get("price")
+        vatCd        = item.get("vatCode")
+        iplCd        = item.get("iplCd")
+        tlCd         = item.get("tlCd")
+        discount     = float(item.get("discount", 0))
+        description  = item.get("description")
+        validatedDiscount = discount if discount else 0
+        batchNo      = item.get("batchNo", None)
+        boxEnd       = item.get("boxEnd", None)
+        boxStart     = item.get("boxStart", None)
+        expDate      = item.get("expDate", None)
+        mfgDate      = item.get("mfgDate", None)
+        packingSize  = item.get("packingSize", None)
+        packingUnit  = item.get("packingUnit", None)
+
+        if not item_code:
+            return send_response(
+                status="fail",
+                message="Item code is required for each item",
+                status_code=400
+            )
+
+        if not description:
+            return send_response(
+                status="fail",
+                message="Item description is required",
+                status_code=400,
+                http_status=400
+            )
+
+        is_zmw = (currencyCd or "").upper() == "ZMW"
+
+        if is_zmw:
+            VAT_LIST = ["A", "C1", "C2"]
+            if not vatCd or vatCd not in VAT_LIST:
+                return send_response(
+                    status="fail",
+                    message=f"'vatCatCd' must be a valid VAT tax category: {', '.join(VAT_LIST)}. Rejected value: [{vatCd}]",
+                    status_code=400,
+                    http_status=400
+                )
+            if vatCd == "C2" and not lpoNumber:
+                return send_response(
+                    status="fail",
+                    message="LPO number is required for VatCd 'C2'.",
+                    status_code=400,
+                    http_status=400
+                )
+            if vatCd == "C1" and not destnCountryCd:
+                return send_response(
+                    status="fail",
+                    message="Destination country (destnCountryCd) is required for VatCd 'C1'.",
+                    status_code=400,
+                    http_status=400
+                )
+            if vatCd == "A" and (lpoNumber or destnCountryCd):
+                return send_response(
+                    status="fail",
+                    message="For VatCd 'A', lpoNumber and destnCountryCd must NOT be provided.",
+                    status_code=400,
+                    http_status=400
+                )
+        else:
+            vatCd = vatCd or ""
+            iplCd = iplCd or ""
+            tlCd  = tlCd  or ""
+
+        checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+        if checkStockStatusCode != 200:
+            return send_response(
+                status=checkStockResponse["status"],
+                message=checkStockResponse["message"],
+                data=checkStockResponse.get("data"),
+                status_code=checkStockStatusCode,
+                http_status=checkStockStatusCode
+            )
+
+        item_details = get_item_details(item_code)
+        if not item_details:
+            return send_response(
+                status="fail",
+                message=f"Item '{item_code}' does not exist",
+                status_code=404
+            )
+
+        try:
+            qty  = float(qty)
+            rate = float(rate)
+        except (ValueError, TypeError):
+            return send_response(
+                status="fail",
+                message="Quantity and Rate must be numeric",
+                status_code=400
+            )
+
+        invoice_items.append({
+            "item_code":        item_code,
+            "item_name":        item_details.get("itemName"),
+            "warehouse":        "Finished Goods - RI",
+            "qty":              qty,
+            "rate":             rate,
+            "discount_amount":  validatedDiscount,
+            "custom_vatcd":     vatCd,
+            "custom_iplcd":     iplCd,
+            "custom_tlcd":      tlCd,
+            "description":      description,
+            "expense_account":  CUSTOM_FRAPPE_MAIN_INSTANCE.getDefaultExpenseAccount(
+                                    frappe.defaults.get_global_default("company")),
+            "batch_no":         batchNo,
+            "box_end":          boxEnd,
+            "box_start":        boxStart,
+            "exp_date":         expDate,
+            "mfg_date":         mfgDate,
+            "packing_size":     packingSize,
+            "packing_unit":     packingUnit,
+        })
+
+        sale_payload_items.append({
+            "itemCode":         item_code,
+            "itemName":         item_details.get("itemName"),
+            "qty":              qty,
+            "itemClassCode":    item_details.get("itemClassCd"),
+            "product_type":     item.get("product_type", "Finished Goods"),
+            "packageUnitCode":  item_details.get("itemPackingUnitCd"),
+            "price":            rate,
+            "VatCd":            vatCd,
+            "unitOfMeasure":    item_details.get("itemUnitCd"),
+            "IplCd":            iplCd,
+            "TlCd":             tlCd,
+            "discountRate":     validatedDiscount,
+            "batch_no":         batchNo,
+            "box_end":          boxEnd,
+            "box_start":        boxStart,
+            "exp_date":         expDate,
+            "mfg_date":         mfgDate,
+            "packing_size":     packingSize,
+            "packing_unit":     packingUnit,
+        })
+
+    # ── Build sale payload ────────────────────────────────────────────────────
+    sale_payload = {
+        "name":                     invoice_name,
+        "customerName":             customer_data.get("customer_name"),
+        "customer_tpin":            customer_data.get("custom_customer_tpin"),
+        "destnCountryCd":           destnCountryCd,
+        "PaymentMethod":            payment_method,
+        "lpoNumber":                lpoNumber,
+        "currencyCd":               currencyCd,
+        "exchangeRt":               exchangeRt,
+        "created_by":               createBy,
+        "items":                    sale_payload_items,
+        "invoiceType":              invoiceType,
+        "invoiceStatus":            invoiceStatus,
+        "dueDate":                  dueDate,
+        "billingAddressLine1":      billingAddressLine1,
+        "billingAddressLine2":      billingAddressLine2,
+        "billingAddressPostalCode": billingAddressPostalCode,
+        "billingAddressCity":       billingAddressCity,
+        "billingAddressState":      billingAddressState,
+        "billingAddressCountry":    billingAddressCountry,
+        "shippingAddressLine1":     shippingAddressLine1,
+        "shippingAddressLine2":     shippingAddressLine2,
+        "shippingAddressPostalCode":shippingAddressPostalCode,
+        "shippingAddressCity":      shippingAddressCity,
+        "shippingAddressState":     shippingAddressState,
+        "shippingAddressCountry":   shippingAddressCountry,
+        "payment_terms":            payment_terms,
+        "payment_method":           payment_method,
+        "bank_name":                bank_name,
+        "account_number":           account_number,
+        "routing_number":           routing_number,
+        "swift_code":               swift_code,
+        "invoice_items":            invoice_items,
+    }
+
+    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
+
+    additional_info = result.get("additionalInfo") or []
+    if additional_info and len(additional_info) >= 3:
+        currency      = additional_info[0]
+        exchange_rate = additional_info[1]
+        total_tax     = additional_info[2]
+    else:
+        currency      = None
+        exchange_rate = None
+        total_tax     = None
+
+    zra_items = result.get("additionInfoToBeSavedItem") or []
+    if zra_items:
+        zra_lookup = {i["itemCd"]: i["vatTaxblAmt"] for i in zra_items}
+        for inv_item in invoice_items:
+            if inv_item.get("item_code") in zra_lookup:
+                inv_item["custom_vattaxblamt"] = zra_lookup[inv_item["item_code"]]
+
+    if result.get("resultCd") != "000":
+        return send_response(
+            status="fail",
+            message=result.get("resultMsg", "Unknown error from ZRA"),
+            status_code=400,
+            http_status=400
+        )
+
+    canUpdateInvoice = all(
+        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("itemCode"))
+        for item in sale_payload_items
+    )
+
+    try:
+        # ── Update Frappe Sales Invoice doc ───────────────────────────────────
+        if frappe.conf.get("enable_zra_sync", False):
+            doc = frappe.get_doc("Sales Invoice", invoice_name)
+            doc.custom_invoice_type               = invoiceType
+            doc.custom_exchange_rate              = exchange_rate
+            doc.custom_total_tax_amount           = total_tax
+            doc.custom_zra_currency               = currency
+            doc.custom_invoice_status             = invoiceStatus
+            doc.due_date                          = dueDate
+            doc.custom_billing_address_line_1     = billingAddressLine1
+            doc.custom_billing_address_line_2     = billingAddressLine2
+            doc.custom_billing_address_postal_code= billingAddressPostalCode
+            doc.custom_billing_address_city       = billingAddressCity
+            doc.custom_billing_address_state      = billingAddressState
+            doc.custom_billing_address_country    = billingAddressCountry
+            doc.custom_shipping_address_line1     = shippingAddressLine1
+            doc.custom_shipping_address_line2     = shippingAddressLine2
+            doc.custom_shipping_address_postal_code = shippingAddressPostalCode
+            doc.custom_shipping_address_city      = shippingAddressCity
+            doc.custom_shipping_address_state     = shippingAddressState
+            doc.custom_shipping_address_country   = shippingAddressCountry
+            doc.custom_export_destination_country = destnCountryCd
+            doc.custom_local_purchase_order_number= lpoNumber
+            doc.custom_payment_terms              = payment_terms
+            doc.custom_payment_method             = payment_method
+            doc.custom_bank_name                  = bank_name
+            doc.custom_account_number             = account_number
+            doc.custom_routing_number             = routing_number
+            doc.custom_swift                      = swift_code
+            doc.customer                          = customer_data.get("name")
+            doc.update_stock                      = 1 if canUpdateInvoice else 0
+            doc.conversion_rate                   = exchangeRt
+
+            # Replace items
+            doc.items = []
+            for inv_item in invoice_items:
+                doc.append("items", inv_item)
+
+            doc.save(ignore_permissions=True)
+            frappe.db.commit()
+
+        # ── Update Selling Terms ──────────────────────────────────────────────
+        terms_name = frappe.db.get_value(
+            "Sale Invoice Selling Terms", {"invoiceno": invoice_name}, "name"
+        )
+        if terms_name:
+            terms_doc = frappe.get_doc("Sale Invoice Selling Terms", terms_name)
+            terms_doc.general      = general
+            terms_doc.delivery     = delivery
+            terms_doc.cancellation = cancellation
+            terms_doc.warranty     = warranty
+            terms_doc.liability    = liability
+            terms_doc.save(ignore_permissions=True)
+        else:
+            terms_doc = frappe.get_doc({
+                "doctype":      "Sale Invoice Selling Terms",
+                "invoiceno":    invoice_name,
+                "general":      general,
+                "delivery":     delivery,
+                "cancellation": cancellation,
+                "warranty":     warranty,
+                "liability":    liability,
+            })
+            terms_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        # ── Update Selling Payment ────────────────────────────────────────────
+        if payment_terms_data:
+            payment_name = frappe.db.get_value(
+                "Sale Invoice Selling Payment", {"invoiceno": invoice_name}, "name"
+            )
+            if payment_name:
+                payment_doc = frappe.get_doc("Sale Invoice Selling Payment", payment_name)
+                payment_doc.duedates   = dueDates
+                payment_doc.latecharges= lateCharges
+                payment_doc.taxes      = tax
+                payment_doc.notes      = notes
+                payment_doc.save(ignore_permissions=True)
+            else:
+                payment_doc = frappe.get_doc({
+                    "doctype":    "Sale Invoice Selling Payment",
+                    "invoiceno":  invoice_name,
+                    "duedates":   dueDates,
+                    "latecharges":lateCharges,
+                    "taxes":      tax,
+                    "notes":      notes,
+                })
+                payment_doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+
+        # ── Update Phases: delete old, insert new ─────────────────────────────
+        if phases:
+            frappe.db.delete("Sale Invoice Selling Payment Phases", {"invoiceno": invoice_name})
+            frappe.db.commit()
+
+            for phase in phases:
+                random_id = "{:06d}".format(random.randint(0, 999999))
+                phase_doc = frappe.get_doc({
+                    "doctype":    "Sale Invoice Selling Payment Phases",
+                    "id":         random_id,
+                    "invoiceno":  invoice_name,
+                    "phase_name": phase.get("name"),
+                    "percentage": phase.get("percentage", ""),
+                    "condition":  phase.get("condition", ""),
+                })
+                phase_doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+
+        return send_response(
+            status="success",
+            message="Sales Invoice updated successfully",
+            status_code=200
+        )
+
+    except frappe.DuplicateEntryError as de:
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=f"Duplicate Entry Error: {str(de)}",
+            status_code=409
+        )
+    except frappe.ValidationError as ve:
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=f"Validation Error: {str(ve)}",
+            status_code=400
+        )
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Edit Sales Invoice API Error")
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=f"Unexpected Error: {str(e)}",
+            status_code=500
+        )
