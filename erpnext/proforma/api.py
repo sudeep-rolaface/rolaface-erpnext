@@ -149,7 +149,7 @@ def create_proforma_api():
             packing_unit = item.get("packingUnit", None)
             item_total = (qty * unit_price) - discount + tax
             getItemDetails = ZRA_INSTANCE.get_item_details(item.get("itemCode"))
-
+            vat_code = item.get("vatCode")
             frappe.get_doc({
                 "doctype": "Proforma Item",
                 "proforma_id": next_proforma_invoice_id,
@@ -163,7 +163,7 @@ def create_proforma_api():
                 "item_total": item_total,
                 "packing_size": packing_size,
                 "packing_unit": packing_unit,
-                "vat_code": item.get("vatCode")
+                "vat_code": vat_code,
 
             }).insert(ignore_permissions=True)
 
