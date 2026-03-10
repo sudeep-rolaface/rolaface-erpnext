@@ -951,7 +951,7 @@ def get_sales_invoice_by_id():
         customer_details = frappe.db.get_value(
                             "Customer",
                             doc.customer,
-                            ["tax_id", "customer_id"],
+                            ["tax_id", "custom_id"],
                             as_dict=True
                         ) or {}
         customer_tpin = customer_details.get("tax_id", "")
