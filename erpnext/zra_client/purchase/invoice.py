@@ -28,7 +28,7 @@ def is_zra_enabled():
 #  HELPER: Get or Create Batch
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_or_create_batch(item_code, batch_no, company):
+def get_or_create_batch(item_code, batch_no, company, expiry_date, manufacturing_date):
     """
     If batch exists  → return it (stock will update when PI is approved).
     If batch missing → create it and return the new batch name.
@@ -50,6 +50,8 @@ def get_or_create_batch(item_code, batch_no, company):
         "batch_id": batch_no,
         "item": item_code,
         "company": company,
+        "expiry_date":expiry_date,
+        "manufacturing_date": manufacturing_date
     })
     new_batch.insert(ignore_permissions=True)
     frappe.db.commit()
@@ -497,7 +499,7 @@ def create_purchase_invoice():
                     http_status=400
                 )
             # ✅ Use EXACTLY the batch_no the user sent — create only if it doesn't exist yet
-            resolved_batch_no = get_or_create_batch(itemCode, batch_no, company_name)
+            resolved_batch_no = get_or_create_batch(itemCode, batch_no, company_name, exp_date, mfg_date)
 
         purchase_invoice_items.append({
             "itemCode": itemCode,
