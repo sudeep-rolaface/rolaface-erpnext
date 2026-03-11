@@ -1975,31 +1975,44 @@ def edit_sales_invoice():
     # ── Extract fields ────────────────────────────────────────────────────────
     customer_id    = data.get("customerId")
     currencyCd     = data.get("currencyCode")
-    exchangeRt     = data.get("exchangeRt")
     createBy       = data.get("created_by")
-    destnCountryCd = data.get("destnCountryCd")
-    lpoNumber      = data.get("lpoNumber")
     invoiceStatus  = data.get("invoiceStatus")
     invoiceType    = data.get("invoiceType")
     dueDate        = data.get("dueDate")
+    dateOfInvoice  = data.get("dateOfInvoice")
+
+    # ✅ Normalize empty strings to None
+    destnCountryCd = data.get("destnCountryCd") or None
+    lpoNumber      = data.get("lpoNumber") or None
+
+    # ✅ Safely cast exchangeRt to float (payload sends it as string "1")
+    try:
+        exchangeRt = float(data.get("exchangeRt") or 1)
+    except (ValueError, TypeError):
+        return send_response(
+            status="fail",
+            message="exchangeRt must be a numeric value",
+            status_code=400,
+            http_status=400
+        )
 
     # ── Billing address ───────────────────────────────────────────────────────
     billingAddress           = data.get("billingAddress") or {}
-    billingAddressLine1      = billingAddress.get("line1")
-    billingAddressLine2      = billingAddress.get("line2")
-    billingAddressPostalCode = billingAddress.get("postalCode")
-    billingAddressCity       = billingAddress.get("city")
-    billingAddressState      = billingAddress.get("state")
-    billingAddressCountry    = billingAddress.get("country")
+    billingAddressLine1      = billingAddress.get("line1") or ""
+    billingAddressLine2      = billingAddress.get("line2") or ""
+    billingAddressPostalCode = billingAddress.get("postalCode") or ""
+    billingAddressCity       = billingAddress.get("city") or ""
+    billingAddressState      = billingAddress.get("state") or ""
+    billingAddressCountry    = billingAddress.get("country") or ""
 
     # ── Shipping address ──────────────────────────────────────────────────────
     shippingAddress           = data.get("shippingAddress") or {}
-    shippingAddressLine1      = shippingAddress.get("line1")
-    shippingAddressLine2      = shippingAddress.get("line2")
-    shippingAddressPostalCode = shippingAddress.get("postalCode")
-    shippingAddressCity       = shippingAddress.get("city")
-    shippingAddressState      = shippingAddress.get("state")
-    shippingAddressCountry    = shippingAddress.get("country")
+    shippingAddressLine1      = shippingAddress.get("line1") or ""
+    shippingAddressLine2      = shippingAddress.get("line2") or ""
+    shippingAddressPostalCode = shippingAddress.get("postalCode") or ""
+    shippingAddressCity       = shippingAddress.get("city") or ""
+    shippingAddressState      = shippingAddress.get("state") or ""
+    shippingAddressCountry    = shippingAddress.get("country") or ""
 
     # ── Payment information ───────────────────────────────────────────────────
     payment_info = data.get("paymentInformation")
@@ -2138,14 +2151,6 @@ def edit_sales_invoice():
         currencyCd = frappe.defaults.get_global_default("currency")
         exchangeRt = 1
 
-    if not exchangeRt:
-        return send_response(
-            status="fail",
-            message="Exchange rate must not be null",
-            status_code=400,
-            http_status=400
-        )
-
     # ── Items ─────────────────────────────────────────────────────────────────
     items = data.get("items", [])
     if not items or not isinstance(items, list):
@@ -2170,16 +2175,23 @@ def edit_sales_invoice():
         vatCd       = item.get("vatCode")
         iplCd       = item.get("iplCd")
         tlCd        = item.get("tlCd")
-        discount    = float(item.get("discount", 0))
         description = item.get("description")
+
+        # ✅ Safely cast discount to float
+        try:
+            discount = float(item.get("discount") or 0)
+        except (ValueError, TypeError):
+            discount = 0
         validatedDiscount = discount if discount else 0
-        batchNo     = item.get("batchNo", None)
-        boxEnd      = item.get("boxEnd", None)
-        boxStart    = item.get("boxStart", None)
-        expDate     = item.get("expDate", None)
-        mfgDate     = item.get("mfgDate", None)
-        packingSize = item.get("packingSize", None)
-        packingUnit = item.get("packingUnit", None)
+
+        # ✅ Normalize empty strings to None for optional item fields
+        batchNo     = item.get("batchNo") or None
+        boxEnd      = item.get("boxEnd") or None
+        boxStart    = item.get("boxStart") or None
+        expDate     = item.get("expDate") or None
+        mfgDate     = item.get("mfgDate") or None
+        packingSize = item.get("packingSize") or None
+        packingUnit = item.get("packingUnit") or None
 
         if not item_code:
             return send_response(
@@ -2196,7 +2208,7 @@ def edit_sales_invoice():
                 http_status=400
             )
 
-        # ✅ ZRA VAT validations only apply when ZRA is enabled AND currency is ZMW
+        # ✅ ZRA VAT validations only when ZRA enabled AND currency is ZMW
         is_zmw = enable_zra and (currencyCd or "").upper() == "ZMW"
 
         if is_zmw:
@@ -2230,7 +2242,7 @@ def edit_sales_invoice():
                     http_status=400
                 )
         else:
-            # ✅ When ZRA is disabled or currency is not ZMW, default ZRA codes to empty
+            # ✅ ZRA disabled or non-ZMW — default ZRA codes to empty
             vatCd = vatCd or ""
             iplCd = iplCd or ""
             tlCd  = tlCd  or ""
@@ -2255,6 +2267,7 @@ def edit_sales_invoice():
                 status_code=404
             )
 
+        # ✅ Safely cast qty and rate to float
         try:
             qty  = float(qty)
             rate = float(rate)
@@ -2345,10 +2358,11 @@ def edit_sales_invoice():
         "invoice_items":             invoice_items,
     }
 
-    # ✅ Only call ZRA sale data if ZRA is enabled
-    currency      = None
-    exchange_rate = None
-    total_tax     = None
+    # ── ZRA sale sync (only when enabled) ────────────────────────────────────
+    currency         = None
+    exchange_rate    = None
+    total_tax        = None
+    canUpdateInvoice = False
 
     if enable_zra:
         result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
@@ -2374,53 +2388,56 @@ def edit_sales_invoice():
                 http_status=400
             )
 
-    # ✅ Only check stock update permission if ZRA is enabled
-    canUpdateInvoice = enable_zra and all(
-        ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("itemCode"))
-        for item in sale_payload_items
-    )
+        canUpdateInvoice = all(
+            ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("itemCode"))
+            for item in sale_payload_items
+        )
 
     try:
-        # ── Update Frappe Sales Invoice doc ───────────────────────────────────
+        # ── Always update core Sales Invoice fields ───────────────────────────
+        doc = frappe.get_doc("Sales Invoice", invoice_name)
+
+        # ✅ Core fields — always update regardless of ZRA
+        doc.custom_invoice_type                = invoiceType
+        doc.custom_invoice_status              = invoiceStatus
+        doc.due_date                           = dueDate
+        doc.customer                           = customer_data.get("name")
+        doc.conversion_rate                    = exchangeRt
+        doc.custom_billing_address_line_1      = billingAddressLine1
+        doc.custom_billing_address_line_2      = billingAddressLine2
+        doc.custom_billing_address_postal_code = billingAddressPostalCode
+        doc.custom_billing_address_city        = billingAddressCity
+        doc.custom_billing_address_state       = billingAddressState
+        doc.custom_billing_address_country     = billingAddressCountry
+        doc.custom_shipping_address_line1      = shippingAddressLine1
+        doc.custom_shipping_address_line2      = shippingAddressLine2
+        doc.custom_shipping_address_postal_code = shippingAddressPostalCode
+        doc.custom_shipping_address_city       = shippingAddressCity
+        doc.custom_shipping_address_state      = shippingAddressState
+        doc.custom_shipping_address_country    = shippingAddressCountry
+        doc.custom_export_destination_country  = destnCountryCd
+        doc.custom_local_purchase_order_number = lpoNumber
+        doc.custom_payment_terms               = payment_terms
+        doc.custom_payment_method              = payment_method
+        doc.custom_bank_name                   = bank_name
+        doc.custom_account_number              = account_number
+        doc.custom_routing_number              = routing_number
+        doc.custom_swift                       = swift_code
+
+        # ✅ ZRA-specific fields — only when ZRA is enabled
         if enable_zra:
-            doc = frappe.get_doc("Sales Invoice", invoice_name)
-            doc.custom_invoice_type                = invoiceType
-            doc.custom_exchange_rate               = exchange_rate
-            doc.custom_total_tax_amount            = total_tax
-            doc.custom_zra_currency                = currency
-            doc.custom_invoice_status              = invoiceStatus
-            doc.due_date                           = dueDate
-            doc.custom_billing_address_line_1      = billingAddressLine1
-            doc.custom_billing_address_line_2      = billingAddressLine2
-            doc.custom_billing_address_postal_code = billingAddressPostalCode
-            doc.custom_billing_address_city        = billingAddressCity
-            doc.custom_billing_address_state       = billingAddressState
-            doc.custom_billing_address_country     = billingAddressCountry
-            doc.custom_shipping_address_line1      = shippingAddressLine1
-            doc.custom_shipping_address_line2      = shippingAddressLine2
-            doc.custom_shipping_address_postal_code = shippingAddressPostalCode
-            doc.custom_shipping_address_city       = shippingAddressCity
-            doc.custom_shipping_address_state      = shippingAddressState
-            doc.custom_shipping_address_country    = shippingAddressCountry
-            doc.custom_export_destination_country  = destnCountryCd
-            doc.custom_local_purchase_order_number = lpoNumber
-            doc.custom_payment_terms               = payment_terms
-            doc.custom_payment_method              = payment_method
-            doc.custom_bank_name                   = bank_name
-            doc.custom_account_number              = account_number
-            doc.custom_routing_number              = routing_number
-            doc.custom_swift                       = swift_code
-            doc.customer                           = customer_data.get("name")
-            doc.update_stock                       = 1 if canUpdateInvoice else 0
-            doc.conversion_rate                    = exchangeRt
+            doc.custom_exchange_rate    = exchange_rate
+            doc.custom_total_tax_amount = total_tax
+            doc.custom_zra_currency     = currency
+            doc.update_stock            = 1 if canUpdateInvoice else 0
 
-            # Replace items
-            doc.items = []
-            for inv_item in invoice_items:
-                doc.append("items", inv_item)
+        # ✅ Replace items — always
+        doc.items = []
+        for inv_item in invoice_items:
+            doc.append("items", inv_item)
 
-            doc.save(ignore_permissions=True)
-            frappe.db.commit()
+        doc.save(ignore_permissions=True)  # ✅ Always runs
+        frappe.db.commit()
 
         # ── Update Selling Terms ──────────────────────────────────────────────
         terms_name = frappe.db.get_value(
