@@ -10,6 +10,7 @@
   "item_code",
   "product_bundle",
   "schedule_date",
+  "exp_date",
   "col_break1",
   "item_name",
   "description_section",
@@ -82,6 +83,7 @@
   "batch_no",
   "manufacture_details",
   "manufacturer",
+  "mfg_date",
   "column_break_13",
   "manufacturer_part_no",
   "accounting",
@@ -996,13 +998,23 @@
    "fieldname": "packing",
    "fieldtype": "Data",
    "label": "packing"
+  },
+  {
+   "fieldname": "mfg_date",
+   "fieldtype": "Date",
+   "label": "Mfg Date"
+  },
+  {
+   "fieldname": "exp_date",
+   "fieldtype": "Date",
+   "label": "Expiry Date"
   }
  ],
  "grid_page_length": 50,
  "idx": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-09 08:44:01.873917",
+ "modified": "2026-03-11 13:13:59.586732",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Purchase Invoice Item",

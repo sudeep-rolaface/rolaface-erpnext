@@ -36,6 +36,7 @@ class PurchaseInvoiceItem(Document):
 		discount_percentage: DF.Percent
 		distributed_discount_amount: DF.Currency
 		enable_deferred_expense: DF.Check
+		exp_date: DF.Date | None
 		expense_account: DF.Link | None
 		from_warehouse: DF.Link | None
 		image: DF.Attach | None
@@ -55,6 +56,7 @@ class PurchaseInvoiceItem(Document):
 		margin_type: DF.Literal["", "Percentage", "Amount"]
 		material_request: DF.Link | None
 		material_request_item: DF.Data | None
+		mfg_date: DF.Date | None
 		net_amount: DF.Currency
 		net_rate: DF.Currency
 		packing: DF.Data | None
