@@ -1068,6 +1068,8 @@ def get_all_item_groups_api():
                     status_code=400,
                     http_status=400
                 )
+            
+        search = args.get("search")        # ← NEW
 
         # Build filters dynamically
         filters = {"is_group": 0}
@@ -1091,6 +1093,20 @@ def get_all_item_groups_api():
             order_by="item_group_name asc",
             filters=filters
         )
+
+          # ── Search filter ─────────────────────────────────────────────────────
+        if search:
+            search_lower = search.lower()
+            all_groups = [
+                g for g in all_groups
+                if search_lower in (g.get("item_group_name")    or "").lower()
+                or search_lower in (g.get("custom_id")          or "").lower()
+                or search_lower in (g.get("custom_description") or "").lower()
+                or search_lower in (g.get("custom_unit_of_measurement") or "").lower()
+                or search_lower in (g.get("custom_selling_price") or "").lower()
+                or search_lower in (g.get("custom_sales_account") or "").lower()
+            ]
+
 
         total_groups = len(all_groups)
 
