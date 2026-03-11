@@ -1941,7 +1941,7 @@ def edit_sales_invoice():
         )
 
     data = payload
-    enable_zra = frappe.conf.get("enable_zra_sync", False)  # ✅ Read once at top
+    enable_zra = frappe.conf.get("enable_zra_sync", False)
 
     # ── Required: invoice number to update ───────────────────────────────────
     invoice_name = data.get("invoiceNumber")
@@ -1980,12 +1980,10 @@ def edit_sales_invoice():
     invoiceType    = data.get("invoiceType")
     dueDate        = data.get("dueDate")
     dateOfInvoice  = data.get("dateOfInvoice")
-
-    # ✅ Normalize empty strings to None
     destnCountryCd = data.get("destnCountryCd") or None
     lpoNumber      = data.get("lpoNumber") or None
 
-    # ✅ Safely cast exchangeRt to float (payload sends it as string "1")
+    # ✅ Safely cast exchangeRt to float
     try:
         exchangeRt = float(data.get("exchangeRt") or 1)
     except (ValueError, TypeError):
@@ -2117,7 +2115,6 @@ def edit_sales_invoice():
             http_status=400
         )
 
-    # ✅ Only validate invoiceType against ZRA codes if ZRA is enabled
     if enable_zra:
         allowedInvoiceType = ZRA_CLIENT_INSTANCE.getTaxCategory()
         if invoiceType not in allowedInvoiceType:
@@ -2170,28 +2167,7 @@ def edit_sales_invoice():
 
     for item in items:
         item_code   = item.get("itemCode")
-        qty         = item.get("quantity", 1)
-        rate        = item.get("price")
-        vatCd       = item.get("vatCode")
-        iplCd       = item.get("iplCd")
-        tlCd        = item.get("tlCd")
         description = item.get("description")
-
-        # ✅ Safely cast discount to float
-        try:
-            discount = float(item.get("discount") or 0)
-        except (ValueError, TypeError):
-            discount = 0
-        validatedDiscount = discount if discount else 0
-
-        # ✅ Normalize empty strings to None for optional item fields
-        batchNo     = item.get("batchNo") or None
-        boxEnd      = item.get("boxEnd") or None
-        boxStart    = item.get("boxStart") or None
-        expDate     = item.get("expDate") or None
-        mfgDate     = item.get("mfgDate") or None
-        packingSize = item.get("packingSize") or None
-        packingUnit = item.get("packingUnit") or None
 
         if not item_code:
             return send_response(
@@ -2208,9 +2184,12 @@ def edit_sales_invoice():
                 http_status=400
             )
 
-        # ✅ ZRA VAT validations only when ZRA enabled AND currency is ZMW
-        is_zmw = enable_zra and (currencyCd or "").upper() == "ZMW"
+        # ── ZRA VAT validations only when ZRA enabled AND currency is ZMW ────
+        vatCd = item.get("vatCode")
+        iplCd = item.get("iplCd")
+        tlCd  = item.get("tlCd")
 
+        is_zmw = enable_zra and (currencyCd or "").upper() == "ZMW"
         if is_zmw:
             VAT_LIST = ["A", "C1", "C2"]
             if not vatCd or vatCd not in VAT_LIST:
@@ -2242,14 +2221,14 @@ def edit_sales_invoice():
                     http_status=400
                 )
         else:
-            # ✅ ZRA disabled or non-ZMW — default ZRA codes to empty
             vatCd = vatCd or ""
             iplCd = iplCd or ""
             tlCd  = tlCd  or ""
 
-        # ✅ Only check stock via ZRA if ZRA is enabled
+        # ── ZRA stock check ───────────────────────────────────────────────────
         if enable_zra:
-            checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+            qty_for_check = item.get("quantity", 1)
+            checkStockResponse, checkStockStatusCode = ZRA_CLIENT_INSTANCE.check_stock(item_code, qty_for_check)
             if checkStockStatusCode != 200:
                 return send_response(
                     status=checkStockResponse["status"],
@@ -2259,6 +2238,7 @@ def edit_sales_invoice():
                     http_status=checkStockStatusCode
                 )
 
+        # ── Validate item exists in Frappe ────────────────────────────────────
         item_details = get_item_details(item_code)
         if not item_details:
             return send_response(
@@ -2267,59 +2247,114 @@ def edit_sales_invoice():
                 status_code=404
             )
 
-        # ✅ Safely cast qty and rate to float
-        try:
-            qty  = float(qty)
-            rate = float(rate)
-        except (ValueError, TypeError):
-            return send_response(
-                status="fail",
-                message="Quantity and Rate must be numeric",
-                status_code=400
-            )
+        # ── Fetch the existing Frappe item row to use as base ─────────────────
+        # This ensures we don't lose any fields Frappe requires that aren't in payload
+        existing_item_row = frappe.db.get_value(
+            "Sales Invoice Item",
+            {"parent": invoice_name, "item_code": item_code},
+            ["*"],
+            as_dict=True
+        )
 
-        invoice_items.append({
-            "item_code":       item_code,
-            "item_name":       item_details.get("itemName"),
-            "warehouse":       "Finished Goods - RI",
-            "qty":             qty,
-            "rate":            rate,
-            "discount_amount": validatedDiscount,
-            "custom_vatcd":    vatCd,
-            "custom_iplcd":    iplCd,
-            "custom_tlcd":     tlCd,
-            "description":     description,
-            "expense_account": CUSTOM_FRAPPE_MAIN_INSTANCE.getDefaultExpenseAccount(
-                                   frappe.defaults.get_global_default("company")),
-            "batch_no":        batchNo,
-            "box_end":         boxEnd,
-            "box_start":       boxStart,
-            "exp_date":        expDate,
-            "mfg_date":        mfgDate,
-            "packing_size":    packingSize,
-            "packing_unit":    packingUnit,
-        })
+        # ── Start with existing item row values as the base ───────────────────
+        # If item row doesn't exist yet (new item added during edit), start empty
+        patched_item = {}
+        if existing_item_row:
+            patched_item = {k: v for k, v in existing_item_row.items()}
+
+        # ── Only patch fields that are actually provided in the payload ────────
+        # We check each field: if it exists in payload and is not empty, update it
+
+        if item.get("itemCode") is not None:
+            patched_item["item_code"] = item_code
+
+        if item_details.get("itemName"):
+            patched_item["item_name"] = item_details.get("itemName")
+
+        if item.get("description") is not None:
+            patched_item["description"] = description
+
+        # qty
+        if item.get("quantity") is not None:
+            try:
+                patched_item["qty"] = float(item.get("quantity"))
+            except (ValueError, TypeError):
+                return send_response(status="fail", message="Quantity must be numeric", status_code=400)
+
+        # rate / price
+        if item.get("price") is not None:
+            try:
+                patched_item["rate"] = float(item.get("price"))
+            except (ValueError, TypeError):
+                return send_response(status="fail", message="Price must be numeric", status_code=400)
+
+        # ✅ Recalculate amount fields only if qty or rate was updated
+        qty  = patched_item.get("qty", 0)
+        rate = patched_item.get("rate", 0)
+        if item.get("quantity") is not None or item.get("price") is not None:
+            patched_item["amount"]      = qty * rate
+            patched_item["base_rate"]   = rate * exchangeRt
+            patched_item["base_amount"] = qty * rate * exchangeRt
+
+        # discount
+        if item.get("discount") is not None:
+            try:
+                patched_item["discount_amount"] = float(item.get("discount") or 0)
+            except (ValueError, TypeError):
+                patched_item["discount_amount"] = 0
+
+        # ZRA codes
+        if vatCd is not None:
+            patched_item["custom_vatcd"] = vatCd
+        if iplCd is not None:
+            patched_item["custom_iplcd"] = iplCd
+        if tlCd is not None:
+            patched_item["custom_tlcd"] = tlCd
+
+        # Optional item fields — only patch if key exists in payload and is not empty
+        if item.get("batchNo") or item.get("batchNo") == "":
+            patched_item["batch_no"] = item.get("batchNo") or None
+        if item.get("boxEnd") or item.get("boxEnd") == "":
+            patched_item["box_end"] = item.get("boxEnd") or None
+        if item.get("boxStart") or item.get("boxStart") == "":
+            patched_item["box_start"] = item.get("boxStart") or None
+        if item.get("expDate") or item.get("expDate") == "":
+            patched_item["exp_date"] = item.get("expDate") or None
+        if item.get("mfgDate") or item.get("mfgDate") == "":
+            patched_item["mfg_date"] = item.get("mfgDate") or None
+        if item.get("packingSize") or item.get("packingSize") == "":
+            patched_item["packing_size"] = item.get("packingSize") or None
+        if item.get("packingUnit") or item.get("packingUnit") == "":
+            patched_item["packing_unit"] = item.get("packingUnit") or None
+
+        # Always set warehouse and accounts
+        patched_item["warehouse"] = "Finished Goods - RI"
+        patched_item["expense_account"] = CUSTOM_FRAPPE_MAIN_INSTANCE.getDefaultExpenseAccount(
+            frappe.defaults.get_global_default("company")
+        )
+
+        invoice_items.append(patched_item)
 
         sale_payload_items.append({
             "itemCode":        item_code,
             "itemName":        item_details.get("itemName"),
-            "qty":             qty,
+            "qty":             patched_item.get("qty"),
             "itemClassCode":   item_details.get("itemClassCd"),
             "product_type":    item.get("product_type", "Finished Goods"),
             "packageUnitCode": item_details.get("itemPackingUnitCd"),
-            "price":           rate,
+            "price":           patched_item.get("rate"),
             "VatCd":           vatCd,
             "unitOfMeasure":   item_details.get("itemUnitCd"),
             "IplCd":           iplCd,
             "TlCd":            tlCd,
-            "discountRate":    validatedDiscount,
-            "batch_no":        batchNo,
-            "box_end":         boxEnd,
-            "box_start":       boxStart,
-            "exp_date":        expDate,
-            "mfg_date":        mfgDate,
-            "packing_size":    packingSize,
-            "packing_unit":    packingUnit,
+            "discountRate":    patched_item.get("discount_amount", 0),
+            "batch_no":        patched_item.get("batch_no"),
+            "box_end":         patched_item.get("box_end"),
+            "box_start":       patched_item.get("box_start"),
+            "exp_date":        patched_item.get("exp_date"),
+            "mfg_date":        patched_item.get("mfg_date"),
+            "packing_size":    patched_item.get("packing_size"),
+            "packing_unit":    patched_item.get("packing_unit"),
         })
 
     # ── Build sale payload ────────────────────────────────────────────────────
@@ -2398,31 +2433,31 @@ def edit_sales_invoice():
         doc = frappe.get_doc("Sales Invoice", invoice_name)
 
         # ✅ Core fields — always update regardless of ZRA
-        doc.custom_invoice_type                = invoiceType
-        doc.custom_invoice_status              = invoiceStatus
-        doc.due_date                           = dueDate
-        doc.customer                           = customer_data.get("name")
-        doc.conversion_rate                    = exchangeRt
-        doc.custom_billing_address_line_1      = billingAddressLine1
-        doc.custom_billing_address_line_2      = billingAddressLine2
-        doc.custom_billing_address_postal_code = billingAddressPostalCode
-        doc.custom_billing_address_city        = billingAddressCity
-        doc.custom_billing_address_state       = billingAddressState
-        doc.custom_billing_address_country     = billingAddressCountry
-        doc.custom_shipping_address_line1      = shippingAddressLine1
-        doc.custom_shipping_address_line2      = shippingAddressLine2
+        doc.custom_invoice_type                 = invoiceType
+        doc.custom_invoice_status               = invoiceStatus
+        doc.due_date                            = dueDate
+        doc.customer                            = customer_data.get("name")
+        doc.conversion_rate                     = exchangeRt
+        doc.custom_billing_address_line_1       = billingAddressLine1
+        doc.custom_billing_address_line_2       = billingAddressLine2
+        doc.custom_billing_address_postal_code  = billingAddressPostalCode
+        doc.custom_billing_address_city         = billingAddressCity
+        doc.custom_billing_address_state        = billingAddressState
+        doc.custom_billing_address_country      = billingAddressCountry
+        doc.custom_shipping_address_line1       = shippingAddressLine1
+        doc.custom_shipping_address_line2       = shippingAddressLine2
         doc.custom_shipping_address_postal_code = shippingAddressPostalCode
-        doc.custom_shipping_address_city       = shippingAddressCity
-        doc.custom_shipping_address_state      = shippingAddressState
-        doc.custom_shipping_address_country    = shippingAddressCountry
-        doc.custom_export_destination_country  = destnCountryCd
-        doc.custom_local_purchase_order_number = lpoNumber
-        doc.custom_payment_terms               = payment_terms
-        doc.custom_payment_method              = payment_method
-        doc.custom_bank_name                   = bank_name
-        doc.custom_account_number              = account_number
-        doc.custom_routing_number              = routing_number
-        doc.custom_swift                       = swift_code
+        doc.custom_shipping_address_city        = shippingAddressCity
+        doc.custom_shipping_address_state       = shippingAddressState
+        doc.custom_shipping_address_country     = shippingAddressCountry
+        doc.custom_export_destination_country   = destnCountryCd
+        doc.custom_local_purchase_order_number  = lpoNumber
+        doc.custom_payment_terms                = payment_terms
+        doc.custom_payment_method               = payment_method
+        doc.custom_bank_name                    = bank_name
+        doc.custom_account_number               = account_number
+        doc.custom_routing_number               = routing_number
+        doc.custom_swift                        = swift_code
 
         # ✅ ZRA-specific fields — only when ZRA is enabled
         if enable_zra:
@@ -2431,10 +2466,24 @@ def edit_sales_invoice():
             doc.custom_zra_currency     = currency
             doc.update_stock            = 1 if canUpdateInvoice else 0
 
-        # ✅ Replace items — always
-        doc.items = []
-        for inv_item in invoice_items:
-            doc.append("items", inv_item)
+        # ── Patch items: update existing rows, append new ones ────────────────
+        # Build a map of existing item rows by item_code for quick lookup
+        existing_rows = {row.item_code: row for row in doc.items}
+
+        for patched_item in invoice_items:
+            item_code = patched_item.get("item_code")
+
+            if item_code in existing_rows:
+                # ✅ Item exists — patch only the fields we received
+                row = existing_rows[item_code]
+                for field, value in patched_item.items():
+                    # Skip internal Frappe meta fields
+                    if field in ("name", "parent", "parentfield", "parenttype", "doctype", "idx"):
+                        continue
+                    setattr(row, field, value)
+            else:
+                # ✅ New item not in existing rows — append it
+                doc.append("items", patched_item)
 
         doc.save(ignore_permissions=True)  # ✅ Always runs
         frappe.db.commit()
