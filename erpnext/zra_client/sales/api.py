@@ -1943,11 +1943,11 @@ def edit_sales_invoice():
     data = payload
 
     # ── Required: invoice name to update ─────────────────────────────────────
-    invoice_name = data.get("invoiceName")
+    invoice_name = data.get("invoiceNumber")
     if not invoice_name:
         return send_response(
             status="fail",
-            message="invoiceName is required to identify the invoice to update",
+            message="invoiceNumber is required to identify the invoice to update",
             status_code=400,
             http_status=400
         )
@@ -1962,18 +1962,11 @@ def edit_sales_invoice():
         )
 
     # ── Check invoice is still editable (must be Draft) ──────────────────────
-    current_status = frappe.db.get_value("Sales Invoice", invoice_name, "docstatus")
-    if current_status == 1:
+    current_status = frappe.db.get_value("Sales Invoice", invoice_name, "custom_invoice_status")
+    if current_status != 'Draft':
         return send_response(
             status="fail",
-            message=f"Sales Invoice '{invoice_name}' is already submitted and cannot be edited",
-            status_code=400,
-            http_status=400
-        )
-    if current_status == 2:
-        return send_response(
-            status="fail",
-            message=f"Sales Invoice '{invoice_name}' is cancelled and cannot be edited",
+            message=f"{current_status} Sales Invoice cannot be edited",
             status_code=400,
             http_status=400
         )
@@ -2127,11 +2120,11 @@ def edit_sales_invoice():
             status_code=400,
             http_status=400
         )
-    allowedInvoiceStatus = ["Draft", "Sent", "Paid", "Overdue"]
+    allowedInvoiceStatus = [ "Draft", "Approved", "Rejected", "Paid", "Cancelled"]
     if invoiceStatus not in allowedInvoiceStatus:
         return send_response(
             status="fail",
-            message="Invalid invoice status. Allowed values are: Draft, Sent, Paid, Overdue.",
+            message="Invalid invoice status. Allowed values are: Draft, Approved, Rejected, Paid, Cancelled.",
             status_code=400,
             http_status=400
         )
@@ -2321,7 +2314,7 @@ def edit_sales_invoice():
         "created_by":               createBy,
         "items":                    sale_payload_items,
         "invoiceType":              invoiceType,
-        "invoiceStatus":            invoiceStatus,
+        "custom_invoice_status":    invoiceStatus,
         "dueDate":                  dueDate,
         "billingAddressLine1":      billingAddressLine1,
         "billingAddressLine2":      billingAddressLine2,
