@@ -422,6 +422,11 @@ def get_all_items_api():
                 it for it in all_items
                 if search_lower in (it.get("item_name") or "").lower()
                 or search_lower in (it.get("item_code") or "").lower()
+                or search_lower in (it.get("item_group") or "").lower()
+                or search_lower in (it.get("custom_tax_category") or "").lower()
+                or search_lower in str(it.get("custom_min_stock_level") or "").lower()
+                or search_lower in str(it.get("custom_max_stock_level") or "").lower()
+                or search_lower in str(it.get("standard_rate") or "").lower()
             ]
 
         total_items = len(all_items)
