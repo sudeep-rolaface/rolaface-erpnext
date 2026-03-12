@@ -1289,6 +1289,177 @@ def get_all_purchase_invoices():
             http_status=500
         )
 
+@frappe.whitelist(allow_guest=False, methods=["GET"])
+def get_all_purchase_invoices():
+    try:
+        args = frappe.request.args
+        page = args.get("page")
+        if not page:
+            return send_response(
+                status="error",
+                message="'page' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page = int(page)
+            if page < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        page_size = args.get("page_size")
+        if not page_size:
+            return send_response(
+                status="error",
+                message="'page_size' parameter is required.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        try:
+            page_size = int(page_size)
+            if page_size < 1:
+                raise ValueError
+        except ValueError:
+            return send_response(
+                status="error",
+                message="'page_size' must be a positive integer.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
+
+        status_filter   = args.get("status")
+        supplier_filter = args.get("supplier")
+        search          = args.get("search")
+        sort_by         = args.get("sortBy")         # ← NEW
+        sort_order      = args.get("sortOrder")      # ← NEW
+
+        # ── Sorting ───────────────────────────────────────────────────────────
+        # Map frontend field names → actual DB field names
+        sort_field_map = {
+            "invoiceNumber": "name",
+            "supplierName":  "supplier",
+            "poDate":        "posting_date",
+            "deliveryDate":  "due_date",
+            "grandTotal":    "grand_total",
+            "status":        "status",
+        }
+
+        # Validate sortOrder — only allow asc/desc
+        valid_sort_order = sort_order.lower() if sort_order and sort_order.lower() in ["asc", "desc"] else "desc"
+
+        # Resolve sortBy to DB field, fallback to creation desc
+        if sort_by and sort_by in sort_field_map:
+            order_by = f"{sort_field_map[sort_by]} {valid_sort_order}"
+        else:
+            order_by = "creation desc"
+
+        filters = {}
+        if status_filter:
+            filters["status"] = status_filter
+        if supplier_filter:
+            filters["supplier"] = supplier_filter
+
+        all_pos = frappe.get_all(
+            "Purchase Invoice",
+            fields=[
+                "name",
+                "supplier",
+                "posting_date",
+                "due_date",
+                "grand_total",
+                "custom_registration_type",
+                "custom_sync_status",
+                "status",
+                "shipping_rule"
+            ],
+            filters=filters,
+            order_by=order_by        # ← dynamic sort
+        )
+
+        # ── Search filter ─────────────────────────────────────────────────────
+        if search:
+            search_lower = search.lower()
+            all_pos = [
+                po for po in all_pos
+                if search_lower in (po.get("name")            or "").lower()
+                or search_lower in (po.get("supplier")        or "").lower()
+                or search_lower in (po.get("status")          or "").lower()
+                or search_lower in str(po.get("posting_date") or "").lower()
+                or search_lower in str(po.get("due_date")     or "").lower()
+                or search_lower in str(po.get("grand_total")  or "").lower()
+            ]
+
+        total_items = len(all_pos)
+
+        if total_items == 0:
+            return send_response(
+                status="success",
+                message="No purchase invoice found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+        start = (page - 1) * page_size
+        end   = start + page_size
+        pos   = all_pos[start:end]
+
+        for po in pos:
+            po["pId"] = po.pop("name")
+            po["supplierName"] = po.pop("supplier")
+            po["poDate"] = str(po.pop("posting_date")) if po.get("posting_date") else None
+            po["deliveryDate"] = str(po.pop("due_date")) if po.get("due_date") else None
+            po["grandTotal"] = po.pop("grand_total")
+            po["registrationType"] = po.pop("custom_registration_type")
+            po["syncStatus"] = po.pop("custom_sync_status")
+            po["shippingRule"] = po.pop("shipping_rule")
+
+        total_pages = (total_items + page_size - 1) // page_size
+
+        response_data = {
+            "success": True,
+            "message": "Purchase invoice retrieved successfully",
+            "data": pos,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+
+        return send_response_list(
+            status="success",
+            message="Purchase orders retrieved successfully",
+            status_code=200,
+            data=response_data,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get Purchase Orders API Error")
+        return send_response(
+            status="fail",
+            message="Failed to fetch purchase orders",
+            data={"error": str(e)},
+            status_code=500,
+            http_status=500
+        )
+
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_sales_invoice_by_id():
