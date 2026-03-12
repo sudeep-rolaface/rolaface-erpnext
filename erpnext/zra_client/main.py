@@ -252,41 +252,143 @@ class ZRAClient:
         return None
 
 
-    def check_stock(self, item_code, required_qty):
+    # def check_stock(self, item_code, required_qty):
+    #     warehouse = "Finished Goods - RI"
+
+    #     try:
+    #         required_qty = float(required_qty)
+    #     except (TypeError, ValueError):
+    #         return {
+    #             "status": "fail",
+    #             "message": "Required quantity must be a valid number"
+    #         }, 400
+
+    #     if not item_code:
+    #         return {
+    #             "status": "fail",
+    #             "message": "Item code is required"
+    #         }, 400
+
+    #     if required_qty <= 0:
+    #         return {
+    #             "status": "fail",
+    #             "message": "Required quantity must be greater than 0"
+    #         }, 400
+
+    #     if not frappe.db.exists("Item", {"name": item_code, "disabled": 0}):
+    #         return {
+    #             "status": "fail",
+    #             "message": f"Item {item_code} does not exist or is disabled"
+    #         }, 404
+
+    #     if not frappe.db.exists("Warehouse", warehouse):
+    #         return {
+    #             "status": "fail",
+    #             "message": f"Warehouse {warehouse} does not exist"
+    #         }, 404
+
+    #     bin_doc = frappe.db.get_value(
+    #         "Bin",
+    #         {"item_code": item_code, "warehouse": warehouse},
+    #         ["actual_qty", "reserved_qty"],
+    #         as_dict=True
+    #     )
+
+    #     if not bin_doc:
+    #         return {
+    #             "status": "fail",
+    #             "message": f"Item {item_code} is not stocked in warehouse {warehouse}. Please create stock for this item before proceeding."
+    #         }, 404
+
+    #     available_qty = (bin_doc.actual_qty or 0) - (bin_doc.reserved_qty or 0)
+
+    #     if available_qty < required_qty:
+    #         return {
+    #             "status": "fail",
+    #             "message": (
+    #                 f"Not enough stock. "
+    #                 f"{available_qty} available, {required_qty} required."
+    #             ),
+    #             "data": {
+    #                 "item_code": item_code,
+    #                 "warehouse": warehouse,
+    #                 "available_qty": available_qty,
+    #                 "required_qty": required_qty
+    #             }
+    #         }, 400
+
+    #     return {
+    #         "status": "success",
+    #         "message": "Sufficient stock available",
+    #         "data": {
+    #             "item_code": item_code,
+    #             "warehouse": warehouse,
+    #             "available_qty": available_qty,
+    #             "required_qty": required_qty
+    #         }
+    #     }, 200
+
+    def check_stock(self, item_code, required_qty, batch_no=None):
         warehouse = "Finished Goods - RI"
 
         try:
             required_qty = float(required_qty)
         except (TypeError, ValueError):
-            return {
-                "status": "fail",
-                "message": "Required quantity must be a valid number"
-            }, 400
+            return {"status": "fail", "message": "Required quantity must be a valid number"}, 400
 
         if not item_code:
-            return {
-                "status": "fail",
-                "message": "Item code is required"
-            }, 400
+            return {"status": "fail", "message": "Item code is required"}, 400
 
         if required_qty <= 0:
-            return {
-                "status": "fail",
-                "message": "Required quantity must be greater than 0"
-            }, 400
+            return {"status": "fail", "message": "Required quantity must be greater than 0"}, 400
 
         if not frappe.db.exists("Item", {"name": item_code, "disabled": 0}):
-            return {
-                "status": "fail",
-                "message": f"Item {item_code} does not exist or is disabled"
-            }, 404
+            return {"status": "fail", "message": f"Item {item_code} does not exist or is disabled"}, 404
 
         if not frappe.db.exists("Warehouse", warehouse):
-            return {
-                "status": "fail",
-                "message": f"Warehouse {warehouse} does not exist"
-            }, 404
+            return {"status": "fail", "message": f"Warehouse {warehouse} does not exist"}, 404
 
+        # ── If batch_no provided → check batch-level stock from Serial and Batch Bundle ──
+        if batch_no:
+            result = frappe.db.sql("""
+                SELECT SUM(sbe.qty) as available_qty
+                FROM `tabSerial and Batch Entry` sbe
+                INNER JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
+                WHERE sbb.item_code = %(item_code)s
+                AND sbe.batch_no = %(batch_no)s
+                AND sbb.warehouse = %(warehouse)s
+                AND sbb.is_cancelled = 0
+                AND sbb.docstatus = 1
+            """, {"item_code": item_code, "batch_no": batch_no, "warehouse": warehouse}, as_dict=True)
+
+            available_qty = float((result[0].get("available_qty") or 0) if result else 0)
+
+            if available_qty < required_qty:
+                return {
+                    "status": "fail",
+                    "message": f"Not enough stock in batch {batch_no}. {available_qty} available, {required_qty} required.",
+                    "data": {
+                        "item_code": item_code,
+                        "warehouse": warehouse,
+                        "batch_no": batch_no,
+                        "available_qty": available_qty,
+                        "required_qty": required_qty
+                    }
+                }, 400
+
+            return {
+                "status": "success",
+                "message": "Sufficient stock available",
+                "data": {
+                    "item_code": item_code,
+                    "warehouse": warehouse,
+                    "batch_no": batch_no,
+                    "available_qty": available_qty,
+                    "required_qty": required_qty
+                }
+            }, 200
+
+        # ── No batch_no → check warehouse-level stock from Bin ──
         bin_doc = frappe.db.get_value(
             "Bin",
             {"item_code": item_code, "warehouse": warehouse},
@@ -297,7 +399,7 @@ class ZRAClient:
         if not bin_doc:
             return {
                 "status": "fail",
-                "message": f"Item {item_code} is not stocked in warehouse {warehouse}. Please create stock for this item before proceeding."
+                "message": f"Item {item_code} is not stocked in warehouse {warehouse}."
             }, 404
 
         available_qty = (bin_doc.actual_qty or 0) - (bin_doc.reserved_qty or 0)
@@ -305,10 +407,7 @@ class ZRAClient:
         if available_qty < required_qty:
             return {
                 "status": "fail",
-                "message": (
-                    f"Not enough stock. "
-                    f"{available_qty} available, {required_qty} required."
-                ),
+                "message": f"Not enough stock. {available_qty} available, {required_qty} required.",
                 "data": {
                     "item_code": item_code,
                     "warehouse": warehouse,
