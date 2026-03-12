@@ -934,7 +934,9 @@ def get_sales_invoice():
 
         page          = args.get("page")
         customer_name = args.get("customer")
-        search        = args.get("search")        # ← NEW
+        search        = args.get("search")
+        sort_by       = args.get("sortBy", "invoiceNumber")
+        sort_order    = args.get("sortOrder", "desc").lower()
 
         conditions = {}
         if customer_name:
@@ -985,7 +987,22 @@ def get_sales_invoice():
                 http_status=400
             )
 
-        sort_order = args.get("sortOrder", "desc").lower()
+        # ── Sorting ───────────────────────────────────────────────────────────
+        sort_field_map = {
+            "invoiceNumber": "name",
+            "customerName":  "customer",
+            "dateOfInvoice": "posting_date",
+            "dueDate":       "due_date",
+            "totalAmount":   "grand_total",
+            "invoiceStatus": "custom_invoice_status",
+        }
+
+        valid_sort_order = sort_order if sort_order in ["asc", "desc"] else "desc"
+
+        if sort_by and sort_by in sort_field_map:
+            order_by = f"{sort_field_map[sort_by]} {valid_sort_order}"
+        else:
+            order_by = f"creation {valid_sort_order}"
 
         # ── Fetch all without DB-level pagination ─────────────────────────────
         all_invoices = frappe.get_all(
@@ -1009,7 +1026,7 @@ def get_sales_invoice():
                 "outstanding_amount",
             ],
             filters=conditions,
-            order_by=sort_order,
+            order_by=order_by,
         )
 
         # ── Search filter ─────────────────────────────────────────────────────
@@ -1038,7 +1055,7 @@ def get_sales_invoice():
             )
 
         # ── Paginate in memory ────────────────────────────────────────────────
-        start        = (page - 1) * page_size
+        start          = (page - 1) * page_size
         paged_invoices = all_invoices[start:start + page_size]
 
         formatted_invoices = []
