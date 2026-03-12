@@ -832,6 +832,7 @@ def get_all_purchase_invoices():
 
         status_filter = args.get("status")
         supplier_filter = args.get("supplier")
+        search          = args.get("search")        # ← NEW
 
         filters = {}
         if status_filter:
@@ -857,6 +858,19 @@ def get_all_purchase_invoices():
         )
 
         total_items = len(all_pos)
+
+        # ── Search filter ─────────────────────────────────────────────────────
+        if search:
+            search_lower = search.lower()
+            all_pos = [
+                po for po in all_pos
+                if search_lower in (po.get("name")             or "").lower()
+                or search_lower in (po.get("supplier")         or "").lower()
+                or search_lower in (po.get("status")           or "").lower()
+                or search_lower in str(po.get("posting_date")  or "").lower()
+                or search_lower in str(po.get("due_date")      or "").lower()
+                or search_lower in str(po.get("grand_total")   or "").lower()
+            ]
 
         if total_items == 0:
             return send_response(
