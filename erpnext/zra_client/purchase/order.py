@@ -429,7 +429,8 @@ def create_purchase_order():
         invoice_items.append({
             "item_code": itemCode,
             "item_name": item_details.get("itemName"),
-            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
+            # "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
+            "warehouse": None,
             "qty": quantity,
             "rate": rate if rate is not None else item_details.get("standardRate", 0),
             "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
