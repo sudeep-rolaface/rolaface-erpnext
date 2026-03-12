@@ -927,19 +927,202 @@ def create_sales_invoice():
 #         )
 
 
+# @frappe.whitelist(allow_guest=False, methods=["GET"])
+# def get_sales_invoice():
+#     try:
+#         args = frappe.request.args
+
+#         page          = args.get("page")
+#         customer_name = args.get("customer")
+#         search        = args.get("search")        # ← NEW
+
+#         conditions = {}
+#         if customer_name:
+#             conditions["customer"] = customer_name
+
+#         if not page:
+#             return send_response(
+#                 status="error",
+#                 message="'page' parameter is required.",
+#                 data=None,
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         try:
+#             page = int(page)
+#             if page < 1:
+#                 raise ValueError
+#         except ValueError:
+#             return send_response(
+#                 status="error",
+#                 message="'page' must be a positive integer.",
+#                 data=None,
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         page_size = args.get("page_size")
+#         if not page_size:
+#             return send_response(
+#                 status="error",
+#                 message="'page_size' parameter is required.",
+#                 data=None,
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         try:
+#             page_size = int(page_size)
+#             if page_size < 1:
+#                 raise ValueError
+#         except ValueError:
+#             return send_response(
+#                 status="error",
+#                 message="'page_size' must be a positive integer.",
+#                 data=None,
+#                 status_code=400,
+#                 http_status=400
+#             )
+
+#         sort_order = args.get("sortOrder", "desc").lower()
+
+#         # ── Fetch all without DB-level pagination ─────────────────────────────
+#         all_invoices = frappe.get_all(
+#             "Sales Invoice",
+#             fields=[
+#                 "name",
+#                 "customer",
+#                 "custom_invoice_type",
+#                 "custom_rcptno",
+#                 "custom_zra_currency",
+#                 "custom_exchange_rate",
+#                 "posting_date",
+#                 "due_date",
+#                 "grand_total",
+#                 "custom_total_tax_amount",
+#                 "custom_invoice_status",
+#                 "is_return",
+#                 "is_debit_note",
+#                 "return_against",
+#                 "amended_from",
+#                 "outstanding_amount",
+#             ],
+#             filters=conditions,
+#             order_by=sort_order,
+#         )
+
+#         # ── Search filter ─────────────────────────────────────────────────────
+#         if search:
+#             search_lower = search.lower()
+#             all_invoices = [
+#                 inv for inv in all_invoices
+#                 if search_lower in (inv.get("name")                  or "").lower()
+#                 or search_lower in (inv.get("customer")              or "").lower()
+#                 or search_lower in (inv.get("custom_invoice_type")   or "").lower()
+#                 or search_lower in (inv.get("custom_invoice_status") or "").lower()
+#                 or search_lower in str(inv.get("posting_date")       or "").lower()
+#                 or search_lower in str(inv.get("due_date")           or "").lower()
+#                 or search_lower in str(inv.get("grand_total")        or "").lower()
+#             ]
+
+#         total_invoices = len(all_invoices)
+
+#         if total_invoices == 0:
+#             return send_response(
+#                 status="success",
+#                 message="No sales invoices found.",
+#                 data=[],
+#                 status_code=200,
+#                 http_status=200
+#             )
+
+#         # ── Paginate in memory ────────────────────────────────────────────────
+#         start        = (page - 1) * page_size
+#         paged_invoices = all_invoices[start:start + page_size]
+
+#         formatted_invoices = []
+
+#         for inv in paged_invoices:
+#             customer_tpin = frappe.db.get_value(
+#                 "Customer",
+#                 inv.customer,
+#                 "tax_id"
+#             ) or ""
+#             invoice_type_parent = "Normal"
+#             invoice_type = inv.custom_invoice_type
+
+#             if inv.is_return == 1 and inv.return_against:
+#                 parent_invoice_type = frappe.db.get_value(
+#                     "Sales Invoice",
+#                     inv.return_against,
+#                     "custom_invoice_type"
+#                 )
+#                 invoice_type_parent = "Credit Note"
+#                 invoice_type = parent_invoice_type
+
+#             elif inv.is_debit_note == 1:
+#                 parent_invoice_type = frappe.db.get_value(
+#                     "Sales Invoice",
+#                     inv.amended_from,
+#                     "custom_invoice_type"
+#                 )
+#                 invoice_type_parent = "Debit Note"
+#                 invoice_type = parent_invoice_type
+
+#             formatted_invoices.append({
+#                 "invoiceNumber":     inv.name,
+#                 "customerName":      inv.customer,
+#                 "customerTpin":      customer_tpin,
+#                 "receiptNumber":     inv.custom_rcptno,
+#                 "currency":          inv.custom_zra_currency,
+#                 "exchangeRate":      inv.custom_exchange_rate,
+#                 "dateOfInvoice":     str(inv.posting_date),
+#                 "dueDate":           inv.due_date,
+#                 "totalAmount":       float(inv.grand_total),
+#                 "totalTax":          inv.custom_total_tax_amount,
+#                 "invoiceStatus":     inv.custom_invoice_status,
+#                 "outstandingAmount": inv.outstanding_amount,
+#                 "invoiceTypeParent": invoice_type_parent,
+#                 "invoiceType":       invoice_type,
+#                 "OutStandingAmount": inv.outstanding_amount
+#             })
+
+#         total_pages = (total_invoices + page_size - 1) // page_size
+
+#         pagination = {
+#             "page":        page,
+#             "page_size":   page_size,
+#             "total":       total_invoices,
+#             "total_pages": total_pages,
+#             "has_next":    page < total_pages,
+#             "has_prev":    page > 1
+#         }
+
+#         return send_response_list_sale(
+#             status="success",
+#             message="Sales invoices retrieved successfully",
+#             status_code=200,
+#             http_status=200,
+#             data=formatted_invoices,
+#             pagination=pagination
+#         )
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Get Sales Invoices API Error")
+#         return send_response(
+#             status="fail",
+#             message=str(e),
+#             data=None,
+#             status_code=500,
+#             http_status=500
+#         )
+
 @frappe.whitelist(allow_guest=False, methods=["GET"])
-def get_sales_invoice():
+def get_all_purchase_invoices():
     try:
         args = frappe.request.args
-
-        page          = args.get("page")
-        customer_name = args.get("customer")
-        search        = args.get("search")        # ← NEW
-
-        conditions = {}
-        if customer_name:
-            conditions["customer"] = customer_name
-
+        page = args.get("page")
         if not page:
             return send_response(
                 status="error",
@@ -985,136 +1168,127 @@ def get_sales_invoice():
                 http_status=400
             )
 
-        # ── Fetch all without DB-level pagination ─────────────────────────────
-        all_invoices = frappe.get_all(
-            "Sales Invoice",
+        status_filter   = args.get("status")
+        supplier_filter = args.get("supplier")
+        search          = args.get("search")
+        sort_by         = args.get("sortBy")         # ← NEW
+        sort_order      = args.get("sortOrder")      # ← NEW
+
+        # ── Sorting ───────────────────────────────────────────────────────────
+        # Map frontend field names → actual DB field names
+        sort_field_map = {
+            "invoiceNumber": "name",
+            "supplierName":  "supplier",
+            "poDate":        "posting_date",
+            "deliveryDate":  "due_date",
+            "grandTotal":    "grand_total",
+            "status":        "status",
+        }
+
+        # Validate sortOrder — only allow asc/desc
+        valid_sort_order = sort_order.lower() if sort_order and sort_order.lower() in ["asc", "desc"] else "desc"
+
+        # Resolve sortBy to DB field, fallback to creation desc
+        if sort_by and sort_by in sort_field_map:
+            order_by = f"{sort_field_map[sort_by]} {valid_sort_order}"
+        else:
+            order_by = "creation desc"
+
+        filters = {}
+        if status_filter:
+            filters["status"] = status_filter
+        if supplier_filter:
+            filters["supplier"] = supplier_filter
+
+        all_pos = frappe.get_all(
+            "Purchase Invoice",
             fields=[
                 "name",
-                "customer",
-                "custom_invoice_type",
-                "custom_rcptno",
-                "custom_zra_currency",
-                "custom_exchange_rate",
+                "supplier",
                 "posting_date",
                 "due_date",
                 "grand_total",
-                "custom_total_tax_amount",
-                "custom_invoice_status",
-                "is_return",
-                "is_debit_note",
-                "return_against",
-                "amended_from",
-                "outstanding_amount",
+                "custom_registration_type",
+                "custom_sync_status",
+                "status",
+                "shipping_rule"
             ],
-            filters=conditions,
-            order_by="creation desc",
+            filters=filters,
+            order_by=order_by        # ← dynamic sort
         )
 
         # ── Search filter ─────────────────────────────────────────────────────
         if search:
             search_lower = search.lower()
-            all_invoices = [
-                inv for inv in all_invoices
-                if search_lower in (inv.get("name")                  or "").lower()
-                or search_lower in (inv.get("customer")              or "").lower()
-                or search_lower in (inv.get("custom_invoice_type")   or "").lower()
-                or search_lower in (inv.get("custom_invoice_status") or "").lower()
-                or search_lower in str(inv.get("posting_date")       or "").lower()
-                or search_lower in str(inv.get("due_date")           or "").lower()
-                or search_lower in str(inv.get("grand_total")        or "").lower()
+            all_pos = [
+                po for po in all_pos
+                if search_lower in (po.get("name")            or "").lower()
+                or search_lower in (po.get("supplier")        or "").lower()
+                or search_lower in (po.get("status")          or "").lower()
+                or search_lower in str(po.get("posting_date") or "").lower()
+                or search_lower in str(po.get("due_date")     or "").lower()
+                or search_lower in str(po.get("grand_total")  or "").lower()
             ]
 
-        total_invoices = len(all_invoices)
+        total_items = len(all_pos)
 
-        if total_invoices == 0:
+        if total_items == 0:
             return send_response(
                 status="success",
-                message="No sales invoices found.",
+                message="No purchase invoice found.",
                 data=[],
                 status_code=200,
                 http_status=200
             )
 
-        # ── Paginate in memory ────────────────────────────────────────────────
-        start        = (page - 1) * page_size
-        paged_invoices = all_invoices[start:start + page_size]
+        start = (page - 1) * page_size
+        end   = start + page_size
+        pos   = all_pos[start:end]
 
-        formatted_invoices = []
+        for po in pos:
+            po["pId"] = po.pop("name")
+            po["supplierName"] = po.pop("supplier")
+            po["poDate"] = str(po.pop("posting_date")) if po.get("posting_date") else None
+            po["deliveryDate"] = str(po.pop("due_date")) if po.get("due_date") else None
+            po["grandTotal"] = po.pop("grand_total")
+            po["registrationType"] = po.pop("custom_registration_type")
+            po["syncStatus"] = po.pop("custom_sync_status")
+            po["shippingRule"] = po.pop("shipping_rule")
 
-        for inv in paged_invoices:
-            customer_tpin = frappe.db.get_value(
-                "Customer",
-                inv.customer,
-                "tax_id"
-            ) or ""
-            invoice_type_parent = "Normal"
-            invoice_type = inv.custom_invoice_type
+        total_pages = (total_items + page_size - 1) // page_size
 
-            if inv.is_return == 1 and inv.return_against:
-                parent_invoice_type = frappe.db.get_value(
-                    "Sales Invoice",
-                    inv.return_against,
-                    "custom_invoice_type"
-                )
-                invoice_type_parent = "Credit Note"
-                invoice_type = parent_invoice_type
-
-            elif inv.is_debit_note == 1:
-                parent_invoice_type = frappe.db.get_value(
-                    "Sales Invoice",
-                    inv.amended_from,
-                    "custom_invoice_type"
-                )
-                invoice_type_parent = "Debit Note"
-                invoice_type = parent_invoice_type
-
-            formatted_invoices.append({
-                "invoiceNumber":     inv.name,
-                "customerName":      inv.customer,
-                "customerTpin":      customer_tpin,
-                "receiptNumber":     inv.custom_rcptno,
-                "currency":          inv.custom_zra_currency,
-                "exchangeRate":      inv.custom_exchange_rate,
-                "dateOfInvoice":     str(inv.posting_date),
-                "dueDate":           inv.due_date,
-                "totalAmount":       float(inv.grand_total),
-                "totalTax":          inv.custom_total_tax_amount,
-                "invoiceStatus":     inv.custom_invoice_status,
-                "outstandingAmount": inv.outstanding_amount,
-                "invoiceTypeParent": invoice_type_parent,
-                "invoiceType":       invoice_type,
-                "OutStandingAmount": inv.outstanding_amount
-            })
-
-        total_pages = (total_invoices + page_size - 1) // page_size
-
-        pagination = {
-            "page":        page,
-            "page_size":   page_size,
-            "total":       total_invoices,
-            "total_pages": total_pages,
-            "has_next":    page < total_pages,
-            "has_prev":    page > 1
+        response_data = {
+            "success": True,
+            "message": "Purchase invoice retrieved successfully",
+            "data": pos,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
         }
 
-        return send_response_list_sale(
+        return send_response_list(
             status="success",
-            message="Sales invoices retrieved successfully",
+            message="Purchase orders retrieved successfully",
             status_code=200,
-            http_status=200,
-            data=formatted_invoices,
-            pagination=pagination
+            data=response_data,
+            http_status=200
         )
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Get Sales Invoices API Error")
+        frappe.log_error(message=str(e), title="Get Purchase Orders API Error")
         return send_response(
             status="fail",
-            message=str(e),
-            data=None,
+            message="Failed to fetch purchase orders",
+            data={"error": str(e)},
             status_code=500,
             http_status=500
         )
+
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_sales_invoice_by_id():
