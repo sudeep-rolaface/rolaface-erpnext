@@ -504,7 +504,7 @@ def create_sales_invoice():
             tlCd = tlCd or ""
 
         checkStockResponse, checkStockStatusCode = (
-            ZRA_CLIENT_INSTANCE.check_stock(item_code, qty)
+            ZRA_CLIENT_INSTANCE.check_stock(item_code, qty, batchNo)
         )
 
         if checkStockStatusCode != 200:
