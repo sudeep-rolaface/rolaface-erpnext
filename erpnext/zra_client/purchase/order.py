@@ -673,11 +673,9 @@ def get_purchase_orders():
                 http_status=400,
             )
 
-        start = (page - 1) * page_size
-        end = start + page_size
-
-        status_filter = args.get("status")
+        status_filter   = args.get("status")
         supplier_filter = args.get("supplier")
+        search          = args.get("search")        # ← NEW
 
         filters = {}
         if status_filter:
@@ -692,6 +690,19 @@ def get_purchase_orders():
             order_by="creation desc",
         )
 
+        # ── Search filter ─────────────────────────────────────────────────────
+        if search:
+            search_lower = search.lower()
+            all_pos = [
+                po for po in all_pos
+                if search_lower in (po.get("name")             or "").lower()
+                or search_lower in (po.get("supplier")         or "").lower()
+                or search_lower in (po.get("status")           or "").lower()
+                or search_lower in str(po.get("transaction_date") or "").lower()
+                or search_lower in str(po.get("schedule_date")    or "").lower()
+                or search_lower in str(po.get("grand_total")      or "").lower()
+            ]
+
         total_items = len(all_pos)
 
         if total_items == 0:
@@ -703,7 +714,9 @@ def get_purchase_orders():
                 http_status=200,
             )
 
-        pos = all_pos[start:end]
+        start = (page - 1) * page_size
+        end   = start + page_size
+        pos   = all_pos[start:end]
 
         for po in pos:
             po["poId"] = po.pop("name")
