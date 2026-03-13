@@ -210,6 +210,8 @@ def create_purchase_invoice():
     items = data.get("items", [])
     metadata = data.get("metadata", {})
     remarks = metadata.get("remarks", "")
+    updateStock = data.get("updateStock", True)
+    set_warehouse = data.get("warehouse", None)
 
     if not supplierId:
         return send_response(
@@ -383,6 +385,7 @@ def create_purchase_invoice():
         packing = i.get("packing")
         exp_date = i.get("expDate")
         mfg_date = i.get("mfgDate")
+        warehouse = i.get("warehouse", None)
         if not itemCode:
             return send_response(
                 status="fail",
@@ -512,7 +515,7 @@ def create_purchase_invoice():
             "vat_rate": vat_rate,
             "unitOfMeasure": item_details.get("itemUnitCd"),
             "schedule_date": item_required_by,
-            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
+            "warehouse": warehouse,
             "packing": packing,
             "exp_date": exp_date,
             "mfg_date": mfg_date
@@ -521,7 +524,7 @@ def create_purchase_invoice():
         invoice_items_to_be_saved.append({
             "item_code": itemCode,
             "item_name": item_details.get("itemName"),
-            "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
+            "warehouse": warehouse,
             "custom_vat": vat_cd,
             "vat_rate": vat_rate,
             "qty": quantity,
@@ -648,7 +651,8 @@ def create_purchase_invoice():
         "items": invoice_items_to_be_saved,
         "remarks": remarks,
         "bill_no": spplrInvcNo,
-        "update_stock": 0,              # ✅ stock moves only on approval
+        "update_stock": updateStock,              # ✅ stock moves only on approval
+        "set_warehouse": set_warehouse,
         "supplier_address": supplier_addr_name,
         "dispatch_address": dispatch_addr_name,
         "shipping_address": shipping_addr_name,
@@ -1009,7 +1013,8 @@ def get_purchase_invoice_by_id():
                 "schedule_date as requiredBy",
                 "packing",
                 "mfg_date as mfgDate",
-                "exp_date as expDate"
+                "exp_date as expDate",
+                "warehouse"
             ]
         )
 
