@@ -322,6 +322,7 @@ def create_purchase_order():
         packing_size = i.get("packingSize"),  
         batch_no = i.get("batchNo")
         mfg_date = i.get("mfgDate")
+        warehouse = i.get("warehouse")
         if not itemCode:
             return send_response(
                 status="fail",
@@ -357,7 +358,11 @@ def create_purchase_order():
                 status_code=404,
                 http_status=404,
             )
-
+        if not warehouse:
+            return send_response(
+                status="fail",
+                message="Warehouse must not be empty"
+            )
         # ------------------------------------------------------------------ #
         #  ZRA-specific vatCd / taxCategory pairing — skipped when ZRA is OFF #
         # ------------------------------------------------------------------ #
@@ -430,10 +435,9 @@ def create_purchase_order():
             "item_code": itemCode,
             "item_name": item_details.get("itemName"),
             # "warehouse": CUSTOM_FRAPPE_INSTANCE.GetDefaultWareHouse(company_name),
-            "warehouse": None,
+            "warehouse": warehouse,
             "qty": quantity,
-            # "rate": rate if rate is not None else item_details.get("standardRate", 0),
-            "rate": 0,
+            "rate": rate if rate is not None else item_details.get("standardRate", 0),
             # "expense_account": CUSTOM_FRAPPE_INSTANCE.getDefaultExpenseAccount(),
             "expense_account":None,
             "schedule_date": item_required_by,
