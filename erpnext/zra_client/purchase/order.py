@@ -732,6 +732,8 @@ def get_purchase_orders():
             po["deliveryDate"] = str(po.pop("schedule_date")) if po.get("schedule_date") else None
             po["grandTotal"] = po.pop("grand_total")
             po["shippingRule"] = po.pop("shipping_rule")
+            if po["status"] == "To Receive and Bill":
+                po["status"] = "Approved"
 
         total_pages = (total_items + page_size - 1) // page_size
 
