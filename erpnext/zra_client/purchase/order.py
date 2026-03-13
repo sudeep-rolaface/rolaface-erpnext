@@ -812,7 +812,7 @@ def get_purchase_order():
             filters={"parent": poId},
             fields=["item_code", "item_name", "qty", "uom", "rate", "amount", "schedule_date",
                     "mfg_date as mfgDate", "packing_unit as packingUnit", "packing_size as packingSize",
-                    "batch_no as batchNo", "custom_vat_cd as vatCd", "vat_rate as vatRate"],
+                    "batch_no as batchNo", "custom_vat_cd as vatCd", "vat_rate as vatRate", "warehouse"],
         )
 
         total_quantity = sum(item.get("qty", 0) for item in items)
