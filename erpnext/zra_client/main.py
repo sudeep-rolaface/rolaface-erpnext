@@ -328,8 +328,7 @@ class ZRAClient:
     #         }
     #     }, 200
 
-    def check_stock(self, item_code, required_qty, batch_no=None):
-        warehouse = "Finished Goods - RI"
+    def check_stock(self, item_code, required_qty, batch_no=None, warehouse=None):
 
         try:
             required_qty = float(required_qty)

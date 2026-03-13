@@ -1618,6 +1618,9 @@ def create_sales_invoice():
     shippingAddressCountry = shippingAddress.get("country")
  
     payment_info = data.get("paymentInformation")
+    updateStock = data.get("updateStock", True)
+    set_warehouse = data.get("warehouse", None)
+
     if not payment_info or not isinstance(payment_info, dict):
         return send_response(
             status="error",
@@ -1831,7 +1834,7 @@ def create_sales_invoice():
         mfgDate = item.get("mfgDate", None)
         packingSize = item.get("packingSize", None)
         packingUnit = item.get("packingUnit", None)
- 
+        warehouse = item.get("warehouse", None)
         if not item_code:
             return send_response(
                 status="fail",
@@ -1885,7 +1888,7 @@ def create_sales_invoice():
  
         # Check stock
         checkStockResponse, checkStockStatusCode = (
-            ZRA_CLIENT_INSTANCE.check_stock(item_code, qty, batchNo)
+            ZRA_CLIENT_INSTANCE.check_stock(item_code, qty, batchNo, warehouse)
         )
  
         if checkStockStatusCode != 200:
@@ -1915,7 +1918,7 @@ def create_sales_invoice():
                 INNER JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
                 LEFT JOIN `tabBatch` b ON b.name = sbe.batch_no
                 WHERE sbb.item_code = %(item_code)s
-                AND sbb.warehouse = 'Finished Goods - RI'
+                AND sbb.warehouse = %(warehouse)s'
                 AND sbb.is_cancelled = 0
                 AND sbb.docstatus = 1
                 AND (b.expiry_date IS NULL OR b.expiry_date >= CURDATE())
@@ -1923,7 +1926,7 @@ def create_sales_invoice():
                 HAVING available_qty >= %(qty)s
                 ORDER BY b.expiry_date ASC
                 LIMIT 1
-            """, {"item_code": item_code, "qty": qty_float}, as_dict=True)
+            """, {"item_code": item_code, "qty": qty_float, "warehouse":warehouse}, as_dict=True)
  
             if not auto_batch:
                 return send_response(
@@ -1956,7 +1959,7 @@ def create_sales_invoice():
         invoice_items.append({
             "item_code": item_code,
             "item_name": item_details.get("itemName"),
-            "warehouse": "Finished Goods - RI",
+            "warehouse": warehouse,
             "qty": qty,
             "rate": rate,
             "discount_amount": validatedDiscount,
@@ -1972,7 +1975,8 @@ def create_sales_invoice():
             "exp_date": expDate,
             "mfg_date": mfgDate,
             "packing_size": packingSize,
-            "packing_unit": packingUnit
+            "packing_unit": packingUnit,
+            "updateStock":updateStock
         })
  
         sale_payload_items.append({
@@ -2032,128 +2036,78 @@ def create_sales_invoice():
         "routing_number": routing_number,
         "swift_code": swift_code,
         "invoice_items": invoice_items,
+        "updateStock": updateStock,
+        "set_warehouse": set_warehouse
     }
- 
-    # ── ZRA sync (only if enabled) ────────────────────────────────────────────
-    zra_result = None
-    currency = None
-    exchange_rate = None
-    total_tax = None
- 
-    if frappe.conf.get("enable_zra_sync", False):
-        zra_result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
- 
-        if zra_result.get("resultCd") != "000":
-            return send_response(
-                status="fail",
-                message=zra_result.get("resultMsg", "Unknown error from ZRA"),
-                status_code=400,
-                http_status=400
-            )
- 
-        additional_info = zra_result.get("additionalInfo") or []
-        currency      = additional_info[0] if len(additional_info) > 0 else None
-        exchange_rate = additional_info[1] if len(additional_info) > 1 else None
-        total_tax     = additional_info[2] if len(additional_info) > 2 else None
- 
-        zra_items = zra_result.get("additionInfoToBeSavedItem") or []
-        if zra_items:
-            zra_lookup = {i["itemCd"]: i["vatTaxblAmt"] for i in zra_items}
-            for inv_item in invoice_items:
-                if inv_item.get("item_code") in zra_lookup:
-                    inv_item["custom_vattaxblamt"] = zra_lookup[inv_item["item_code"]]
- 
-    # ── Create ERPNext Sales Invoice ──────────────────────────────────────────
+
+
+    result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
     try:
-        doc = frappe.get_doc({
-            "doctype": "Sales Invoice",
-            "name": new_invoice_name,
- 
-            # ── FIX 1: Explicitly set invoice currency ────────────────────────
-            "currency": currencyCd,
- 
-            # ── FIX 2: Explicitly set conversion rate ─────────────────────────
-            # ERPNext uses this to convert USD amounts → INR in GL entries
-            "conversion_rate": exchangeRt,
- 
-            # ── FIX 3: Explicitly set the correct receivable account ──────────
-            # Points to USD receivable account (not default INR receivable)
-            "debit_to": debit_to,
- 
-            # ── FIX 4: Clear auto-applied tax templates ───────────────────────
-            # Prevents ERPNext from auto-applying INR GST/IGST templates
-            "taxes_and_charges": "",
-            "taxes": [],
- 
-            "custom_invoice_type": invoiceType,
-            "custom_invoice_status": invoiceStatus,
-            "custom_exchange_rate": exchange_rate,
-            "custom_total_tax_amount": total_tax,
-            "custom_zra_currency": currency,
-            "due_date": dueDate,
-            "custom_billing_address_line_1": billingAddressLine1,
-            "custom_billing_address_line_2": billingAddressLine2,
-            "custom_billing_address_postal_code": billingAddressPostalCode,
-            "custom_billing_address_city": billingAddressCity,
-            "custom_billing_address_state": billingAddressState,
-            "custom_billing_address_country": billingAddressCountry,
-            "custom_shipping_address_line1": shippingAddressLine1,
-            "custom_shipping_address_line2": shippingAddressLine2,
-            "custom_shipping_address_postal_code": shippingAddressPostalCode,
-            "custom_shipping_address_city": shippingAddressCity,
-            "custom_shipping_address_state": shippingAddressState,
-            "custom_shipping_address_country": shippingAddressCountry,
-            "custom_export_destination_country": destnCountryCd,
-            "custom_local_purchase_order_number": lpoNumber,
-            "custom_payment_terms": payment_terms,
-            "custom_payment_method": payment_method,
-            "custom_bank_name": bank_name,
-            "custom_account_number": account_number,
-            "custom_routing_number": routing_number,
-            "custom_swift": swift_code,
-            "customer": customer_data.get("name"),
-            "update_stock": 1,
-            "items": invoice_items,
-        })
-        doc.insert(ignore_permissions=True)
-        doc.submit()
-        frappe.db.commit()
- 
-    except frappe.ValidationError as ve:
-        frappe.db.rollback()
-        if zra_result:
-            frappe.log_error(
-                f"ZRA received sale for {new_invoice_name} but ERPNext invoice failed: {str(ve)}",
-                "ZRA-ERPNext Mismatch"
-            )
-        return send_response(
-            status="fail",
-            message=f"Validation Error: {str(ve)}",
-            status_code=400
-        )
-    except frappe.DuplicateEntryError as de:
-        frappe.db.rollback()
-        return send_response(
-            status="fail",
-            message=f"Duplicate Entry Error: {str(de)}",
-            status_code=409
-        )
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Create Sales Invoice API Error")
-        frappe.db.rollback()
-        if zra_result:
-            frappe.log_error(
-                f"ZRA received sale for {new_invoice_name} but ERPNext failed: {str(e)}",
-                "ZRA-ERPNext Mismatch"
-            )
-        return send_response(
-            status="fail",
-            message=f"Unexpected Error: {str(e)}",
-            status_code=500
-        )
- 
-    # ── Create Terms doc ───────────────────────────────────────────────────────
-    try:
+        if frappe.conf.get("enable_zra_sync", False):
+            additional_info = result.get("additionalInfo") or []
+            if additional_info and len(additional_info) >= 3:
+                currency = additional_info[0]
+                exchange_rate = additional_info[1]
+                total_tax = additional_info[2]
+            else:
+                currency = None
+                exchange_rate = None
+                total_tax = None
+
+            zra_items = result.get("additionInfoToBeSavedItem") or []
+            if zra_items:
+                zra_lookup = {item["itemCd"]: item["vatTaxblAmt"] for item in zra_items}
+                for inv_item in invoice_items:
+                    item_code = inv_item.get("item_code")
+                    if item_code in zra_lookup:
+                        inv_item["custom_vattaxblamt"] = zra_lookup[item_code]
+                        
+            if result.get("resultCd") != "000":
+                return send_response(
+                    status="fail",
+                    message=result.get("resultMsg", "Unknown error from ZRA"),
+                    status_code=400,
+                    http_status=400
+                )
+            doc = frappe.get_doc({
+                "doctype": "Sales Invoice",
+                "name": new_invoice_name,
+                "custom_invoice_type": invoiceType,
+                "custom_exchange_rate": exchange_rate,
+                "custom_total_tax_amount": total_tax,
+                "custom_zra_currency": currency,
+                "custom_invoice_status": invoiceStatus,
+                "due_date": dueDate,
+                "custom_billing_address_line_1": billingAddressLine1,
+                "custom_billing_address_line_2": billingAddressLine2,
+                "custom_billing_address_postal_code": billingAddressPostalCode,
+                "custom_billing_address_city":  billingAddressCity,
+                "custom_billing_address_state": billingAddressState,
+                "custom_billing_address_country": billingAddressCountry,
+                "custom_shipping_address_line1": shippingAddressLine1,
+                "custom_shipping_address_line2": shippingAddressLine2,
+                "custom_shipping_address_postal_code": shippingAddressPostalCode, 
+                "custom_shipping_address_city": shippingAddressCity, 
+                "custom_shipping_address_state": shippingAddressState, 
+                "custom_shipping_address_country": shippingAddressCountry,
+                "custom_export_destination_country": destnCountryCd,
+                "custom_local_purchase_order_number": lpoNumber,
+                "custom_payment_terms": payment_terms,
+                "custom_payment_method": payment_method,
+                "custom_bank_name": bank_name,
+                "custom_account_number": account_number,
+                "custom_routing_number": routing_number,
+                "custom_swift": swift_code,
+                "customer": customer_data.get("name"),
+                "update_stock": updateStock,
+                "items": invoice_items,
+                "conversion_rate": exchangeRt,
+                "set_warehouse":set_warehouse
+            })
+            doc.insert(ignore_permissions=True)
+            doc.submit()
+            frappe.db.commit()
+        
         terms_doc = frappe.get_doc({
             "doctype": "Sale Invoice Selling Terms",
             "invoiceno": new_invoice_name,
@@ -2165,30 +2119,21 @@ def create_sales_invoice():
         })
         terms_doc.insert()
         frappe.db.commit()
-    except Exception as e:
-        frappe.log_error(f"Terms doc failed for {new_invoice_name}: {str(e)}", "Terms Doc Error")
- 
-    # ── Create Payment doc ─────────────────────────────────────────────────────
-    if payment_terms_data:
-        try:
+        
+        if payment_terms_data:
             payment_doc = frappe.get_doc({
                 "doctype": "Sale Invoice Selling Payment",
                 "invoiceno": new_invoice_name,
-                "duedates": dueDates,
-                "latecharges": lateCharges,
+                "duedates": dueDates,     
+                "latecharges": lateCharges, 
                 "taxes": tax,
                 "notes": notes
             })
             payment_doc.insert()
             frappe.db.commit()
-        except Exception as e:
-            frappe.log_error(f"Payment doc failed for {new_invoice_name}: {str(e)}", "Payment Doc Error")
- 
-    # ── Create Payment Phases ──────────────────────────────────────────────────
-    if phases:
-        for phase in phases:
-            try:
-                random_id = "{:06d}".format(random.randint(0, 999999))
+        if phases:
+            for phase in phases:
+                random_id = "{:06d}".format(random.randint(0, 999999)) 
                 phase_doc = frappe.get_doc({
                     "doctype": "Sale Invoice Selling Payment Phases",
                     "id": random_id,
@@ -2199,15 +2144,34 @@ def create_sales_invoice():
                 })
                 phase_doc.insert()
                 frappe.db.commit()
-            except Exception as e:
-                frappe.log_error(f"Phase doc failed for {new_invoice_name}: {str(e)}", "Phase Doc Error")
- 
-    return send_response(
-        status="success",
-        message="Sales Invoice created successfully",
-        status_code=200
-    )
 
+        return send_response(
+            status="success",
+            message="Sales Invoice created successfully",
+            status_code=200
+        )
+    except frappe.DuplicateEntryError as de:
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=f"Duplicate Entry Error: {str(de)}",
+            status_code=409
+        )
+    except frappe.ValidationError as ve:
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=f"Validation Error: {str(ve)}",
+            status_code=400
+        )
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Create Sales Invoice API Error")
+        frappe.db.rollback()
+        return send_response(
+            status="fail",
+            message=f"Unexpected Error: {str(e)}",
+            status_code=500
+        )
 
 @frappe.whitelist(allow_guest=False, methods=["GET"])
 def get_sales_invoice():
