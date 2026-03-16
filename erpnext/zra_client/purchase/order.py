@@ -1,3 +1,4 @@
+from custom_api.helper import STATUS_MAP
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
 from erpnext.zra_client.tax_calcalator.tax import TaxCaller
@@ -732,8 +733,11 @@ def get_purchase_orders():
             po["deliveryDate"] = str(po.pop("schedule_date")) if po.get("schedule_date") else None
             po["grandTotal"] = po.pop("grand_total")
             po["shippingRule"] = po.pop("shipping_rule")
-            if po["status"] == "To Receive and Bill":
-                po["status"] = "Approved"
+            erp_status = po["status"]
+            for api_status, config in STATUS_MAP.items():
+                if erp_status == config["erp_status"]:
+                    po["status"] = api_status
+                    break
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -944,7 +948,11 @@ def get_purchase_order():
         supplier_addr = get_address_details(po.supplier_address, include_contact=True)
         dispatch_addr = get_address_details(po.dispatch_address, include_contact=False)
         shipping_addr = get_address_details(po.shipping_address, include_contact=False)
-
+        ERP_TO_API_STATUS = {
+                                config["erp_status"]: api_status
+                                for api_status, config in STATUS_MAP.items()
+                            }
+        api_status = ERP_TO_API_STATUS.get(po.status, po.status)        
         response_data = {
             "poId": po.name,
             "supplierName": po.supplier,
@@ -952,7 +960,7 @@ def get_purchase_order():
             "requiredBy": str(po.schedule_date) if po.schedule_date else None,
             "currency": po.currency,
             "conversionRate": po.conversion_rate,
-            "status": po.status,
+            "status": api_status,
             "grandTotal": po.grand_total,
             "taxCategory": po.tax_category,
             "placeOfSupply": po.custom_placeofsupply,
