@@ -1014,7 +1014,8 @@ def get_purchase_invoice_by_id():
                 "packing",
                 "mfg_date as mfgDate",
                 "exp_date as expDate",
-                "warehouse"
+                "warehouse",
+                "batch_no as batchNo"
             ]
         )
 
