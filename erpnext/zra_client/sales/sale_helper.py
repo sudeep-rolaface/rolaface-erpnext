@@ -525,7 +525,7 @@ class NormaSale(ZRAClient):
                 "debit_to": debtor_account,
                 "items": items,
                 "remarks": payload.get("remark", ""),
-                "update_stock": 1 if canUpdateInvoice else 0,
+                "update_stock": sell_data["updateStock"],
                 "items": sell_data["invoice_items"],
                 "custom_invoice_type": sell_data["invoiceType"],
                 "custom_invoice_status": sell_data["invoiceStatus"],
@@ -550,6 +550,7 @@ class NormaSale(ZRAClient):
                 "custom_account_number": sell_data["account_number"],
                 "custom_routing_number": sell_data["routing_number"],
                 "custom_swift": sell_data["swift_code"],
+                "set_warehouse": sell_data["set_warehouse"]
             })
 
             invoice.insert(ignore_permissions=True)

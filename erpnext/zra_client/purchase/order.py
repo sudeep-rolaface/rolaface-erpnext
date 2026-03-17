@@ -1,3 +1,4 @@
+from custom_api.helper import STATUS_MAP
 from erpnext.zra_client.generic_api import send_response, send_response_list
 from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
 from erpnext.zra_client.tax_calcalator.tax import TaxCaller
@@ -732,6 +733,11 @@ def get_purchase_orders():
             po["deliveryDate"] = str(po.pop("schedule_date")) if po.get("schedule_date") else None
             po["grandTotal"] = po.pop("grand_total")
             po["shippingRule"] = po.pop("shipping_rule")
+            erp_status = po["status"]
+            for api_status, config in STATUS_MAP.items():
+                if erp_status == config["erp_status"]:
+                    po["status"] = api_status
+                    break
 
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -942,7 +948,11 @@ def get_purchase_order():
         supplier_addr = get_address_details(po.supplier_address, include_contact=True)
         dispatch_addr = get_address_details(po.dispatch_address, include_contact=False)
         shipping_addr = get_address_details(po.shipping_address, include_contact=False)
-
+        ERP_TO_API_STATUS = {
+                                config["erp_status"]: api_status
+                                for api_status, config in STATUS_MAP.items()
+                            }
+        api_status = ERP_TO_API_STATUS.get(po.status, po.status)        
         response_data = {
             "poId": po.name,
             "supplierName": po.supplier,
@@ -950,7 +960,7 @@ def get_purchase_order():
             "requiredBy": str(po.schedule_date) if po.schedule_date else None,
             "currency": po.currency,
             "conversionRate": po.conversion_rate,
-            "status": po.status,
+            "status": api_status,
             "grandTotal": po.grand_total,
             "taxCategory": po.tax_category,
             "placeOfSupply": po.custom_placeofsupply,
@@ -1119,329 +1129,4 @@ def update_purchase_order_status():
             data={"error": str(e)},
             status_code=500,
             http_status=500,
-        )
-
-@frappe.whitelist(allow_guest=False)
-def update_proforma_api():
-    try:
-        payload = json.loads(frappe.local.request.get_data().decode("utf-8"))
-    except Exception as e:
-        return send_response("fail", f"Invalid JSON payload: {str(e)}", 400)
-    
-    # ── Get proforma ID ───────────────────────────────────────────────────────
-    proforma_id = payload.get("id")
-    
-    if not proforma_id:
-        return send_response(
-            status="fail",
-            message="Proforma ID is required",
-            status_code=400,
-            http_status=400
-        )
-    
-    # ── Check if proforma exists ──────────────────────────────────────────────
-    if not frappe.db.exists("Proforma", proforma_id):
-        return send_response(
-            status="fail",
-            message=f"Proforma '{proforma_id}' not found",
-            status_code=404,
-            http_status=404
-        )
-    
-    try:
-        proforma = frappe.get_doc("Proforma", proforma_id)
-        
-        # ── Helper function ───────────────────────────────────────────────────
-        def set_if_present(doc, field, value):
-            if value is not None:
-                setattr(doc, field, value)
-        
-        # ── Update basic fields ───────────────────────────────────────────────
-        customer_id = payload.get("customerId")
-        if customer_id:
-            customer_data = ZRA_CLIENT_INSTANCE.get_customer_details(customer_id)
-            if customer_data and customer_data.get("status") != "fail":
-                set_if_present(proforma, "customer", customer_data.get("name"))
-                set_if_present(proforma, "customer_name", customer_data.get("customer_name"))
-        
-        set_if_present(proforma, "currency", payload.get("currencyCode"))
-        set_if_present(proforma, "exchange_rate", payload.get("exchangeRt"))
-        set_if_present(proforma, "invoice_type", payload.get("invoiceType"))
-        set_if_present(proforma, "invoice_status", payload.get("invoiceStatus"))
-        set_if_present(proforma, "date_of_invoice", payload.get("dateOfInvoice"))
-        set_if_present(proforma, "due_date", payload.get("dueDate"))
-        
-        # ── Validate due date ─────────────────────────────────────────────────
-        if payload.get("dueDate"):
-            if getdate(payload.get("dueDate")) < getdate(today()):
-                return send_response(
-                    status="fail",
-                    message="Due Date cannot be in the past",
-                    status_code=400,
-                    http_status=400
-                )
-        
-        # ── Update billing address ────────────────────────────────────────────
-        billing = payload.get("billingAddress", {})
-        set_if_present(proforma, "billing_address_line_1", billing.get("line1"))
-        set_if_present(proforma, "billing_address_line_2", billing.get("line2"))
-        set_if_present(proforma, "billing_address_postal_code", billing.get("postalCode"))
-        set_if_present(proforma, "billing_address_city", billing.get("city"))
-        set_if_present(proforma, "billing_address_state", billing.get("state"))
-        set_if_present(proforma, "billing_address_country", billing.get("country"))
-        
-        # ── Update shipping address ───────────────────────────────────────────
-        shipping = payload.get("shippingAddress", {})
-        set_if_present(proforma, "shipping_address_line_1", shipping.get("line1"))
-        set_if_present(proforma, "shipping_address_line_2", shipping.get("line2"))
-        set_if_present(proforma, "shipping_address_postal_code", shipping.get("postalCode"))
-        set_if_present(proforma, "shipping_address_city", shipping.get("city"))
-        set_if_present(proforma, "shipping_address_state", shipping.get("state"))
-        set_if_present(proforma, "shipping_address_country", shipping.get("country"))
-        
-        # ── Update payment information ────────────────────────────────────────
-        payment_info = payload.get("paymentInformation", {})
-        set_if_present(proforma, "payment_terms", payment_info.get("paymentTerms"))
-        set_if_present(proforma, "payment_method", payment_info.get("paymentMethod"))
-        set_if_present(proforma, "bank_name", payment_info.get("bankName"))
-        set_if_present(proforma, "account_number", payment_info.get("accountNumber"))
-        set_if_present(proforma, "routing_number", payment_info.get("routingNumber"))
-        set_if_present(proforma, "swift_code", payment_info.get("swiftCode"))
-        
-        # ── Save proforma (before handling items) ─────────────────────────────
-        proforma.save(ignore_permissions=True)
-        
-        # ══════════════════════════════════════════════════════════════════════
-        # UPDATE ITEMS (WITH AUTO-DELETE)
-        # ══════════════════════════════════════════════════════════════════════
-        items = payload.get("items")
-        
-        if items is not None:  # Allow empty array to delete all items
-            # Get existing items
-            existing_items = frappe.get_all(
-                "Proforma Item",
-                filters={"proforma_id": proforma_id},
-                fields=["name", "item_code"]
-            )
-            
-            existing_item_codes = {item["item_code"]: item["name"] for item in existing_items}
-            incoming_item_codes = set()
-            
-            total_items = 0
-            grand_total = 0
-            
-            for item in items:
-                item_code = item.get("itemCode")
-                is_delete = item.get("isDelete", 0)
-                
-                # Handle explicit deletion
-                if item_code and is_delete == 1:
-                    if item_code in existing_item_codes:
-                        frappe.delete_doc(
-                            "Proforma Item",
-                            existing_item_codes[item_code],
-                            ignore_permissions=True
-                        )
-                    continue
-                
-                # Calculate item totals
-                qty = float(item.get("quantity", 1))
-                unit_price = float(item.get("price", 0))
-                discount = float(item.get("discount", 0))
-                tax = float(item.get("vatRate", 0))
-                item_total = (qty * unit_price) - discount + tax
-                
-                # Update existing item
-                if item_code and item_code in existing_item_codes:
-                    item_doc = frappe.get_doc("Proforma Item", existing_item_codes[item_code])
-                    
-                    # Get item details if needed
-                    if item.get("itemCode"):
-                        getItemDetails = ZRA_CLIENT_INSTANCE.get_item_details(item_code)
-                        item_doc.item_name = getItemDetails.get("itemName")
-                    
-                    item_doc.description = item.get("description", item_doc.description)
-                    item_doc.qty = qty
-                    item_doc.unit_price = unit_price
-                    item_doc.discount = discount
-                    item_doc.tax = tax
-                    item_doc.item_total = item_total
-                    item_doc.packing_size = item.get("packingSize")
-                    item_doc.packing_unit = item.get("packingUnit")
-                    item_doc.vat_code = item.get("vatCode")
-                    
-                    item_doc.save(ignore_permissions=True)
-                    incoming_item_codes.add(item_code)
-                
-                # Create new item
-                else:
-                    if not item_code:
-                        continue  # Skip if no item code
-                    
-                    getItemDetails = ZRA_CLIENT_INSTANCE.get_item_details(item_code)
-                    
-                    new_item = frappe.get_doc({
-                        "doctype": "Proforma Item",
-                        "proforma_id": proforma_id,
-                        "item_name": getItemDetails.get("itemName"),
-                        "item_code": item_code,
-                        "description": item.get("description"),
-                        "qty": qty,
-                        "unit_price": unit_price,
-                        "discount": discount,
-                        "tax": tax,
-                        "item_total": item_total,
-                        "packing_size": item.get("packingSize"),
-                        "packing_unit": item.get("packingUnit"),
-                        "vat_code": item.get("vatCode")
-                    })
-                    new_item.insert(ignore_permissions=True)
-                    incoming_item_codes.add(item_code)
-                
-                total_items += qty
-                grand_total += item_total
-            
-            # ── DELETE ITEMS NOT IN INCOMING ARRAY ───────────────────────────
-            items_to_delete = set(existing_item_codes.keys()) - incoming_item_codes
-            
-            for item_code in items_to_delete:
-                if item_code in existing_item_codes:
-                    frappe.delete_doc(
-                        "Proforma Item",
-                        existing_item_codes[item_code],
-                        ignore_permissions=True
-                    )
-            
-            # ── Update totals ─────────────────────────────────────────────────
-            proforma.total_items = total_items
-            proforma.total_amount = grand_total
-            proforma.save(ignore_permissions=True)
-        
-        # ══════════════════════════════════════════════════════════════════════
-        # UPDATE TERMS
-        # ══════════════════════════════════════════════════════════════════════
-        terms = payload.get("terms", {}).get("selling", {})
-        
-        if terms:
-            # Update or create selling terms
-            if frappe.db.exists("Sale Invoice Selling Terms", {"invoiceno": proforma_id}):
-                terms_doc = frappe.get_doc("Sale Invoice Selling Terms", {"invoiceno": proforma_id})
-            else:
-                terms_doc = frappe.new_doc("Sale Invoice Selling Terms")
-                terms_doc.invoiceno = proforma_id
-            
-            set_if_present(terms_doc, "general", terms.get("general"))
-            set_if_present(terms_doc, "delivery", terms.get("delivery"))
-            set_if_present(terms_doc, "cancellation", terms.get("cancellation"))
-            set_if_present(terms_doc, "warranty", terms.get("warranty"))
-            set_if_present(terms_doc, "liability", terms.get("liability"))
-            
-            if terms_doc.is_new():
-                terms_doc.insert(ignore_permissions=True)
-            else:
-                terms_doc.save(ignore_permissions=True)
-            
-            # Update or create payment terms
-            payment_terms_data = terms.get("payment", {})
-            
-            if payment_terms_data:
-                if frappe.db.exists("Sale Invoice Selling Payment", {"invoiceno": proforma_id}):
-                    payment_doc = frappe.get_doc("Sale Invoice Selling Payment", {"invoiceno": proforma_id})
-                else:
-                    payment_doc = frappe.new_doc("Sale Invoice Selling Payment")
-                    payment_doc.invoiceno = proforma_id
-                
-                set_if_present(payment_doc, "duedates", payment_terms_data.get("dueDates"))
-                set_if_present(payment_doc, "latecharges", payment_terms_data.get("lateCharges"))
-                set_if_present(payment_doc, "taxes", payment_terms_data.get("taxes"))
-                set_if_present(payment_doc, "notes", payment_terms_data.get("notes"))
-                
-                if payment_doc.is_new():
-                    payment_doc.insert(ignore_permissions=True)
-                else:
-                    payment_doc.save(ignore_permissions=True)
-            
-            # ── Update payment phases (WITH AUTO-DELETE) ──────────────────────
-            phases = payment_terms_data.get("phases")
-            
-            if phases is not None:
-                # Get existing phases
-                existing_phases = frappe.get_all(
-                    "Sale Invoice Selling Payment Phases",
-                    filters={"invoiceno": proforma_id},
-                    fields=["name", "id"]
-                )
-                
-                existing_phase_map = {phase["id"]: phase["name"] for phase in existing_phases if phase.get("id")}
-                existing_phase_ids = set(existing_phase_map.keys())
-                incoming_phase_ids = set()
-                
-                for phase in phases:
-                    phase_id = phase.get("id")
-                    is_delete = phase.get("isDelete", 0)
-                    
-                    # Handle explicit deletion
-                    if phase_id and is_delete == 1:
-                        if phase_id in existing_phase_map:
-                            frappe.delete_doc(
-                                "Sale Invoice Selling Payment Phases",
-                                existing_phase_map[phase_id],
-                                ignore_permissions=True
-                            )
-                        continue
-                    
-                    # Update existing phase
-                    if phase_id and phase_id in existing_phase_map:
-                        phase_doc = frappe.get_doc(
-                            "Sale Invoice Selling Payment Phases",
-                            existing_phase_map[phase_id]
-                        )
-                        phase_doc.phase_name = phase.get("name")
-                        phase_doc.percentage = phase.get("percentage")
-                        phase_doc.condition = phase.get("condition")
-                        phase_doc.save(ignore_permissions=True)
-                        incoming_phase_ids.add(phase_id)
-                    
-                    # Create new phase
-                    else:
-                        new_id = "{:08d}".format(random.randint(0, 99999999))
-                        phase_doc = frappe.get_doc({
-                            "doctype": "Sale Invoice Selling Payment Phases",
-                            "id": new_id,
-                            "invoiceno": proforma_id,
-                            "phase_name": phase.get("name"),
-                            "percentage": phase.get("percentage"),
-                            "condition": phase.get("condition")
-                        })
-                        phase_doc.insert(ignore_permissions=True)
-                        incoming_phase_ids.add(new_id)
-                
-                # ── DELETE PHASES NOT IN INCOMING ARRAY ───────────────────────
-                phases_to_delete = existing_phase_ids - incoming_phase_ids
-                
-                for phase_id in phases_to_delete:
-                    if phase_id in existing_phase_map:
-                        frappe.delete_doc(
-                            "Sale Invoice Selling Payment Phases",
-                            existing_phase_map[phase_id],
-                            ignore_permissions=True
-                        )
-        
-        frappe.db.commit()
-        
-        return send_response(
-            status="success",
-            message="Proforma updated successfully",
-            status_code=200,
-            http_status=200
-        )
-    
-    except Exception as e:
-        frappe.db.rollback()
-        frappe.log_error(frappe.get_traceback(), "Update Proforma API Error")
-        return send_response(
-            status="fail",
-            message=f"Failed to update proforma: {str(e)}",
-            status_code=500,
-            http_status=500
         )
