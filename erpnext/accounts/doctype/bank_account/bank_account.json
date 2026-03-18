@@ -26,6 +26,7 @@
   "column_break_12",
   "branch_code",
   "bank_account_no",
+  "branch_address",
   "address_and_contact",
   "address_html",
   "column_break_13",
@@ -206,6 +207,11 @@
    "fieldname": "disabled",
    "fieldtype": "Check",
    "label": "Disabled"
+  },
+  {
+   "fieldname": "branch_address",
+   "fieldtype": "Data",
+   "label": "Branch Address"
   }
  ],
  "links": [
@@ -250,7 +256,7 @@
    "link_fieldname": "default_bank_account"
   }
  ],
- "modified": "2024-10-30 09:41:14.113414",
+ "modified": "2026-03-18 08:15:33.703981",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Bank Account",
@@ -282,6 +288,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "search_fields": "bank,account",
  "sort_field": "creation",
  "sort_order": "DESC",
