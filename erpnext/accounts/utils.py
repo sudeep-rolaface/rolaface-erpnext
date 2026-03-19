@@ -1247,7 +1247,11 @@ def get_children(doctype, parent, company, is_root=False, include_disabled=False
 	if frappe.db.has_column(doctype, "disabled") and not include_disabled:
 		filters.append(["disabled", "=", False])
 
-	filters.append([f'ifnull(`{parent_fieldname}`,"")', "=", "" if is_root else parent])
+	# filters.append([f'ifnull(`{parent_fieldname}`,"")', "=", "" if is_root else parent])
+	if is_root:
+        filters.append([parent_fieldname, "in", ["", None]])
+    else:
+        filters.append([parent_fieldname, "=", parent])
 
 	if is_root:
 		fields += ["root_type", "report_type", "account_currency"] if doctype == "Account" else []
