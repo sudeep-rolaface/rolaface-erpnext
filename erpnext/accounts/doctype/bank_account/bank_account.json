@@ -27,6 +27,7 @@
   "branch_code",
   "bank_account_no",
   "branch_address",
+  "bank_account_currency",
   "address_and_contact",
   "address_html",
   "column_break_13",
@@ -212,6 +213,12 @@
    "fieldname": "branch_address",
    "fieldtype": "Data",
    "label": "Branch Address"
+  },
+  {
+   "fieldname": "bank_account_currency",
+   "fieldtype": "Link",
+   "label": "Bank Account Currency",
+   "options": "Currency"
   }
  ],
  "links": [
@@ -256,7 +263,7 @@
    "link_fieldname": "default_bank_account"
   }
  ],
- "modified": "2026-03-18 08:15:33.703981",
+ "modified": "2026-03-19 14:17:17.899514",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Bank Account",

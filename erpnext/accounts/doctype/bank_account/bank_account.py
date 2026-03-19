@@ -26,6 +26,7 @@ class BankAccount(Document):
 		account_subtype: DF.Link | None
 		account_type: DF.Link | None
 		bank: DF.Link
+		bank_account_currency: DF.Link | None
 		bank_account_no: DF.Data | None
 		branch_address: DF.Data | None
 		branch_code: DF.Data | None
