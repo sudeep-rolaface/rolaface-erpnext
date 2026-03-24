@@ -2183,10 +2183,19 @@ def get_sales_invoice():
         search        = args.get("search")
         sort_by       = args.get("sortBy", "invoiceNumber")
         sort_order    = args.get("sortOrder", "desc").lower()
+        minOutstanding= args.get("minOutstanding",1)
+        maxOutstanding = args.get("maxOutstanding")
 
         conditions = {}
         if customer_name:
             conditions["customer"] = customer_name
+
+        if minOutstanding and maxOutstanding:
+            conditions["outstanding_amount"] = ["between", [float(minOutstanding), float(maxOutstanding)]]
+        elif minOutstanding:
+            conditions["outstanding_amount"] = [">=", float(minOutstanding)]
+        elif maxOutstanding:
+            conditions["outstanding_amount"] = ["<=", float(maxOutstanding)]
 
         if not page:
             return send_response(
