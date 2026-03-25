@@ -1387,66 +1387,45 @@ def get_automatic_purchase_invoice():
 
 @frappe.whitelist(allow_guest=False, methods=["PATCH"])
 def update_purchase_invoices_status():
-    data = frappe.form_dict
-    pId = data.get("id")
-    new_status = data.get("status")
+    try:
+        data = frappe.request.get_json()
+        pId = data.get("id")
+        new_status = data.get("status")
 
-    STATUSES = CUSTOM_FRAPPE_INSTANCE.PurchaseInvoiceStatuses()
+        if not pId:
+            return send_response(status="fail", message="'id' is required.", data=None, status_code=400, http_status=400)
 
-    # ── Basic validations ─────────────────────────────────────────────────────
-    if not pId:
-        return send_response(status="fail", message="'id' parameter is required.", data=None, status_code=400, http_status=400)
+        if not new_status:
+            return send_response(status="fail", message="'status' is required.", data=None, status_code=400, http_status=400)
 
-    if not new_status:
-        return send_response(status="fail", message="'status' parameter is required.", data=None, status_code=400, http_status=400)
+        if not frappe.db.exists("Purchase Invoice", pId):
+            return send_response(status="fail", message=f"Purchase Invoice '{pId}' not found.", data=None, status_code=404, http_status=404)
 
-    if new_status not in STATUSES:
-        return send_response(
-            status="fail",
-            message=f"Invalid status '{new_status}'. Allowed statuses are: {', '.join(STATUSES)}.",
-            status_code=400,
-            http_status=400,
-        )
+        pi_doc = frappe.get_doc("Purchase Invoice", pId)
 
-    if not frappe.db.exists("Purchase Invoice", pId):
-        return send_response(status="fail", message=f"Purchase Invoice '{pId}' not found.", data=None, status_code=404, http_status=404)
+        valid_statuses = CUSTOM_FRAPPE_INSTANCE.PurchaseInvoiceStatuses()
 
-    # ── Fetch document ────────────────────────────────────────────────────────
-    pi_doc = frappe.get_doc("Purchase Invoice", pId)
+        if new_status not in valid_statuses:
+            return send_response(
+                status="fail",
+                message=f"'status' must be one of: {', '.join(valid_statuses)}.",
+                data=None,
+                status_code=400,
+                http_status=400
+            )
 
-    STOCK_TRIGGER_STATUSES = ["Approved", "Paid"]
+        if new_status == "Submitted":
+            if pi_doc.docstatus != 0:
+                return send_response(status="fail", message="Only Draft invoices can be submitted.", data=None, status_code=400, http_status=400)
+            pi_doc.submit()
 
-    if new_status in STOCK_TRIGGER_STATUSES:
+        elif new_status == "Cancelled":
+            if pi_doc.docstatus != 1:
+                return send_response(status="fail", message="Only Submitted invoices can be cancelled.", data=None, status_code=400, http_status=400)
+            pi_doc.cancel()
 
-        if pi_doc.docstatus == 0:
-
-            try:
-                # ✅ Step 1: Force update_stock=1 directly in DB — bypasses cache
-                frappe.db.set_value(
-                    "Purchase Invoice",
-                    pId,
-                    "update_stock",
-                    1,
-                    update_modified=False
-                )
-                frappe.db.commit()
-
-                # ✅ Step 2: Fresh reload — picks up update_stock=1
-                pi_doc = frappe.get_doc("Purchase Invoice", pId)
-
-                # ✅ Step 3: Restore batch_no on DB rows + in-memory doc using PI reference.
-                # Uses the exact batch the user originally sent — no random creation.
-                _restore_batch_nos_for_submit(pi_doc, pId)
-
-                frappe.logger().info(
-                    f"[PI STATUS] '{pId}' update_stock={pi_doc.update_stock} — submitting."
-                )
-
-                # ✅ Step 4: Submit — Stock Ledger Entry created, batch balance updated
-                pi_doc.submit()
-
-                # ✅ Step 5: Force custom status — ERPNext auto-sets "Unpaid" on submit
-                frappe.db.sql("""
+        else:
+            frappe.db.sql("""
                     UPDATE `tabPurchase Invoice`
                     SET status = %s,
                         modified = NOW(),
@@ -1454,57 +1433,25 @@ def update_purchase_invoices_status():
                     WHERE name = %s
                 """, (new_status, frappe.session.user, pId))
 
-                frappe.db.commit()
-
-                frappe.logger().info(
-                    f"[PI STATUS] '{pId}' submitted. status='{new_status}'. Inventory updated."
-                )
-
-            except Exception as e:
-                frappe.db.rollback()
-                frappe.log_error(frappe.get_traceback(), "Update Purchase Invoice Status - Stock Error")
-                return send_response(
-                    status="fail",
-                    message=f"Failed to update stock for invoice '{pId}': {str(e)}",
-                    status_code=500,
-                    http_status=500
-                )
-
-        elif pi_doc.docstatus == 1:
-            # ── Document already Submitted → just update status field via SQL ─
-            frappe.logger().info(
-                f"[PI STATUS] '{pId}' docstatus=1 (already submitted) → updating status='{new_status}' only."
-            )
-
-            frappe.db.sql("""
-                UPDATE `tabPurchase Invoice`
-                SET status = %s,
-                    modified = NOW(),
-                    modified_by = %s
-                WHERE name = %s
-            """, (new_status, frappe.session.user, pId))
-
-            frappe.db.commit()
-
-        else:
-            # ── docstatus=2 → Cancelled, cannot update ───────────────────────
-            return send_response(
-                status="fail",
-                message=f"Purchase Invoice '{pId}' is cancelled and cannot be updated.",
-                status_code=400,
-                http_status=400
-            )
-
-    else:
-        # ✅ Non-stock-triggering status — raw SQL update only
-        frappe.db.sql("""
-            UPDATE `tabPurchase Invoice`
-            SET status = %s,
-                modified = NOW(),
-                modified_by = %s
-            WHERE name = %s
-        """, (new_status, frappe.session.user, pId))
-
         frappe.db.commit()
 
-    return send_response(status="success", message="The purchase invoice status was updated successfully.", data=[], status_code=200, http_status=200)
+        updated_status = frappe.db.get_value("Purchase Invoice", pId, "status")
+
+        return send_response(
+            status="success",
+            message="Purchase Invoice status updated successfully.",
+            data={"id": pId, "status": updated_status},
+            status_code=200,
+            http_status=200
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback(), "Update Purchase Invoice Status Error")
+        return send_response(
+            status="fail",
+            message=str(e),
+            data=None,
+            status_code=500,
+            http_status=500
+        )
