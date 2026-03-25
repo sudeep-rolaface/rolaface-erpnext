@@ -621,3 +621,39 @@ class NormaSale(ZRAClient):
         acc.insert(ignore_permissions=True)
 
         return acc.name
+
+def process_and_insert_charges(invoice_name, charges_list):
+    processed_names = set()
+
+    for charge in charges_list:
+        charge_type = str(charge.get("charge_type", "")).strip()
+        amount_raw = charge.get("amount")
+
+        if not charge_type or amount_raw is None:
+            frappe.throw("charge_type and amount are required for invoice charges")
+
+        try:
+            amount = float(amount_raw)
+        except ValueError:
+            frappe.throw(f"Invalid amount for charge {charge_type}")
+
+        safe_charge = charge_type.replace(" ", "_").lower()
+        name = f"{str(invoice_name).strip()}-{safe_charge}"
+
+        if name in processed_names:
+            frappe.throw(f"Duplicate entry found in payload for {name}")
+
+        if frappe.db.exists("Invoice Charge", name):
+            frappe.throw(f"Invoice Charge {name} already exists.")
+
+        doc = frappe.get_doc(
+            {
+                "doctype": "Invoice Charge",
+                "name": name,
+                "invoice": invoice_name,
+                "charge_type": charge_type,
+                "amount": amount,
+            }
+        )
+        doc.insert(set_name=name)
+        processed_names.add(name)
