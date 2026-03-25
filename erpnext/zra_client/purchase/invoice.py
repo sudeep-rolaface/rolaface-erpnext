@@ -837,12 +837,21 @@ def get_all_purchase_invoices():
         status_filter = args.get("status")
         supplier_filter = args.get("supplier")
         search          = args.get("search")        # ← NEW
+        minOutstanding= args.get("minOutstanding",1)
+        maxOutstanding = args.get("maxOutstanding")
 
         filters = {}
         if status_filter:
             filters["status"] = status_filter
         if supplier_filter:
             filters["supplier"] = supplier_filter
+
+        if minOutstanding and maxOutstanding:
+            filters["outstanding_amount"] = ["between", [float(minOutstanding), float(maxOutstanding)]]
+        elif minOutstanding:
+            filters["outstanding_amount"] = [">=", float(minOutstanding)]
+        elif maxOutstanding:
+            filters["outstanding_amount"] = ["<=", float(maxOutstanding)]
 
         all_pos = frappe.get_all(
             "Purchase Invoice",
@@ -855,7 +864,8 @@ def get_all_purchase_invoices():
                 "custom_registration_type",
                 "custom_sync_status",
                 "status",
-                "shipping_rule"
+                "shipping_rule",
+                "outstanding_amount"
             ],
             filters=filters,
             order_by="creation desc"
