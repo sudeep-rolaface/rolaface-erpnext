@@ -1018,6 +1018,7 @@ def get_sales_invoice():
                 "return_against",
                 "amended_from",
                 "outstanding_amount",
+                "currency"
             ],
             filters=conditions,
             order_by=order_by,
@@ -1095,7 +1096,7 @@ def get_sales_invoice():
                     "customerName": inv.customer,
                     "customerTpin": customer_tpin,
                     "receiptNumber": inv.custom_rcptno,
-                    "currency": inv.custom_zra_currency,
+                    "currency": inv.custom_zra_currency or inv.currency,
                     "exchangeRate": inv.custom_exchange_rate,
                     "dateOfInvoice": str(inv.posting_date),
                     "dueDate": inv.due_date,
