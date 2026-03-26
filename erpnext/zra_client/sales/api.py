@@ -1,3 +1,4 @@
+from erpnext.setup.utils import get_exchange_rate
 from erpnext.zra_client.custom_frappe_client import CustomFrappeClient
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 from erpnext.zra_client.generic_api import send_response, send_response_list, send_response_list_sale
@@ -1254,7 +1255,7 @@ def get_sales_invoice_by_id():
                 "country": getattr(doc, f"{field_prefix}_country", None)
                 or getattr(parent_doc, f"{field_prefix}_country", ""),
             }
-
+        exchange_rate = get_exchange_rate(from_currency=doc.custom_zra_currency or doc.currency, transaction_date=doc.posting_date)
         data = {
             "invoiceNumber": doc.name,
             "invoiceType": parent_doc.custom_invoice_type,
@@ -1264,7 +1265,7 @@ def get_sales_invoice_by_id():
             "customerId": customer_id,
             "customerTpin": customer_tpin,
             "currencyCode": doc.custom_zra_currency or doc.currency,
-            "exchangeRt": str(doc.custom_exchange_rate or 1),
+            "exchangeRt": str(exchange_rate if exchange_rate > 1 else 1),
             "dateOfInvoice": str(doc.posting_date),
             "dueDate": str(doc.due_date),
             "invoiceStatus": doc.custom_invoice_status,
