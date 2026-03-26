@@ -470,7 +470,7 @@ def get_company_api():
         company_list = frappe.get_list(
             "Company",
             filters={"custom_company_id": custom_company_id},
-            fields=["name"]
+            fields=["name", "default_currency"]
         )
         if not company_list:
             return send_response(
@@ -597,7 +597,7 @@ def get_company_api():
             "companyStatus": company.custom_company_status,
             "dateOfIncorporation": str(company.custom_date_of_incoporation),
             "industryType": company.custom_company_industry_type,
-
+            "companyCurrency": company.default_currency,
             "contactInfo": {
                 "companyEmail": company.email,
                 "companyPhone": company.phone_no,
