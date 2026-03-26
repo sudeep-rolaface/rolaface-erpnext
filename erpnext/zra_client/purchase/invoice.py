@@ -857,7 +857,8 @@ def get_all_purchase_invoices():
                 "custom_sync_status",
                 "status",
                 "shipping_rule",
-                "outstanding_amount"
+                "outstanding_amount",
+                "custom_total_tax_amount",
             ],
             filters=filters,
             order_by="creation desc"
@@ -898,8 +899,9 @@ def get_all_purchase_invoices():
             po["registrationType"] = po.pop("custom_registration_type")
             po["syncStatus"] = po.pop("custom_sync_status")
             po["shippingRule"] = po.pop("shipping_rule")
+            po["grandTotalWithTax"] = ((po.get("grandTotal") or 0) +(float(po.get("custom_total_tax_amount")) or 0))
 
-        total_pages = (total_items + page_size - 1) // page_size
+            total_pages = (total_items + page_size - 1) // page_size
 
         response_data = {
             "success": True,
