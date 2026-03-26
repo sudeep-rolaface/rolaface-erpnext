@@ -44,17 +44,12 @@ class PurchaseOrder(BuyingController):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
-		from frappe.types import DF
-
 		from erpnext.accounts.doctype.payment_schedule.payment_schedule import PaymentSchedule
 		from erpnext.accounts.doctype.pricing_rule_detail.pricing_rule_detail import PricingRuleDetail
-		from erpnext.accounts.doctype.purchase_taxes_and_charges.purchase_taxes_and_charges import (
-			PurchaseTaxesandCharges,
-		)
+		from erpnext.accounts.doctype.purchase_taxes_and_charges.purchase_taxes_and_charges import PurchaseTaxesandCharges
 		from erpnext.buying.doctype.purchase_order_item.purchase_order_item import PurchaseOrderItem
-		from erpnext.buying.doctype.purchase_order_item_supplied.purchase_order_item_supplied import (
-			PurchaseOrderItemSupplied,
-		)
+		from erpnext.buying.doctype.purchase_order_item_supplied.purchase_order_item_supplied import PurchaseOrderItemSupplied
+		from frappe.types import DF
 
 		additional_discount_percentage: DF.Float
 		address_display: DF.TextEditor | None
@@ -126,6 +121,7 @@ class PurchaseOrder(BuyingController):
 		pricing_rules: DF.Table[PricingRuleDetail]
 		project: DF.Link | None
 		ref_sq: DF.Link | None
+		reference_number: DF.Data | None
 		represents_company: DF.Link | None
 		rounded_total: DF.Currency
 		rounding_adjustment: DF.Currency
@@ -138,18 +134,7 @@ class PurchaseOrder(BuyingController):
 		shipping_address: DF.Link | None
 		shipping_address_display: DF.TextEditor | None
 		shipping_rule: DF.Link | None
-		status: DF.Literal[
-			"",
-			"Draft",
-			"On Hold",
-			"To Receive and Bill",
-			"To Bill",
-			"To Receive",
-			"Completed",
-			"Cancelled",
-			"Closed",
-			"Delivered",
-		]
+		status: DF.Literal["", "Draft", "On Hold", "To Receive and Bill", "To Bill", "To Receive", "Completed", "Cancelled", "Closed", "Delivered"]
 		supplied_items: DF.Table[PurchaseOrderItemSupplied]
 		supplier: DF.Link
 		supplier_address: DF.Link | None

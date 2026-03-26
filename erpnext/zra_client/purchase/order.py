@@ -122,6 +122,7 @@ def create_purchase_order():
     requiredBy = data.get("requiredBy")
     currency = data.get("currency")
     status = data.get("status")
+    reference_number = data.get("referenceNumber")
     destnCountryCd = frappe.form_dict.get("destnCountryCd")
     lpoNumber = frappe.form_dict.get("lpoNumber")
     costCenter = data.get("costCenter")
@@ -564,6 +565,7 @@ def create_purchase_order():
         "custom_total_taxble_amount": tax_response.get("totTaxblAmt", 0),
         "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items,
+        "reference_number": reference_number,
     })
 
     for t in taxes:
@@ -693,7 +695,7 @@ def get_purchase_orders():
 
         all_pos = frappe.get_all(
             "Purchase Order",
-            fields=["name", "supplier", "transaction_date", "schedule_date", "grand_total", "status", "shipping_rule"],
+            fields=["name", "supplier", "transaction_date", "schedule_date", "grand_total", "status", "shipping_rule", "reference_number as referenceNumber"],
             filters=filters,
             order_by="creation desc",
         )
@@ -799,7 +801,7 @@ def get_purchase_order():
                 "supplier_address", "dispatch_address", "shipping_address",
                 "incoterm", "project", "cost_center",
                 "custom_total_tax_amount", "custom_total_taxble_amount",
-                "owner", "creation", "modified", "company", "shipping_rule"
+                "owner", "creation", "modified", "company", "shipping_rule", "reference_number"
             ],
             as_dict=True,
         )
@@ -968,6 +970,7 @@ def get_purchase_order():
             "project": po.project,
             "costCenter": po.cost_center,
             "shippingRule": po.shipping_rule,
+            "referenceNumber": po.reference_number,
             "addresses": {
                 "supplierAddress": supplier_addr,
                 "dispatchAddress": dispatch_addr,

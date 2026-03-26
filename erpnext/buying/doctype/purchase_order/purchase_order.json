@@ -16,6 +16,7 @@
   "order_confirmation_no",
   "order_confirmation_date",
   "get_items_from_open_material_requests",
+  "reference_number",
   "column_break_7",
   "transaction_date",
   "schedule_date",
@@ -1307,6 +1308,11 @@
    "label": "Dispatch Address Details",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "reference_number",
+   "fieldtype": "Data",
+   "label": "Reference Number"
   }
  ],
  "grid_page_length": 50,
@@ -1314,7 +1320,7 @@
  "idx": 105,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-04-09 16:54:08.836106",
+ "modified": "2026-03-26 12:12:17.154642",
  "modified_by": "Administrator",
  "module": "Buying",
  "name": "Purchase Order",
