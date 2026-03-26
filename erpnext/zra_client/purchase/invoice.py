@@ -296,14 +296,6 @@ def create_purchase_invoice():
     if not spplrInvcNo:
         return send_response(status="fail", message="spplier Invoice No must not be null", status_code=400, http_status=400)
 
-    if not spplrInvcNo.isdigit():
-        return send_response(
-            status="fail",
-            message="Supplier Invoice No must contain numbers only",
-            status_code=400,
-            http_status=400
-        )
-
     invoice_exists = frappe.db.exists(
         "Purchase Invoice",
         {
