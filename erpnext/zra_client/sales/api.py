@@ -2600,7 +2600,7 @@ def edit_sales_invoice():
         if "packingUnit" in item:
             patched_item["packing_unit"] = item.get("packingUnit") or None
 
-        patched_item["warehouse"] = "Finished Goods - RI"
+        patched_item["warehouse"] = item.get("warehouse")
         patched_item["expense_account"] = (
             CUSTOM_FRAPPE_MAIN_INSTANCE.getDefaultExpenseAccount(
                 frappe.defaults.get_global_default("company")
