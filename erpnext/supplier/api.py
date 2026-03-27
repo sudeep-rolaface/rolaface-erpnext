@@ -53,6 +53,7 @@ def get_suppliers():
         "Supplier",
         filters=filters,
         fields=[
+            "name",
             "custom_supplier_id",
             "custom_status",
             "supplier_name",
@@ -67,7 +68,24 @@ def get_suppliers():
         limit_page_length=page_size,
         order_by="creation desc"
     )
+    supplier_names = [s.get("name") for s in suppliers]
+
+    all_invoices = frappe.get_all(
+        "Purchase Invoice",
+        filters={
+            "supplier": ["in", supplier_names],
+            "docstatus": 1
+        },
+        fields=["supplier", "outstanding_amount"]
+    )
+    outstanding_map = {}
+    for inv in all_invoices:
+        supplier = inv.get("supplier")
+        outstanding_map[supplier] = (
+            outstanding_map.get(supplier, 0) + (inv.get("outstanding_amount") or 0)
+        )
     for i in suppliers:
+        supplier_name = i.pop("name")
         i["supplierId"] = i.pop("custom_supplier_id")
         i["supplierCode"] = i.pop("custom_supplier_code")
         i["supplierName"] = i.pop("supplier_name")
@@ -77,6 +95,7 @@ def get_suppliers():
         i["tpin"] = i.pop("tax_id")
         i["taxCategory"] = i.pop("tax_category")
         i["status"] = i.pop("custom_status")
+        i["totalOutstandingAmount"] = outstanding_map.get(supplier_name, 0)
 
     send_response(
         status="success",

@@ -658,7 +658,17 @@ def get_customer_by_id(custom_id):
                 return {}
         
         terms = get_selling_terms()
+        # ── Total outstanding amount across all Sales Invoices ────────────────────
+        invoices = frappe.get_all(
+            "Sales Invoice",
+            filters={
+                "customer": customer.name,
+                "docstatus": 1
+            },
+            fields=["outstanding_amount"]
+        )
 
+        total_outstanding = sum(inv.get("outstanding_amount", 0) or 0 for inv in invoices)
         data = {
             "id": safe_attr(customer, "custom_id"),
             "tpin": safe_attr(customer, "tax_id"),
@@ -684,7 +694,8 @@ def get_customer_by_id(custom_id):
             "shippingCity": safe_attr(customer, "custom_shipping_address_city"),
             "shippingState": safe_attr(customer, "custom_shipping_address_state"),
             "shippingCountry": safe_attr(customer, "custom_shipping_address_country"),
-            "terms": terms
+            "terms": terms,
+            "totalOutstanding":total_outstanding
         }
 
         return send_response(
