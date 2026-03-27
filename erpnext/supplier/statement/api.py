@@ -89,7 +89,7 @@ def get_supplier_statement():
 
     # Fetch GL entries for supplier
     gl_rows = frappe.db.sql("""
-        SELECT posting_date, voucher_type, voucher_no, debit, credit
+        SELECT posting_date, voucher_type, voucher_no, debit_in_account_currency AS debit, credit_in_account_currency AS credit
         FROM `tabGL Entry`
         WHERE party_type='Supplier' AND party=%s AND is_cancelled=0
         ORDER BY posting_date ASC, creation ASC
