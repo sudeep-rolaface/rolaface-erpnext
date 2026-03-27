@@ -213,6 +213,8 @@ def create_purchase_invoice():
     updateStock = data.get("updateStock", True)
     set_warehouse = data.get("warehouse", None)
 
+    supplier_invoice_date = data.get("spplrInvcDt", "")
+
     if not supplierId:
         return send_response(
             status="fail",
@@ -654,7 +656,8 @@ def create_purchase_invoice():
         "custom_transaction_progress": pchsSttsCd,
         "custom_destncountrycd": destnCountryCd,
         "custom_lpo_number": lpoNumber,
-        "shipping_rule": shippingRule
+        "shipping_rule": shippingRule,
+        "supplier_invoice_date": supplier_invoice_date
     })
 
     purchase_invoice.insert(ignore_permissions=True)
@@ -859,6 +862,7 @@ def get_all_purchase_invoices():
                 "shipping_rule",
                 "outstanding_amount",
                 "custom_total_tax_amount",
+                "supplier_invoice_date"
             ],
             filters=filters,
             order_by="creation desc"
@@ -900,7 +904,7 @@ def get_all_purchase_invoices():
             po["syncStatus"] = po.pop("custom_sync_status")
             po["shippingRule"] = po.pop("shipping_rule")
             po["grandTotalWithTax"] = ((po.get("grandTotal") or 0) +(float(po.get("custom_total_tax_amount")) or 0))
-
+            po["spplrInvcDt"] = po.pop("supplier_invoice_date")
             total_pages = (total_items + page_size - 1) // page_size
 
         response_data = {
@@ -988,7 +992,8 @@ def get_purchase_invoice_by_id():
                 "custom_lpo_number",
                 "custom_sync_status",
                 "company",
-                "shipping_rule"
+                "shipping_rule",
+                "supplier_invoice_date"
             ],
             as_dict=True
         )
@@ -1167,6 +1172,7 @@ def get_purchase_invoice_by_id():
             "lpoNumber": po.custom_lpo_number,
             "costCenter": po.cost_center,
             "shippingRule": po.shipping_rule,
+            "spplrInvcDt": po.supplier_invoice_date,
             "addresses": {
                 "supplierAddress": supplier_addr,
                 "dispatchAddress": dispatch_addr,
