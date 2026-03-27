@@ -139,7 +139,7 @@ def create_purchase_order():
     print(supplierAddress)
     print(dispatchAddress)
     print(shippingAddress)
-
+    supplier_invoice_date = data.get("spplrInvcDt", "")
     terms = data.get("terms")
     items = data.get("items", [])
     taxes = data.get("taxes", [])
@@ -566,6 +566,7 @@ def create_purchase_order():
         "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items,
         "reference_number": reference_number,
+        "supplier_invoice_date": supplier_invoice_date
     })
 
     for t in taxes:
@@ -695,7 +696,8 @@ def get_purchase_orders():
 
         all_pos = frappe.get_all(
             "Purchase Order",
-            fields=["name", "supplier", "transaction_date", "schedule_date", "grand_total", "status", "shipping_rule", "reference_number as referenceNumber"],
+            fields=["name", "supplier", "transaction_date", "schedule_date", "grand_total", "status", "shipping_rule", "reference_number as referenceNumber",
+                    "supplier_invoice_date as spplrInvcDt"],
             filters=filters,
             order_by="creation desc",
         )
@@ -801,7 +803,8 @@ def get_purchase_order():
                 "supplier_address", "dispatch_address", "shipping_address",
                 "incoterm", "project", "cost_center",
                 "custom_total_tax_amount", "custom_total_taxble_amount",
-                "owner", "creation", "modified", "company", "shipping_rule", "reference_number"
+                "owner", "creation", "modified", "company", "shipping_rule", "reference_number",
+                "supplier_invoice_date"
             ],
             as_dict=True,
         )
@@ -971,6 +974,7 @@ def get_purchase_order():
             "costCenter": po.cost_center,
             "shippingRule": po.shipping_rule,
             "referenceNumber": po.reference_number,
+            "spplrInvcDt":po.supplier_invoice_date,
             "addresses": {
                 "supplierAddress": supplier_addr,
                 "dispatchAddress": dispatch_addr,
