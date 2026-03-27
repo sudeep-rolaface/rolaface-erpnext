@@ -832,7 +832,7 @@ def get_all_purchase_invoices():
         status_filter = args.get("status")
         supplier_filter = args.get("supplier")
         search          = args.get("search")        # ← NEW
-        minOutstanding= args.get("minOutstanding",1)
+        minOutstanding= args.get("minOutstanding")
         maxOutstanding = args.get("maxOutstanding")
 
         filters = {}
