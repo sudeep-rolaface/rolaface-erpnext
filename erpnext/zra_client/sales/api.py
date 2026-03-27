@@ -1168,16 +1168,8 @@ def get_sales_invoice_by_id():
         customer_tpin = customer_details.get("tax_id", "")
         customer_id = customer_details.get("custom_id", "")
 
-        if getattr(doc, "is_debit_note", 0) == 1:
-            invoice_type = "Debit Note"
-        elif getattr(doc, "is_return", 0) == 1:
-            invoice_type = "Return Invoice"
-        else:
-            invoice_type = "Normal Invoice"
-
         parent_invoice_name = getattr(doc, "return_against", None) or invoice_name
         parent_doc = frappe.get_doc("Sales Invoice", parent_invoice_name)
-        current_invoice = frappe.get_doc("Sales Invoice", parent_invoice_name)
 
         terms_doc = (
             frappe.get_doc(
@@ -1240,6 +1232,7 @@ def get_sales_invoice_by_id():
                     "mfgDate": i.mfg_date,
                     "packingSize": i.packing_size,
                     "packingUnit": i.packing_unit,
+                    "warehouse":i.warehouse
                 }
             )
 
@@ -1278,6 +1271,7 @@ def get_sales_invoice_by_id():
             or parent_doc.custom_export_destination_country,
             "billingAddress": get_address("custom_billing_address"),
             "shippingAddress": get_address("custom_shipping_address"),
+            "warehouse":doc.set_warehouse,
             "paymentInformation": {
                 "paymentTerms": getattr(doc, "custom_payment_terms", None)
                 or (
