@@ -1311,7 +1311,7 @@ class PaymentEntry(AccountsController):
 					_(self.paid_to_account_currency)
 					if self.payment_type == "Receive"
 					else _(self.paid_from_account_currency),
-					self.paid_amount if self.payment_type == "Receive" else self.received_amount,
+					self.received_amount if self.payment_type == "Receive" else self.paid_amount,      #Updated this code to sync paid to currency and the amount
 					_("received from") if self.payment_type == "Receive" else _("paid to"),
 					self.party,
 				)
