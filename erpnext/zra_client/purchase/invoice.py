@@ -185,6 +185,25 @@ def _restore_batch_nos_for_submit(pi_doc, pId):
 
     frappe.db.commit()
 
+def get_tax_account(company_name):
+    """
+    Fetch the default VAT/tax payable account for the company.
+    Adjust the account name to match your Chart of Accounts.
+    """
+    # Option 1: Hardcoded (simplest)
+    # return f"VAT - {frappe.db.get_value('Company', company_name, 'abbr')}"
+
+    # Option 2: Fetch dynamically from company settings
+    tax_account = frappe.db.get_value(
+        "Account",
+        {
+            "company": company_name,
+            "account_type": "Tax",
+            "is_group": 0
+        },
+        "name"
+    )
+    return tax_account
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_purchase_invoice():
@@ -657,7 +676,17 @@ def create_purchase_invoice():
         "custom_destncountrycd": destnCountryCd,
         "custom_lpo_number": lpoNumber,
         "shipping_rule": shippingRule,
-        "supplier_invoice_date": supplier_invoice_date
+        "supplier_invoice_date": supplier_invoice_date,
+        "taxes": [
+        {
+            "charge_type": "Actual",
+            "account_head": get_tax_account(company_name),  # helper below
+            "description": "VAT",
+            "tax_amount": total_tax_amount,
+            "cost_center": costCenter
+        }
+    ] if total_tax_amount > 0 else []
+
     })
 
     purchase_invoice.insert(ignore_permissions=True)
