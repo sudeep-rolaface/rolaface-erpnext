@@ -8,6 +8,7 @@ import frappe
 import random
 import json
 import re
+from custom_api.helper import get_tax_account
 
 ZRA_CLIENT_INSTANCE = ZRAClient()
 CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
@@ -561,15 +562,13 @@ def create_purchase_order():
         "custom_remarks": remarks,
         "tax_category": taxCategory,
         "shipping_rule": shipping_rule,
-        "custom_total_taxble_amount": tax_response.get("totTaxblAmt", 0),
-        "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items,
         "reference_number": reference_number,
     })
 
     for t in taxes:
         tax_type = (t.get("type") or "").strip()
-        account_head = (t.get("accountHead") or "").strip()
+        account_head = get_tax_account(company_name, "Liability")
         rate = float(t.get("taxRate") or 0)
         taxable = float(t.get("taxableAmount") or 0)
         amount = float(t.get("taxAmount") or 0)
@@ -578,7 +577,6 @@ def create_purchase_order():
         # When ZRA is off, the synthetic tax row already has a company-scoped account — skip validation.
         if is_zra_enabled():
             valid_tax_types = CUSTOM_FRAPPE_INSTANCE.GetTaxesChargesRate()
-            VALID_ACCOUNTS_HEAD = CUSTOM_FRAPPE_INSTANCE.GetExpensesValuationAccount()
 
             if tax_type not in valid_tax_types:
                 return send_response(
@@ -588,10 +586,10 @@ def create_purchase_order():
                     http_status=400,
                 )
 
-            if account_head not in VALID_ACCOUNTS_HEAD:
+            if not account_head:
                 return send_response(
                     status="fail",
-                    message=f"Invalid Account Head: {account_head}. Allowed: {', '.join(VALID_ACCOUNTS_HEAD)}",
+                    message=f"Reporting Account Not Found for tax type '{tax_type}' and company '{company_name}'. Please create an appropriate account.",
                     status_code=400,
                     http_status=400,
                 )
@@ -798,8 +796,7 @@ def get_purchase_order():
                 "grand_total", "status", "currency", "conversion_rate",
                 "tax_category", "custom_placeofsupply", "custom_remarks",
                 "supplier_address", "dispatch_address", "shipping_address",
-                "incoterm", "project", "cost_center",
-                "custom_total_tax_amount", "custom_total_taxble_amount",
+                "incoterm", "project", "cost_center", "total_taxes_and_charges",
                 "owner", "creation", "modified", "company", "shipping_rule", "reference_number"
             ],
             as_dict=True,
@@ -831,7 +828,7 @@ def get_purchase_order():
         summary = {
             "totalQuantity": total_quantity,
             "subTotal": sub_total,
-            "taxTotal": po.custom_total_tax_amount,
+            "taxTotal": po.total_taxes_and_charges or 0,
             "grandTotal": grand_total,
             "roundingAdjustment": rounding_adjustment,
             "roundedTotal": rounded_total,
@@ -843,22 +840,9 @@ def get_purchase_order():
             for item in items
         )
         taxRate = (total_weighted_tax / sub_total) if sub_total else 0
-
-        # taxRate = "16%" if po.tax_category == "Non-Export" else "0%"
-        # # If tax amount exists but taxRate would show 0%, compute real effective rate
-        # if po.custom_total_taxble_amount and float(po.custom_total_taxble_amount or 0) > 0:
-        #     effective_rate = (
-        #         float(po.custom_total_tax_amount or 0)
-        #         / float(po.custom_total_taxble_amount)
-        #         * 100
-        #     )
-        #     if effective_rate > 0:
-        #         taxRate = f"{round(effective_rate, 2)}%"
         taxes = {
             "type": po.tax_category,
             "taxRate": taxRate,
-            "taxableAmount": po.custom_total_taxble_amount,
-            "taxAmount": po.custom_total_tax_amount,
         }
 
         def get_purchase_terms():
