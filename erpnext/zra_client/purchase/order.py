@@ -489,49 +489,8 @@ def create_purchase_order():
 
             # Build synthetic taxes[] so the PO append loop below works
             if total_tax_amount > 0:
-                # Query a tax/valuation account scoped to the SAME company as the PO
-                tax_account_result = frappe.db.sql(
-                    """
-                    SELECT name FROM `tabAccount`
-                    WHERE company = %s
-                      AND account_type IN ('Tax', 'Expenses Included In Valuation')
-                      AND is_group = 0
-                    ORDER BY account_type DESC
-                    LIMIT 1
-                    """,
-                    (company_name,)
-                )
-                if not tax_account_result:
-                    # Fallback: any expense account for this company
-                    tax_account_result = frappe.db.sql(
-                        """
-                        SELECT name FROM `tabAccount`
-                        WHERE company = %s
-                          AND root_type = 'Expense'
-                          AND is_group = 0
-                        LIMIT 1
-                        """,
-                        (company_name,)
-                    )
-
-                tax_account_head = tax_account_result[0][0] if tax_account_result else None
-
-                if not tax_account_head:
-                    return send_response(
-                        status="fail",
-                        message=(
-                            f"No suitable tax/valuation account found for company '{company_name}'. "
-                            f"Please create an account with type 'Tax' or 'Expenses Included In Valuation' "
-                            f"under company '{company_name}' in ERPNext Chart of Accounts."
-                        ),
-                        data=[],
-                        status_code=400,
-                        http_status=400,
-                    )
-
                 taxes = [{
                     "type": "Actual",
-                    "accountHead": tax_account_head,
                     "taxRate": 0,           # rate=0 because we use Actual amount
                     "taxableAmount": total_taxable_amount,
                     "taxAmount": total_tax_amount,

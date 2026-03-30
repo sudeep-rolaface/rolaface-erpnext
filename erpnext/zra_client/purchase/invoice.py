@@ -11,7 +11,7 @@ import frappe
 import random
 import json
 import re
-
+from custom_api.helper import get_tax_account
 
 CUSTOM_FRAPPE_INSTANCE = CustomFrappeClient()
 PURCHASE_HELPER_INSTANCE = PurchaseHelper()
@@ -184,26 +184,6 @@ def _restore_batch_nos_for_submit(pi_doc, pId):
                 break
 
     frappe.db.commit()
-
-def get_tax_account(company_name):
-    """
-    Fetch the default VAT/tax payable account for the company.
-    Adjust the account name to match your Chart of Accounts.
-    """
-    # Option 1: Hardcoded (simplest)
-    # return f"VAT - {frappe.db.get_value('Company', company_name, 'abbr')}"
-
-    # Option 2: Fetch dynamically from company settings
-    tax_account = frappe.db.get_value(
-        "Account",
-        {
-            "company": company_name,
-            "account_type": "Tax",
-            "is_group": 0
-        },
-        "name"
-    )
-    return tax_account
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_purchase_invoice():
@@ -659,8 +639,6 @@ def create_purchase_invoice():
         "incoterm": incotermName,
         "status": status,
         "tax_category": taxCategory,
-        "custom_total_taxble_amount": total_taxable_amount,
-        "custom_total_tax_amount": total_tax_amount,
         "items": invoice_items_to_be_saved,
         "remarks": remarks,
         "bill_no": spplrInvcNo,
@@ -678,14 +656,15 @@ def create_purchase_invoice():
         "shipping_rule": shippingRule,
         "supplier_invoice_date": supplier_invoice_date,
         "taxes": [
-        {
-            "charge_type": "Actual",
-            "account_head": get_tax_account(company_name),  # helper below
-            "description": "VAT",
-            "tax_amount": total_tax_amount,
-            "cost_center": costCenter
-        }
-    ] if total_tax_amount > 0 else []
+                    {
+                        "charge_type": "Actual",
+                        "taxRate": 0,           # rate=0 because we use Actual amount
+                        "account_head": get_tax_account(company_name, "Liability"),
+                        "description": "Tax and Charges",
+                        "tax_amount": total_tax_amount,
+                        "cost_center": costCenter
+                    }
+                ] if total_tax_amount > 0 else []
 
     })
 
@@ -890,8 +869,8 @@ def get_all_purchase_invoices():
                 "status",
                 "shipping_rule",
                 "outstanding_amount",
-                "custom_total_tax_amount",
-                "supplier_invoice_date"
+                "supplier_invoice_date",
+                "total_taxes_and_charges"
             ],
             filters=filters,
             order_by="creation desc"
@@ -928,11 +907,13 @@ def get_all_purchase_invoices():
             po["supplierName"] = po.pop("supplier")
             po["poDate"] = str(po.pop("posting_date")) if po.get("posting_date") else None
             po["deliveryDate"] = str(po.pop("due_date")) if po.get("due_date") else None
-            po["grandTotal"] = po.pop("grand_total")
+            base_total = po.pop("grand_total", 0)
+            tax = po.pop("total_taxes_and_charges", 0) or 0
+            po["grandTotal"] = base_total - tax
             po["registrationType"] = po.pop("custom_registration_type")
             po["syncStatus"] = po.pop("custom_sync_status")
             po["shippingRule"] = po.pop("shipping_rule")
-            po["grandTotalWithTax"] = ((po.get("grandTotal") or 0) +(float(po.get("custom_total_tax_amount")) or 0))
+            po["grandTotalWithTax"] = base_total
             po["spplrInvcDt"] = po.pop("supplier_invoice_date")
             total_pages = (total_items + page_size - 1) // page_size
 
@@ -1008,8 +989,6 @@ def get_purchase_invoice_by_id():
                 "incoterm",
                 "project",
                 "cost_center",
-                "custom_total_tax_amount",
-                "custom_total_taxble_amount",
                 "owner",
                 "creation",
                 "modified",
@@ -1022,7 +1001,7 @@ def get_purchase_invoice_by_id():
                 "custom_sync_status",
                 "company",
                 "shipping_rule",
-                "supplier_invoice_date"
+                "supplier_invoice_date", "total_taxes_and_charges"
             ],
             as_dict=True
         )
@@ -1061,14 +1040,14 @@ def get_purchase_invoice_by_id():
         total_quantity = sum(item.get("qty", 0) for item in items)
         sub_total = sum(item.get("amount", 0) for item in items)
         #grand_total = po.grand_total or 0
-        grand_total = sub_total + float(po.custom_total_tax_amount or 0)
+        grand_total = sub_total + float(po.total_taxes_and_charges or 0)
         rounded_total = po.get("rounded_total") or grand_total
         rounding_adjustment = rounded_total - grand_total
 
         summary = {
             "totalQuantity": total_quantity,
             "subTotal": sub_total,
-            "taxTotal": po.custom_total_tax_amount,
+            "taxTotal": po.total_taxes_and_charges or 0,
             "grandTotal": grand_total,
             "roundingAdjustment": rounding_adjustment,
             "roundedTotal": rounded_total
@@ -1076,21 +1055,9 @@ def get_purchase_invoice_by_id():
 
         taxRate = "16%" if po.tax_category == "Non-Export" else "0%"
 
-        # Calculate effective tax rate if available
-        if po.custom_total_taxble_amount and float(po.custom_total_taxble_amount or 0) > 0:
-            effective_rate = (
-                float(po.custom_total_tax_amount or 0)
-                / float(po.custom_total_taxble_amount)
-                * 100
-            )
-            if effective_rate > 0:
-                taxRate = f"{round(effective_rate, 2)}%"
-
         taxes = {
             "type": po.tax_category,
             "taxRate": taxRate,
-            "taxableAmount": po.custom_total_taxble_amount,
-            "taxAmount": po.custom_total_tax_amount
         }
 
         def get_purchase_terms():
@@ -1344,8 +1311,6 @@ def get_automatic_purchase_invoice():
         "supplier": supplier_name,
         "currency": frappe.defaults.get_global_default("currency"),
         "tax_category": "Non-Export",
-        "custom_total_taxble_amount": totTaxblAmt,
-        "custom_total_tax_amount": totTaxAmt,
         "remarks": remark,
         "bill_no": spplrInvcNo,
         "custom_sync_status": "0",

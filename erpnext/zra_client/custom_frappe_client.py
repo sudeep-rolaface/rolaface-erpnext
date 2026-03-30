@@ -199,15 +199,6 @@ class CustomFrappeClient():
         frappe.db.commit()
 
         return True
-    
-    def GetExpensesValuationAccount(self):
-        VALID_ACCOUNTS_HEAD = [
-            "Expenses Included In Valuation - I",
-            "Freight and Forwarding Charges - I",
-            "Marketing Expenses - I",
-            "Miscellaneous Expenses - I"
-        ]
-        return VALID_ACCOUNTS_HEAD
 
     def getCurrentCompany(self):
         COMPANY = "Izyane"
