@@ -104,19 +104,6 @@ def validate_customer_type(customer_type):
         return False
     return True
 
-def validate_currency(currency):
-    valid_currencies = ["ZMW", "USD", "EUR", "GBP","INR"]
-    if currency not in valid_currencies:
-        send_response(
-            status="fail",
-            message=f"Invalid currency. Valid currencies are: {', '.join(valid_currencies)}",
-            status_code=400,
-            http_status=400
-        )
-        return False
-    return True
-
-
 
 def generate_customer_id():
     frappe.logger().debug("Fetching existing customer IDs from the database...")
@@ -283,8 +270,6 @@ def create_customer_api():
 
     if not customerCurrency:
         send_response(status="fail", message="Customer currency is required (customer_currency)", status_code=400, http_status=400)
-        return
-    if not validate_currency(customerCurrency):
         return
 
     if not customerType:
