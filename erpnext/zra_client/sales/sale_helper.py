@@ -484,8 +484,9 @@ class NormaSale(ZRAClient):
         try:
             company = frappe.defaults.get_global_default("company")
             posting_date = datetime.strptime(payload["salesDt"], "%Y%m%d").date()
-            currency = payload.get("currencyCd") or payload.get("currencyTyCd") or "ZMW"
+            currency = payload.get("currencyCd") or payload.get("currencyTyCd")
 
+            debtor_account = self.get_or_create_debtor_account(company, currency)
             # 1️⃣ Ensure customer exists
             customer_name = payload.get("custNm") or "Walk-in Customer"
 
@@ -510,11 +511,6 @@ class NormaSale(ZRAClient):
                     "warehouse": item["warehouse"],
                 })
 
-            # 3️⃣ Create Sales Invoice
-            from erpnext.zra_client.sales.api import ZRA_CLIENT_INSTANCE
-
-            canUpdateInvoice = all(ZRA_CLIENT_INSTANCE.canItemStockBeUpdate(item.get("item_code")) for item in items)
-
             invoice = frappe.get_doc({
                 "doctype": "Sales Invoice",
                 "name": sell_data["name"],
@@ -524,6 +520,7 @@ class NormaSale(ZRAClient):
                 "due_date": posting_date,
                 "currency": currency,
                 "conversion_rate": float(exchangeRt),
+                "debit_to": debtor_account,
                 "items": items,
                 "remarks": payload.get("remark", ""),
                 "update_stock": sell_data["updateStock"],
@@ -591,6 +588,23 @@ class NormaSale(ZRAClient):
                 "resultMsg": "Failed to create Sales Invoice"
             }
 
+    def get_or_create_debtor_account(self, company, currency):
+        parent_account = frappe.db.get_value(
+                                "Account",
+                                {
+                                    "company": company,
+                                    "account_type":"Receivable",
+                                    "is_group": 0,
+                                    "account_currency": currency
+
+                                },
+                                "name"
+                            )
+
+        if not parent_account:
+            frappe.throw("Receivable parent account not found")
+
+        return parent_account
 
 def process_and_insert_charges(invoice_name, charges_list):
     processed_names = set()
