@@ -320,7 +320,7 @@ def create_sales_invoice():
     data = frappe.form_dict
     customer_id = data.get("customerId")
     currencyCd = data.get("currencyCode")
-    exchangeRt = data.get("exchangeRt")
+    exchangeRt = data.get("exchangeRt", 1)
     createBy = data.get("created_by")
     destnCountryCd = data.get("destnCountryCd")
     lpoNumber = data.get("lpoNumber")
@@ -347,6 +347,8 @@ def create_sales_invoice():
     payment_info = data.get("paymentInformation")
     updateStock = data.get("updateStock", True)
     set_warehouse = data.get("warehouse", None)
+
+    total_tax = data.get("totalTax", 0)
 
     if not payment_info or not isinstance(payment_info, dict):
         return send_response(
@@ -481,12 +483,7 @@ def create_sales_invoice():
         exchangeRt = 1
 
     if not exchangeRt:
-        return send_response(
-            status="fail",
-            message="Exchange rate must not be null",
-            status_code=400,
-            http_status=400,
-        )
+        exchangeRt = 1
 
     # ── Ensure exchange rate is a float ───────────────────────────────────────
     try:
@@ -727,6 +724,7 @@ def create_sales_invoice():
                 "mfg_date": mfgDate,
                 "packing_size": packingSize,
                 "packing_unit": packingUnit,
+                "warehouse": warehouse,
             }
         )
 
@@ -767,6 +765,7 @@ def create_sales_invoice():
         "invoice_items": invoice_items,
         "updateStock": updateStock,
         "set_warehouse": set_warehouse,
+        "total_tax": total_tax,
     }
 
     result = NORMAL_SALE_INSTANCE.send_sale_data(sale_payload)
@@ -803,7 +802,6 @@ def create_sales_invoice():
                     "name": new_invoice_name,
                     "custom_invoice_type": invoiceType,
                     "custom_exchange_rate": exchange_rate,
-                    "custom_total_tax_amount": total_tax,
                     "custom_zra_currency": currency,
                     "custom_invoice_status": invoiceStatus,
                     "due_date": dueDate,
@@ -1011,7 +1009,6 @@ def get_sales_invoice():
                 "posting_date",
                 "due_date",
                 "grand_total",
-                "custom_total_tax_amount",
                 "custom_invoice_status",
                 "is_return",
                 "is_debit_note",
@@ -1101,7 +1098,6 @@ def get_sales_invoice():
                     "dateOfInvoice": str(inv.posting_date),
                     "dueDate": inv.due_date,
                     "totalAmount": float(inv.grand_total),
-                    "totalTax": inv.custom_total_tax_amount,
                     "invoiceStatus": inv.custom_invoice_status,
                     "outstandingAmount": inv.outstanding_amount,
                     "invoiceTypeParent": invoice_type_parent,
@@ -1272,6 +1268,7 @@ def get_sales_invoice_by_id():
             "billingAddress": get_address("custom_billing_address"),
             "shippingAddress": get_address("custom_shipping_address"),
             "warehouse":doc.set_warehouse,
+            "taxTotal": doc.total_taxes_and_charges or 0,
             "paymentInformation": {
                 "paymentTerms": getattr(doc, "custom_payment_terms", None)
                 or (
@@ -1649,7 +1646,6 @@ def create_credit_note_from_sales_invoice():
             "update_stock": 1 if update_stock_allowed else 0,
             "items": credit_note_items,
             "custom_exchange_rate": exchange_rate,
-            "custom_total_tax_amount": total_tax_amount,
             "custom_zra_currency": currency_code,
             "title": f"Credit for {original_invoice_no}",
         }
@@ -1912,7 +1908,6 @@ def create_debit_note_from_invoice():
                 "customer": sales_invoice.customer,
                 "company": sales_invoice.company,
                 "custom_exchange_rate": exchange_rate,
-                "custom_total_tax_amount": total_tax,
                 "custom_zra_currency": currency,
                 "is_debit_note": 1,
                 "return_against": sales_invoice.name,
@@ -2037,7 +2032,6 @@ def get_credit_notes():
                 "posting_date",
                 "due_date",
                 "grand_total",
-                "custom_total_tax_amount",
                 "custom_invoice_status",
                 "outstanding_amount",
                 "return_against",
@@ -2071,7 +2065,6 @@ def get_credit_notes():
                     "dateOfInvoice": str(inv.posting_date),
                     "dueDate": inv.due_date,
                     "totalAmount": float(inv.grand_total),
-                    "totalTax": inv.custom_total_tax_amount,
                     "invoiceStatus": inv.custom_invoice_status,
                     "outstandingAmount": inv.outstanding_amount,
                     "invoiceTypeParent": "Credit Note",
@@ -2135,7 +2128,6 @@ def get_debit_notes():
                 "posting_date",
                 "due_date",
                 "grand_total",
-                "custom_total_tax_amount",
                 "custom_invoice_status",
                 "outstanding_amount",
                 "amended_from",
@@ -2172,7 +2164,6 @@ def get_debit_notes():
                     "dateOfInvoice": str(inv.posting_date),
                     "dueDate": inv.due_date,
                     "totalAmount": float(inv.grand_total),
-                    "totalTax": inv.custom_total_tax_amount,
                     "invoiceStatus": inv.custom_invoice_status,
                     "outstandingAmount": inv.outstanding_amount,
                     "invoiceTypeParent": "Debit Note",
@@ -2738,7 +2729,6 @@ def edit_sales_invoice():
         # ✅ ZRA-specific fields — only when ZRA is enabled
         if enable_zra:
             doc.custom_exchange_rate = exchange_rate
-            doc.custom_total_tax_amount = total_tax
             doc.custom_zra_currency = currency
             doc.update_stock = 1 if canUpdateInvoice else 0
 
