@@ -499,8 +499,6 @@ def create_purchase_order():
         "custom_placeofsupply": placeOfSupply,
         "custom_remarks": remarks,
         "tax_category": taxCategory,
-        "custom_total_taxble_amount": tax_response.get("totTaxblAmt", 0),
-        "custom_total_tax_amount": tax_response.get("totTaxAmt", 0),
         "items": invoice_items,
     })
 
@@ -714,7 +712,6 @@ def get_purchase_order():
                 "tax_category", "custom_placeofsupply", "custom_remarks",
                 "supplier_address", "dispatch_address", "shipping_address",
                 "incoterm", "project", "cost_center",
-                "custom_total_tax_amount", "custom_total_taxble_amount",
                 "owner", "creation", "modified",
             ],
             as_dict=True,
@@ -744,27 +741,16 @@ def get_purchase_order():
         summary = {
             "totalQuantity": total_quantity,
             "subTotal": sub_total,
-            "taxTotal": po.custom_total_tax_amount,
             "grandTotal": grand_total,
             "roundingAdjustment": rounding_adjustment,
             "roundedTotal": rounded_total,
         }
 
         taxRate = "16%" if po.tax_category == "Non-Export" else "0%"
-        # If tax amount exists but taxRate would show 0%, compute real effective rate
-        if po.custom_total_taxble_amount and float(po.custom_total_taxble_amount or 0) > 0:
-            effective_rate = (
-                float(po.custom_total_tax_amount or 0)
-                / float(po.custom_total_taxble_amount)
-                * 100
-            )
-            if effective_rate > 0:
-                taxRate = f"{round(effective_rate, 2)}%"
+
         taxes = {
             "type": po.tax_category,
             "taxRate": taxRate,
-            "taxableAmount": po.custom_total_taxble_amount,
-            "taxAmount": po.custom_total_tax_amount,
         }
 
         terms_doc = (
