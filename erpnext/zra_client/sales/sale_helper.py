@@ -561,7 +561,7 @@ class NormaSale(ZRAClient):
             })
 
             invoice.insert(ignore_permissions=True)
-            invoice.submit()
+            invoice.save()
 
             # 4️⃣ Return ZRA-like response (to keep rest of code intact)
             return {

@@ -986,7 +986,7 @@ def get_sales_invoice():
             "dateOfInvoice": "posting_date",
             "dueDate": "due_date",
             "totalAmount": "grand_total",
-            "invoiceStatus": "custom_invoice_status",
+            "invoiceStatus": "status",
         }
 
         valid_sort_order = sort_order if sort_order in ["asc", "desc"] else "desc"
@@ -1009,7 +1009,7 @@ def get_sales_invoice():
                 "posting_date",
                 "due_date",
                 "grand_total",
-                "custom_invoice_status",
+                "status",
                 "is_return",
                 "is_debit_note",
                 "return_against",
@@ -1030,7 +1030,7 @@ def get_sales_invoice():
                 if search_lower in (inv.get("name") or "").lower()
                 or search_lower in (inv.get("customer") or "").lower()
                 or search_lower in (inv.get("custom_invoice_type") or "").lower()
-                or search_lower in (inv.get("custom_invoice_status") or "").lower()
+                or search_lower in (inv.get("status") or "").lower()
                 or search_lower in str(inv.get("posting_date") or "").lower()
                 or search_lower in str(inv.get("due_date") or "").lower()
                 or search_lower in str(inv.get("grand_total") or "").lower()
@@ -1098,7 +1098,7 @@ def get_sales_invoice():
                     "dateOfInvoice": str(inv.posting_date),
                     "dueDate": inv.due_date,
                     "totalAmount": float(inv.grand_total),
-                    "invoiceStatus": inv.custom_invoice_status,
+                    "invoiceStatus": inv.status,
                     "outstandingAmount": inv.outstanding_amount,
                     "invoiceTypeParent": invoice_type_parent,
                     "invoiceType": invoice_type,
@@ -1950,7 +1950,8 @@ def update_invoice_status():
                 status_code=400,
             )
 
-        ALLOWED_INVOICE_STATUS = {"Draft", "Approved", "Rejected", "Paid", "Cancelled"}
+        # Frappe's native docstatus: 0 = Draft, 1 = Submitted, 2 = Cancelled
+        ALLOWED_INVOICE_STATUS = {"Draft", "Approved", "Cancelled"}
 
         if invoice_status not in ALLOWED_INVOICE_STATUS:
             return send_response(
@@ -1975,27 +1976,68 @@ def update_invoice_status():
                 status_code=403,
             )
 
-        frappe.db.sql(
-            """
-            UPDATE `tabSales Invoice`
-            SET custom_invoice_status = %s
-            WHERE name = %s
-            """,
-            (invoice_status, invoice_name),
-        )
+        doc = frappe.get_doc("Sales Invoice", invoice_name)
 
-        frappe.db.commit()
+        if invoice_status == "Approved":
+            # Approved = Submit in Frappe (docstatus 0 → 1)
+            if doc.docstatus != 0:
+                return send_response(
+                    status="fail",
+                    message=f"Invoice {invoice_name} must be in Draft state to be Approved (submitted)",
+                    status_code=400,
+                )
+            doc.submit()
+
+        elif invoice_status == "Cancelled":
+            # Cancel requires the doc to be submitted first (docstatus 1 → 2)
+            if doc.docstatus != 1:
+                return send_response(
+                    status="fail",
+                    message=f"Invoice {invoice_name} must be Approved (submitted) before it can be Cancelled",
+                    status_code=400,
+                )
+            doc.cancel()
+
+        elif invoice_status == "Draft":
+            # Draft = Amend a cancelled doc, or it's already a draft
+            if doc.docstatus == 0:
+                return send_response(
+                    status="fail",
+                    message=f"Invoice {invoice_name} is already in Draft state",
+                    status_code=400,
+                )
+            if doc.docstatus == 1:
+                return send_response(
+                    status="fail",
+                    message="Cannot revert a submitted invoice to Draft. Cancel it first.",
+                    status_code=400,
+                )
+            # docstatus == 2 (Cancelled) → amend to create a new Draft we are making a copy of canclled to draft it again bcuase this is the flow of Frappe 
+            amended_doc = frappe.copy_doc(doc)
+            amended_doc.amended_from = doc.name
+            amended_doc.docstatus = 0
+            amended_doc.insert()
 
         return send_response(
             status="success",
-            message=f"Invoice {invoice_name} status updated to {invoice_status}",
+            message=f"Invoice {invoice_name} status updated to {doc.status}",
             status_code=200,
         )
 
-    except Exception as e:
-        frappe.log_error(
-            frappe.get_traceback(), "Update Invoice Status SQL + Enum Error"
+    except frappe.ValidationError as e:
+        return send_response(
+            status="fail",
+            message=f"Validation Error: {str(e)}",
+            status_code=422,
         )
+    except frappe.PermissionError as e:
+        return send_response(
+            status="fail",
+            message=f"Permission Error: {str(e)}",
+            status_code=403,
+        )
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Update Invoice Status Error")
         return send_response(
             status="fail", message=f"Unexpected Error: {str(e)}", status_code=500
         )
