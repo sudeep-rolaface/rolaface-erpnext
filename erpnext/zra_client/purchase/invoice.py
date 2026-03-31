@@ -789,6 +789,9 @@ def get_all_purchase_invoices():
     try:
         args = frappe.request.args
         page = args.get("page")
+        sort_order = args.get("sortOrder", "desc").lower()
+        sort_by = args.get("sortBy", "name")
+
         if not page:
             return send_response(
                 status="error",
@@ -845,7 +848,7 @@ def get_all_purchase_invoices():
 
         filters = {}
         if status_filter:
-            filters["status"] = status_filter
+            filters["status"] = ["in", status_filter]
         if supplier_filter:
             filters["supplier"] = supplier_filter
 
@@ -855,7 +858,12 @@ def get_all_purchase_invoices():
             filters["outstanding_amount"] = [">=", float(minOutstanding)]
         elif maxOutstanding:
             filters["outstanding_amount"] = ["<=", float(maxOutstanding)]
-
+                
+        if sort_by:
+            order_by = f"{sort_by} {sort_order}"
+        else:
+            order_by = f"creation {sort_order}"
+    
         all_pos = frappe.get_all(
             "Purchase Invoice",
             fields=[
@@ -873,7 +881,7 @@ def get_all_purchase_invoices():
                 "total_taxes_and_charges"
             ],
             filters=filters,
-            order_by="creation desc"
+            order_by=order_by
         )
 
         total_items = len(all_pos)
