@@ -840,7 +840,7 @@ def get_all_purchase_invoices():
         start = (page - 1) * page_size
         end = start + page_size
 
-        status_filter = args.get("status")
+        status_filter = args.getlist("status")
         supplier_filter = args.get("supplier")
         search          = args.get("search")        # ← NEW
         minOutstanding= args.get("minOutstanding")
