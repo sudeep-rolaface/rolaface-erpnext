@@ -919,6 +919,7 @@ def get_sales_invoice():
         sort_order = args.get("sortOrder", "desc").lower()
         minOutstanding = args.get("minOutstanding", 0)
         maxOutstanding = args.get("maxOutstanding")
+        status_filter = args.get("status")
 
         conditions = {}
         if customer_name:
@@ -978,6 +979,9 @@ def get_sales_invoice():
                 status_code=400,
                 http_status=400,
             )
+
+        if status_filter:
+            conditions["status"] = ["in", status_filter]
 
         # ── Sorting ───────────────────────────────────────────────────────────
         sort_field_map = {
