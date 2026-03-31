@@ -778,6 +778,15 @@ def get_purchase_order():
                     "batch_no as batchNo", "custom_vat_cd as vatCd", "vat_rate as vatRate", "warehouse"],
         )
 
+        advances = frappe.get_all(
+            "Payment Entry Reference",
+            filters={
+                "reference_doctype": "Purchase Order",
+                "reference_name": po.name,
+            },
+            fields=["parent", "allocated_amount"]
+        )
+
         total_quantity = sum(item.get("qty", 0) for item in items)
         sub_total = sum(item.get("amount", 0) for item in items)
         grand_total = po.grand_total or 0
@@ -928,6 +937,7 @@ def get_purchase_order():
                 "createdAt": (po.creation.isoformat() + "Z") if po.creation else "",
                 "updatedAt": (po.modified.isoformat() + "Z") if po.modified else "",
             },
+            "advances_payments": advances,
         }
 
         return send_response(
