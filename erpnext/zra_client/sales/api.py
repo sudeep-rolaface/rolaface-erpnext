@@ -2025,6 +2025,7 @@ def update_invoice_status():
         return send_response(
             status="success",
             message=f"Invoice {invoice_name} status updated to {doc.status}",
+            data={"id": doc.name, "status": doc.status},
             status_code=200,
         )
 
