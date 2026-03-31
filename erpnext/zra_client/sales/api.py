@@ -919,7 +919,7 @@ def get_sales_invoice():
         sort_order = args.get("sortOrder", "desc").lower()
         minOutstanding = args.get("minOutstanding", 0)
         maxOutstanding = args.get("maxOutstanding")
-        status_filter = args.get("status")
+        status_filter = frappe.request.args.getlist("status")
 
         conditions = {}
         if customer_name:
