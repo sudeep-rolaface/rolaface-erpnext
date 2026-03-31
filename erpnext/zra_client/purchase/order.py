@@ -804,7 +804,7 @@ def get_purchase_order():
 
         # Calculate weighted average tax rate based on each item's amount and vat_rate
         total_weighted_tax = sum(
-            (item.get("amount") or 0) * (float(item.get("vatRate")) or 0)
+            (float(item.get("amount") or 0)) * (float(item.get("vatRate") or 0))
             for item in items
         )
         taxRate = (total_weighted_tax / sub_total) if sub_total else 0
