@@ -917,7 +917,7 @@ def get_sales_invoice():
         search = args.get("search")
         sort_by = args.get("sortBy", "invoiceNumber")
         sort_order = args.get("sortOrder", "desc").lower()
-        minOutstanding = args.get("minOutstanding", 1)
+        minOutstanding = args.get("minOutstanding", 0)
         maxOutstanding = args.get("maxOutstanding")
 
         conditions = {}
