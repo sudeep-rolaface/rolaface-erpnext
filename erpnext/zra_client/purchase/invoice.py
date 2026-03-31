@@ -837,15 +837,14 @@ def get_all_purchase_invoices():
                 http_status=400
             )
 
-        start = (page - 1) * page_size
-        end = start + page_size
-
+        offset = (page - 1) * page_size
         status_filter = args.getlist("status")
         supplier_filter = args.get("supplier")
-        search          = args.get("search")        # ← NEW
-        minOutstanding= args.get("minOutstanding")
+        search = args.get("search")
+        minOutstanding = args.get("minOutstanding")
         maxOutstanding = args.get("maxOutstanding")
 
+        # ✅ Build filters for database query (not Python)
         filters = {}
         if status_filter:
             filters["status"] = ["in", status_filter]
@@ -858,13 +857,31 @@ def get_all_purchase_invoices():
             filters["outstanding_amount"] = [">=", float(minOutstanding)]
         elif maxOutstanding:
             filters["outstanding_amount"] = ["<=", float(maxOutstanding)]
-                
+
+        # ✅ Add search filter at database level using LIKE
+        if search:
+            search_term = f"%{search}%"
+            filters["name"] = ["like", search_term]
+
         if sort_by:
             order_by = f"{sort_by} {sort_order}"
         else:
             order_by = f"creation {sort_order}"
-    
-        all_pos = frappe.get_all(
+
+        # ✅ Step 1: Get total count with filters
+        total_items = frappe.db.count("Purchase Invoice", filters=filters)
+
+        if total_items == 0:
+            return send_response(
+                status="success",
+                message="No purchase invoice found.",
+                data=[],
+                status_code=200,
+                http_status=200
+            )
+
+        # ✅ Step 2: Fetch only the required page with LIMIT and OFFSET
+        pos = frappe.get_all(
             "Purchase Invoice",
             fields=[
                 "name",
@@ -881,35 +898,12 @@ def get_all_purchase_invoices():
                 "total_taxes_and_charges"
             ],
             filters=filters,
-            order_by=order_by
+            order_by=order_by,
+            limit_page_length=page_size,
+            offset=offset
         )
 
-        total_items = len(all_pos)
-
-        # ── Search filter ─────────────────────────────────────────────────────
-        if search:
-            search_lower = search.lower()
-            all_pos = [
-                po for po in all_pos
-                if search_lower in (po.get("name")             or "").lower()
-                or search_lower in (po.get("supplier")         or "").lower()
-                or search_lower in (po.get("status")           or "").lower()
-                or search_lower in str(po.get("posting_date")  or "").lower()
-                or search_lower in str(po.get("due_date")      or "").lower()
-                or search_lower in str(po.get("grand_total")   or "").lower()
-            ]
-
-        if total_items == 0:
-            return send_response(
-                status="success",
-                message="No purchase invoice found.",
-                data=[],
-                status_code=200,
-                http_status=200
-            )
-
-        pos = all_pos[start:end]
-
+        # ✅ Transform field names
         for po in pos:
             po["pId"] = po.pop("name")
             po["supplierName"] = po.pop("supplier")
@@ -925,7 +919,8 @@ def get_all_purchase_invoices():
             po["shippingRule"] = po.pop("shipping_rule")
             po["grandTotalWithTax"] = base_total
             po["spplrInvcDt"] = po.pop("supplier_invoice_date")
-            total_pages = (total_items + page_size - 1) // page_size
+
+        total_pages = (total_items + page_size - 1) // page_size
 
         response_data = {
             "success": True,
@@ -943,17 +938,17 @@ def get_all_purchase_invoices():
 
         return send_response_list(
             status="success",
-            message="Purchase orders retrieved successfully",
+            message="Purchase invoices retrieved successfully",
             status_code=200,
             data=response_data,
             http_status=200
         )
 
     except Exception as e:
-        frappe.log_error(message=str(e), title="Get Purchase Orders API Error")
+        frappe.log_error(message=str(e), title="Get Purchase Invoices API Error")
         return send_response(
             status="fail",
-            message="Failed to fetch purchase orders",
+            message="Failed to fetch purchase invoices",
             data={"error": str(e)},
             status_code=500,
             http_status=500
