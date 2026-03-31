@@ -910,6 +910,8 @@ def get_all_purchase_invoices():
             base_total = po.pop("grand_total", 0)
             tax = po.pop("total_taxes_and_charges", 0) or 0
             po["grandTotal"] = base_total - tax
+            outstanding = po.get("outstanding_amount") or 0
+            po["paidAmount"] = (base_total or 0) - outstanding
             po["registrationType"] = po.pop("custom_registration_type")
             po["syncStatus"] = po.pop("custom_sync_status")
             po["shippingRule"] = po.pop("shipping_rule")
