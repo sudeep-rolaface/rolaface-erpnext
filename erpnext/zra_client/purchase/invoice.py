@@ -223,21 +223,18 @@ def create_purchase_invoice():
             http_status=400
         )
 
-    supplier_check = frappe.db.get_value(
+    supplier = frappe.get_doc(
         "Supplier",
-        {"custom_supplier_id": supplierId},
-        "name"
+        {"custom_supplier_id": supplierId}
     )
 
-    if not supplier_check:
+    if not supplier:
         return send_response(
             status="fail",
             message="Supplier not found",
             data=[],
             http_status=404,
         )
-
-    supplier = frappe.get_doc("Supplier", supplier_check)
 
     if not taxCategory:
         return send_response(
@@ -300,7 +297,7 @@ def create_purchase_invoice():
     invoice_exists = frappe.db.exists(
         "Purchase Invoice",
         {
-            "supplier": supplier_check,
+            "supplier": supplier.name,
             "bill_no": spplrInvcNo,
             "docstatus": ["!=", 2]
         }
@@ -564,9 +561,9 @@ def create_purchase_invoice():
             )
 
     incotermName = CUSTOM_FRAPPE_INSTANCE.GetOrCreateIncoterm(incoterm)
-    supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplier_check)
-    dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplier_check)
-    shipping_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateShippingAddress(addresses, supplier_check)
+    supplier_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateSupplierAddress(addresses, supplierName)
+    dispatch_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateDispatchAddress(addresses, supplierName)
+    shipping_addr_name = CUSTOM_FRAPPE_INSTANCE.CreateShippingAddress(addresses, supplierName)
     print(supplier_addr_name, dispatch_addr_name, shipping_addr_name)
 
     # ------------------------------------------------------------------ #
@@ -626,11 +623,70 @@ def create_purchase_invoice():
         )
 
     # ------------------------------------------------------------------ #
+    #  Resolve advance payments linked to the LPO / Purchase Order        #
+    # ------------------------------------------------------------------ #
+    advance_entries = []
+    advances_meta = []
+
+    if lpoNumber:
+        invoice_grand_total = round(
+            sum(i.get("qty", 0) * i.get("rate", 0) for i in invoice_items_to_be_saved)
+            + total_tax_amount,
+            2
+        )
+
+        # Fetch Payment Entry references linked to PO
+        pe_references = frappe.get_all(
+            "Payment Entry Reference",
+            filters={
+                "reference_doctype": "Purchase Order",
+                "reference_name": lpoNumber,
+            },
+            fields=["name", "parent", "allocated_amount", "exchange_rate"],
+        )
+
+        remaining_to_allocate = invoice_grand_total
+
+        for ref in pe_references:
+            if remaining_to_allocate <= 0:
+                break
+
+            available_advance = float(ref.get("allocated_amount") or 0)
+
+            if available_advance <= 0:
+                continue
+
+            # Correct allocation logic
+            allocate = min(remaining_to_allocate, available_advance)
+
+            advance_entries.append({
+                "doctype": "Purchase Invoice Advance",
+                "reference_type": "Payment Entry",
+                "reference_name": ref["parent"],
+                "advance_amount": available_advance,
+                "allocated_amount": allocate,
+                "parentfield": "advances",
+                "parenttype": "Purchase Invoice",
+                "reference_row": ref["name"],
+                "ref_exchange_rate": ref["exchange_rate"],
+                "remarks": f"Advance settled against LPO {lpoNumber}",
+            })
+
+            advances_meta.append({
+                "payment_entry": ref["parent"],
+                "allocated": allocate,
+            })
+
+            remaining_to_allocate = round(remaining_to_allocate - allocate, 2)
+
+    # ------------------------------------------------------------------ #
     #  Save the Purchase Invoice (Draft — NO stock movement yet)           #
     # ------------------------------------------------------------------ #
     purchase_invoice = frappe.get_doc({
         "doctype": "Purchase Invoice",
-        "supplier": supplier_check,
+        "supplier": supplier.name,
+        "supplier_name": supplier.supplier_name,
+        "tax_id": supplierTpin,
         "company": company_name,
         "currency": currency or company_currency,
         "cost_center": costCenter,
@@ -640,9 +696,11 @@ def create_purchase_invoice():
         "status": status,
         "tax_category": taxCategory,
         "items": invoice_items_to_be_saved,
+        "total_advance": sum(advance["allocated_amount"] for advance in advance_entries) if advance_entries else 0,
+        "advances": advance_entries,
         "remarks": remarks,
         "bill_no": spplrInvcNo,
-        "update_stock": updateStock,              # ✅ stock moves only on approval
+        "update_stock": updateStock,
         "set_warehouse": set_warehouse,
         "supplier_address": supplier_addr_name,
         "dispatch_address": dispatch_addr_name,
@@ -670,7 +728,6 @@ def create_purchase_invoice():
 
     purchase_invoice.insert(ignore_permissions=True)
     purchase_invoice.save(ignore_permissions=True)
-    frappe.db.commit()
 
     # ✅ Terms first — may trigger internal saves that would clear batch_no again
     CUSTOM_FRAPPE_INSTANCE.createInvoiceTermsAndPayments(purchase_invoice.name, terms)
